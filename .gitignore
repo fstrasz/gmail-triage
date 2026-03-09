@@ -1,0 +1,6 @@
+node_modules
+app/node_modules
+**/node_modules
+config/
+.claude/
+.cline/

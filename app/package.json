@@ -1,0 +1,17 @@
+{
+  "name": "gmail-triage",
+  "version": "3.0.0",
+  "type": "module",
+  "main": "triage.js",
+  "scripts": {
+    "start": "node triage.js",
+    "dev": "nodemon --ignore '*.json' triage.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^140.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

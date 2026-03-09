@@ -1,0 +1,25 @@
+version: "3"
+services:
+  gmail-triage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gmail-triage
+    ports:
+      - "3000:3000"
+    volumes:
+      # App files — bind mounted for live reload
+      - ./app/triage.js:/app/triage.js
+      - ./app/lib/stats.js:/app/lib/stats.js
+      - ./app/lib/blocklist.js:/app/lib/blocklist.js
+      - ./app/lib/gmail.js:/app/lib/gmail.js
+      - ./app/lib/unsub.js:/app/lib/unsub.js
+      - ./app/lib/html.js:/app/lib/html.js
+      # Config & data
+      - ./config/.env:/app/.env
+      - ./config/credentials.json:/app/credentials.json
+      - ./config/token.json:/app/token.json
+      - ./config/blocklist.json:/app/blocklist.json
+      - ./config/stats.json:/app/stats.json
+
+    restart: unless-stopped
