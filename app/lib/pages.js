@@ -1071,6 +1071,20 @@ export function settingsPage(settings) {
           <button class="btn btn-secondary" id="test-summary-btn" type="button">Send Test Email Now</button>
           <span id="test-summary-status" style="font-size:.82rem;color:#64748b"></span>
         </div>
+        <div style="padding:8px 18px 14px;border-top:1px solid #f8fafc;display:flex;align-items:center;gap:10px">
+          <form method="POST" action="/settings/daily-summary-debug" style="display:flex;align-items:center;gap:8px;margin:0">
+            <label style="display:flex;align-items:center;gap:7px;font-size:.8rem;color:#92400e;cursor:pointer">
+              <input type="checkbox" name="enabled" ${settings.dailySummaryDebug ? "checked" : ""}
+                onchange="this.form.submit()" style="width:14px;height:14px;accent-color:#d97706">
+              Debug: send after each auto-clean
+            </label>
+          </form>
+          <span style="font-size:.75rem;color:${settings.dailySummaryDebug ? "#d97706" : "#94a3b8"}">
+            ${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt
+              ? `${Math.max(0, 12 - (Date.now() - new Date(settings.dailySummaryDebugEnabledAt).getTime()) / 3600000).toFixed(1)}h left`
+              : "auto-disables after 12h"}
+          </span>
+        </div>
       </div>
     </div>`;
 

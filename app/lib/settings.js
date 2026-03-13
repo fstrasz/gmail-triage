@@ -11,6 +11,8 @@ const DEFAULTS = {
   schedulerIntervalHours: 2,
   dailySummaryEnabled: false,
   dailySummaryEmail: "",
+  dailySummaryDebug: false,
+  dailySummaryDebugEnabledAt: null,
 };
 
 export function loadSettings() {
@@ -47,5 +49,11 @@ export function setDailySummary(enabled, email) {
   const s = loadSettings();
   s.dailySummaryEnabled = !!enabled;
   s.dailySummaryEmail = (email || "").trim();
+  saveSettings(s);
+}
+export function setDailySummaryDebug(enabled) {
+  const s = loadSettings();
+  s.dailySummaryDebug = !!enabled;
+  s.dailySummaryDebugEnabledAt = enabled ? new Date().toISOString() : null;
   saveSettings(s);
 }
