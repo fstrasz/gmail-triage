@@ -64,28 +64,34 @@ function fmtTime(date) {
 }
 function fmtDate(date) {
   const tz = loadSettings().timezone || "America/Los_Angeles";
-  return date.toLocaleDateString("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return date.toLocaleDateString("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 // ─── Scheduled scan ────────────────────────────────────────────────────────────
+export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
+                                        scanAndCleanBlocklist, scanAndLabelTier) {
+  const timeLabel = fmtTime(new Date());
+  const gmail = await getGmailClient();
+  const [scanClean, scanVip, scanOk] = await Promise.all([
+    scanAndCleanBlocklist(gmail, loadBlocklist()),
+    scanAndLabelTier(gmail, loadViplist(), "..VIP"),
+    scanAndLabelTier(gmail, loadOklist(), "..OK"),
+  ]);
+  const results = [...scanClean, ...scanVip, ...scanOk];
+  if (results.length) {
+    appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
+  }
+  console.log(`[scheduler] ${timeLabel}: ${results.length} items labeled`);
+  return { results, timeLabel };
+}
+
 export function startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist,
                                 scanAndCleanBlocklist, scanAndLabelTier) {
   async function runScan() {
     const s = loadSettings();
     if (s.schedulerEnabled) {
-      const timeLabel = fmtTime(new Date());
       try {
-        const gmail = await getGmailClient();
-        const [scanClean, scanVip, scanOk] = await Promise.all([
-          scanAndCleanBlocklist(gmail, loadBlocklist()),
-          scanAndLabelTier(gmail, loadViplist(), "..VIP"),
-          scanAndLabelTier(gmail, loadOklist(), "..OK"),
-        ]);
-        const results = [...scanClean, ...scanVip, ...scanOk];
-        if (results.length) {
-          appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} – ${r.reason}`, runAt: new Date().toISOString() })));
-        }
-        console.log(`[scheduler] ${timeLabel}: ${results.length} items labeled`);
+        await runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier);
       } catch(e) {
         console.error(`[scheduler] scan failed: ${e.message}`);
       }
@@ -116,7 +122,8 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
   }
 
   const dateStr = fmtDate(now);
-  const subject = `Gmail Triage – Daily Auto-Clean Summary (${dateStr})`;
+  const subject = `Gmail Triage - Daily Auto-Clean Summary (${dateStr})`;
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`;
 
   let bodyHtml;
   if (!log.length) {
@@ -156,7 +163,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
 
   const message = [
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${subjectEncoded}`,
     `Content-Type: text/html; charset=utf-8`,
     `MIME-Version: 1.0`,
     ``,
