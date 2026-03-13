@@ -1,9 +1,16 @@
 import { extractEmail, extractName } from "./gmail.js";
+import { loadSettings } from "./settings.js";
 
 export function emailCard(e) {
   const fromEmail = extractEmail(e.from);
   const fromName  = extractName(e.from);
-  const dateStr   = e.date ? new Date(e.date).toLocaleDateString() : "";
+  const dateStr   = e.date ? (() => {
+    const d  = new Date(e.date);
+    const tz = loadSettings().timezone;
+    const time = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone: tz});
+    const date = d.toLocaleDateString('en-US', {timeZone: tz});
+    return `${time} ${date}`;
+  })() : "";
   const subj      = (e.subject || "(no subject)").replace(/</g, "&lt;");
   const safe = s  => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const hasUnsub  = !!e.listUnsubscribe;
@@ -21,7 +28,7 @@ export function emailCard(e) {
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header — compose will open"';
 
   return `
-    <div class="email-row" id="row-${e.id}" style="${tierBorder}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+    <div class="email-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
       <div class="email-header">
         <div class="email-meta">
           <div class="email-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400">&lt;${fromEmail}&gt;</span></div>
@@ -33,10 +40,13 @@ export function emailCard(e) {
       <div class="email-actions" id="actions-${e.id}">
         <button class="btn btn-vip"        onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..VIP')">⭐ VIP</button>
         <button class="btn btn-ok"         onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..OK')">✅ OK</button>
-        <button class="btn btn-keep"       onclick="doKeep('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">📁 Keep</button>
-        <button class="btn btn-keep-clean" onclick="doKeepClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">📁 Keep &amp; Clean</button>
+        <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">✅ OK &amp; Clean</button>
         <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
         <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
+        <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
+        <button class="btn btn-archive"    onclick="doArchive('${e.id}')">📥 Archive</button>
+        <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
+        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
         <button class="btn btn-expand"     onclick="toggleSnippet('${e.id}')">▼ Preview</button>
       </div>
     </div>`;
@@ -70,6 +80,7 @@ export function shell(title, body, script = "") {
     .email-row.r-kept{border-left:4px solid #22c55e!important}
     .email-row.r-vip{border-left:4px solid #f59e0b!important}
     .email-row.r-ok{border-left:4px solid #14b8a6!important}
+    .email-row.r-archived{border-left:4px solid #6366f1!important}
     .email-header{padding:14px 16px;display:flex;align-items:flex-start;gap:12px}
     .email-meta{flex:1;min-width:0}
     .email-from{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -84,6 +95,9 @@ export function shell(title, body, script = "") {
     .btn-junk{background:#fee2e2;color:#b91c1c}.btn-junk:hover{background:#fecaca}
     .btn-unsub{background:#fef3c7;color:#92400e}.btn-unsub:hover{background:#fde68a}
     .btn-expand{background:#f1f5f9;color:#475569;margin-left:auto}.btn-expand:hover{background:#e2e8f0}
+    .btn-review{background:#f5f3ff;color:#6d28d9}.btn-review:hover{background:#ede9fe}
+    .btn-sender{background:#f0f9ff;color:#0369a1;text-decoration:none}.btn-sender:hover{background:#e0f2fe}
+    .btn-archive{background:#dbeafe;color:#1e40af}.btn-archive:hover{background:#bfdbfe}
     .btn-danger{background:#ef4444;color:#fff;font-size:.75rem;padding:4px 10px}.btn-danger:hover{background:#dc2626}
     .btn-primary{background:#4f46e5;color:#fff}.btn-primary:hover{background:#4338ca}
     .status-tag{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
@@ -92,7 +106,9 @@ export function shell(title, body, script = "") {
     .tag-kept{background:#dcfce7;color:#15803d}
     .tag-vip{background:#fef3c7;color:#92400e}
     .tag-ok{background:#ccfbf1;color:#0f766e}
+    .tag-archive{background:#dbeafe;color:#1e40af}
     .tag-working{background:#ede9fe;color:#6d28d9}
+    .tag-review{background:#f5f3ff;color:#6d28d9}
     .session-stats{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
     .stat-item{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 16px;flex:1;min-width:80px;text-align:center}
     .stat-num{display:block;font-size:1.4rem;font-weight:700;color:#1e293b}
@@ -144,5 +160,9 @@ export function shell(title, body, script = "") {
     .ts-badge{padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:700;margin-left:8px;white-space:nowrap}
     .legend{display:flex;gap:12px;font-size:.72rem;color:#64748b;flex-wrap:wrap;margin-bottom:10px}
     .legend-dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
+    .review-item{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:8px;transition:background .15s}
+    .review-item:hover{background:#f8fafc}
+    .review-done{opacity:.55}
+    .review-detail{flex:1}
   </style></head><body>${body}${script ? "<script>" + script + "<\/script>" : ""}</body></html>`;
 }

@@ -4,3 +4,5 @@ app/node_modules
 config/
 .claude/
 .cline/
+deploy.log
+scripts/session-*

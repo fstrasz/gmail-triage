@@ -117,13 +117,14 @@ export async function blockSender(gmail, fromEmail, fromName = null, excludeId =
 // ─── Scan inbox for blocked senders ───────────────────────────────────────────
 export async function scanAndCleanBlocklist(gmail, blocklist) {
   if (!blocklist.length) return [];
-  const labelId     = await ensureLabel(gmail, "DelPend");
-  const keptLabelId = await ensureLabel(gmail, "Kept");
+  const labelId    = await ensureLabel(gmail, "DelPend");
+  const vipLabelId = await ensureLabel(gmail, "..VIP");
+  const okLabelId  = await ensureLabel(gmail, "..OK");
+  const skip = new Set([labelId, vipLabelId, okLabelId]);
 
   const results = await Promise.all(blocklist.map(async entry => {
-    const q = entry.email.startsWith("@")
-      ? "from:*" + entry.email + " -label:DelPend -in:sent -in:trash"
-      : "from:" + entry.email + " -label:DelPend -in:sent -in:trash";
+    const base = entry.email.startsWith("@") ? "from:*" + entry.email : "from:" + entry.email;
+    const q = base + " in:inbox -label:DelPend -label:..OK -label:..VIP -in:sent -in:trash";
     const ids = [];
     let pageToken = null;
     do {
@@ -131,12 +132,16 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
       if (pageToken) params.pageToken = pageToken;
       const res = await gmail.users.messages.list(params);
       const fetches = await Promise.all((res.data.messages || []).map(m =>
-        gmail.users.messages.get({ userId: "me", id: m.id, format: "minimal" })
+        gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] })
       ));
       for (const full of fetches) {
         const labels = full.data.labelIds || [];
-        if (labels.includes("INBOX") && !labels.includes(labelId) && !labels.includes(keptLabelId))
-          ids.push(full.data.id);
+        if (!labels.includes("INBOX") || labels.some(l => skip.has(l))) continue;
+        if (entry.name) {
+          const fromHeader = full.data.payload?.headers?.find(h => h.name === "From")?.value || "";
+          if (extractName(fromHeader) !== entry.name) continue;
+        }
+        ids.push(full.data.id);
       }
       pageToken = res.data.nextPageToken || null;
     } while (pageToken);
@@ -155,10 +160,10 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
 
 // ─── Fetch emails for triage ───────────────────────────────────────────────────
 export async function fetchEmails(gmail, max = 25) {
-  await Promise.all(["..VIP", "..OK", "Kept", "DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
+  await Promise.all(["..VIP", "..OK", "DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
 
   const res = await gmail.users.messages.list({
-    userId: "me", q: "in:inbox -label:DelPend -label:Kept", maxResults: 100,
+    userId: "me", q: "in:inbox -label:DelPend -label:..OK", maxResults: 100,
   });
   const messages = res.data.messages || [];
   const details = await Promise.all(messages.map(msg =>
@@ -186,6 +191,9 @@ export async function fetchEmails(gmail, max = 25) {
     const okId  = labelCache["..OK"]  || "";
     const tier  = lbls.includes(vipId) ? "..VIP" : lbls.includes(okId) ? "..OK" : null;
 
+    // VIP/OK emails that are already read need no action — skip them
+    if (tier && !lbls.includes("UNREAD")) continue;
+
     emails.push({
       id: d.data.id, subject: g("Subject"), from: fromRaw,
       date: g("Date"), snippet: d.data.snippet,
@@ -195,6 +203,208 @@ export async function fetchEmails(gmail, max = 25) {
     });
   }
   return emails;
+}
+
+// ─── Fetch all emails from one sender (for sender detail page) ────────────────
+export async function fetchSenderEmails(gmail, fromEmail, maxResults = 100) {
+  const res = await gmail.users.messages.list({
+    userId: "me", q: `from:${fromEmail} -in:trash -in:sent`, maxResults,
+  });
+  const messages = res.data.messages || [];
+  if (!messages.length) return [];
+  const details = await Promise.all(messages.map(m =>
+    gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] })
+  ));
+  return details.map(d => {
+    const h = d.data.payload.headers;
+    const g = n => h.find(x => x.name === n)?.value || "";
+    const lbls = d.data.labelIds || [];
+    return { id: d.data.id, subject: g("Subject"), date: g("Date"), snippet: d.data.snippet, isRead: !lbls.includes("UNREAD") };
+  });
+}
+
+// ─── Trash a single message ────────────────────────────────────────────────────
+export async function trashMessage(gmail, id) {
+  await gmail.users.messages.batchModify({
+    userId: "me",
+    requestBody: { ids: [id], addLabelIds: ["TRASH"], removeLabelIds: ["INBOX", "UNREAD"] },
+  });
+}
+
+// ─── DelPend summary (total + per-sender counts) ───────────────────────────────
+// Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
+// Returns exact counts for every sender in DelPend regardless of blocklist.
+export async function getDelPendSummary(gmail) {
+  const ids = []; let pageToken = null;
+  do {
+    const params = { userId: "me", q: "label:DelPend", maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+
+  const total = ids.length;
+  if (total === 0) return { total: 0, senders: [] };
+
+  // Batch-fetch From headers in parallel chunks of 50
+  const CHUNK = 50;
+  const details = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
+      gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From"] })
+    ));
+    details.push(...batch);
+  }
+
+  // Group and count by sender email
+  const senderMap = {};
+  for (const d of details) {
+    const from = d.data.payload.headers.find(h => h.name === "From")?.value || "";
+    const email = extractEmail(from);
+    const name  = extractName(from);
+    if (!senderMap[email]) senderMap[email] = { email, name, count: 0 };
+    senderMap[email].count++;
+  }
+  return { total, senders: Object.values(senderMap).sort((a, b) => b.count - a.count) };
+}
+
+// ─── Trash all DelPend messages (optionally scoped to one sender) ───────────────
+export async function trashDelPend(gmail, fromEmail = null) {
+  const delPendId = await ensureLabel(gmail, "DelPend");
+  const q = fromEmail ? `label:DelPend from:${fromEmail}` : "label:DelPend";
+  const ids = []; let pageToken = null;
+  do {
+    const params = { userId: "me", q, maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  for (let i = 0; i < ids.length; i += 1000) {
+    try {
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: ["TRASH"], removeLabelIds: [delPendId, "INBOX", "UNREAD"] },
+      });
+    } catch(e) { console.error("trashDelPend batchModify FAILED:", e.message); }
+  }
+  return { trashed: ids.length };
+}
+
+// ─── Archive a single message (read + remove inbox) ───────────────────────────
+export async function archiveMessage(gmail, id) {
+  await gmail.users.messages.batchModify({
+    userId: "me",
+    requestBody: { ids: [id], removeLabelIds: ["INBOX", "UNREAD"] },
+  });
+}
+
+// ─── Auto-label VIP / OK senders ───────────────────────────────────────────────
+export async function scanAndLabelTier(gmail, list, tierName) {
+  if (!list.length) return [];
+  const labelId = await ensureLabel(gmail, tierName);
+
+  const results = await Promise.all(list.map(async entry => {
+    const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
+    const otherTier = tierName === "..VIP" ? "-label:..OK" : "-label:..VIP";
+    const q = `${fromClause} in:inbox -label:${tierName} ${otherTier} -label:DelPend -in:sent -in:trash`;
+    const ids = [];
+    let pageToken = null;
+    do {
+      const params = { userId: "me", q, maxResults: 500 };
+      if (pageToken) params.pageToken = pageToken;
+      const res = await gmail.users.messages.list(params);
+      for (const m of res.data.messages || []) {
+        if (entry.name) {
+          const d = await gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] });
+          const fh = d.data.payload.headers.find(h => h.name === "From")?.value || "";
+          if (extractName(fh) !== entry.name) continue;
+        }
+        ids.push(m.id);
+      }
+      pageToken = res.data.nextPageToken || null;
+    } while (pageToken);
+
+    if (!ids.length) return null;
+    for (let i = 0; i < ids.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId] },
+      });
+    }
+    return { email: entry.email, reason: `auto-${tierName}`, moved: ids.length };
+  }));
+  return results.filter(Boolean);
+}
+
+// ─── OK + DelPend conflict detection & resolution ──────────────────────────────
+export async function getKeptDelPendConflicts(gmail) {
+  const ids = []; let pageToken = null;
+  do {
+    const params = { userId: "me", q: "label:DelPend label:..OK", maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  if (!ids.length) return [];
+
+  const CHUNK = 50;
+  const details = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
+      gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From"] })
+    ));
+    details.push(...batch);
+  }
+  const senderMap = {};
+  for (const d of details) {
+    const from = d.data.payload.headers.find(h => h.name === "From")?.value || "";
+    const email = extractEmail(from);
+    const name  = extractName(from);
+    if (!senderMap[email]) senderMap[email] = { email, name, count: 0 };
+    senderMap[email].count++;
+  }
+  return Object.values(senderMap).sort((a, b) => b.count - a.count);
+}
+
+export async function removeDelPendFromSender(gmail, fromEmail) {
+  const delPendId = await ensureLabel(gmail, "DelPend");
+  const ids = []; let pageToken = null;
+  do {
+    const params = { userId: "me", q: `label:DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  for (let i = 0; i < ids.length; i += 1000) {
+    await gmail.users.messages.batchModify({
+      userId: "me",
+      requestBody: { ids: ids.slice(i, i + 1000), removeLabelIds: [delPendId] },
+    });
+  }
+  return ids.length;
+}
+
+export async function removeOkLabelFromSender(gmail, fromEmail) {
+  const okId = await ensureLabel(gmail, "..OK");
+  const ids = []; let pageToken = null;
+  do {
+    const params = { userId: "me", q: `label:DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  for (let i = 0; i < ids.length; i += 1000) {
+    await gmail.users.messages.batchModify({
+      userId: "me",
+      requestBody: { ids: ids.slice(i, i + 1000), removeLabelIds: [okId] },
+    });
+  }
+  return ids.length;
 }
 
 // ─── Inbox size snapshot ───────────────────────────────────────────────────────

@@ -15,11 +15,24 @@ services:
       - ./app/lib/gmail.js:/app/lib/gmail.js
       - ./app/lib/unsub.js:/app/lib/unsub.js
       - ./app/lib/html.js:/app/lib/html.js
+      - ./app/lib/pages.js:/app/lib/pages.js
+      - ./app/lib/keepClean.js:/app/lib/keepClean.js
+      - ./app/lib/keptlist.js:/app/lib/keptlist.js
+      - ./app/lib/viplist.js:/app/lib/viplist.js
+      - ./app/lib/claude.js:/app/lib/claude.js
+      - ./app/lib/calendar.js:/app/lib/calendar.js
+      - ./app/lib/review.js:/app/lib/review.js
+      - ./app/lib/settings.js:/app/lib/settings.js
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json
       - ./config/token.json:/app/token.json
       - ./config/blocklist.json:/app/blocklist.json
       - ./config/stats.json:/app/stats.json
+      - ./config/keptlist.json:/app/keptlist.json
+      - ./config/viplist.json:/app/viplist.json
+      - ./config/oklist.json:/app/oklist.json
+      - ./config/review.json:/app/review.json
+      - ./config/settings.json:/app/settings.json
 
     restart: unless-stopped
