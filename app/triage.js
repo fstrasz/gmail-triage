@@ -11,7 +11,7 @@ import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary } from "./lib/settings.js";
-import { startScheduler, startDailySummaryScheduler, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
 const PORT = 3000;
@@ -435,6 +435,14 @@ app.post("/settings/daily-summary/test", async (req, res) => {
     const gmail = await getGmailClient();
     const sent = await sendDailySummary(gmail, { force: true });
     res.json({ ok: true, sent });
+  } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+app.post("/settings/run-scan", async (req, res) => {
+  try {
+    const { results, timeLabel } = await runScheduledScan(
+      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier
+    );
+    res.json({ ok: true, count: results.length, timeLabel });
   } catch(e) { res.json({ ok: false, error: e.message }); }
 });
 

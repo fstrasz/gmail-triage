@@ -1043,6 +1043,10 @@ export function settingsPage(settings) {
           </label>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
+        <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-secondary" id="run-scan-btn" type="button">Run Auto-Clean Now</button>
+          <span id="run-scan-status" style="font-size:.82rem;color:#64748b"></span>
+        </div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="card-header">
@@ -1105,6 +1109,16 @@ export function settingsPage(settings) {
         alert('Unable to retrieve your location. Please check browser permissions.');
         btn.textContent = '📍 Use My Location'; btn.disabled = false;
       });
+    };
+    document.getElementById('run-scan-btn').onclick = async function() {
+      var btn = this, status = document.getElementById('run-scan-status');
+      btn.disabled = true; status.textContent = 'Running...';
+      try {
+        var r = await fetch('/settings/run-scan', { method: 'POST' });
+        var d = await r.json();
+        status.textContent = d.ok ? (d.count ? d.count + ' emails labeled at ' + d.timeLabel : 'Nothing to clean') : ('Error: ' + d.error);
+      } catch(e) { status.textContent = 'Error: ' + e.message; }
+      btn.disabled = false;
     };
     document.getElementById('test-summary-btn').onclick = async function() {
       var btn = this, status = document.getElementById('test-summary-status');
