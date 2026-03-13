@@ -421,8 +421,8 @@ app.post("/settings/timezone", (req, res) => {
   res.redirect("/settings");
 });
 app.post("/settings/scheduler", (req, res) => {
-  const { enabled, startHour, intervalHours } = req.body;
-  setScheduler(enabled === "on", startHour ?? 10, intervalHours ?? 2);
+  const { enabled, startHour, startMinute, intervalHours } = req.body;
+  setScheduler(enabled === "on", startHour ?? 10, startMinute ?? 0, intervalHours ?? 2);
   res.redirect("/settings");
 });
 app.post("/settings/daily-summary", (req, res) => {

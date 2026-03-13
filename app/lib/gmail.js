@@ -125,14 +125,14 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
   const results = await Promise.all(blocklist.map(async entry => {
     const base = entry.email.startsWith("@") ? "from:*" + entry.email : "from:" + entry.email;
     const q = base + " in:inbox -label:DelPend -label:..OK -label:..VIP -in:sent -in:trash";
-    const ids = [];
+    const ids = []; const subjects = [];
     let pageToken = null;
     do {
       const params = { userId: "me", q, maxResults: 500 };
       if (pageToken) params.pageToken = pageToken;
       const res = await gmail.users.messages.list(params);
       const fetches = await Promise.all((res.data.messages || []).map(m =>
-        gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] })
+        gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From", "Subject"] })
       ));
       for (const full of fetches) {
         const labels = full.data.labelIds || [];
@@ -142,6 +142,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
           if (extractName(fromHeader) !== entry.name) continue;
         }
         ids.push(full.data.id);
+        subjects.push(full.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)");
       }
       pageToken = res.data.nextPageToken || null;
     } while (pageToken);
@@ -153,7 +154,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
       });
     }
-    return { email: entry.email, reason: entry.reason, moved: ids.length };
+    return { email: entry.email, reason: entry.reason, moved: ids.length, labelName: "DelPend", subjects: subjects.slice(0, 5) };
   }));
   return results.filter(Boolean);
 }
@@ -309,7 +310,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const otherTier = tierName === "..VIP" ? "-label:..OK" : "-label:..VIP";
     const q = `${fromClause} in:inbox -label:${tierName} ${otherTier} -label:DelPend -in:sent -in:trash`;
-    const ids = [];
+    const ids = []; const subjects = [];
     let pageToken = null;
     do {
       const params = { userId: "me", q, maxResults: 500 };
@@ -317,9 +318,10 @@ export async function scanAndLabelTier(gmail, list, tierName) {
       const res = await gmail.users.messages.list(params);
       for (const m of res.data.messages || []) {
         if (entry.name) {
-          const d = await gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] });
+          const d = await gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From", "Subject"] });
           const fh = d.data.payload.headers.find(h => h.name === "From")?.value || "";
           if (extractName(fh) !== entry.name) continue;
+          subjects.push(d.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)");
         }
         ids.push(m.id);
       }
@@ -327,13 +329,22 @@ export async function scanAndLabelTier(gmail, list, tierName) {
     } while (pageToken);
 
     if (!ids.length) return null;
+
+    // For entries without name filter, fetch subjects for first 5 messages
+    if (!entry.name && ids.length) {
+      const fetched = await Promise.all(ids.slice(0, 5).map(id =>
+        gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject"] })
+      ));
+      subjects.push(...fetched.map(d => d.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)"));
+    }
+
     for (let i = 0; i < ids.length; i += 1000) {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId] },
       });
     }
-    return { email: entry.email, reason: `auto-${tierName}`, moved: ids.length };
+    return { email: entry.email, reason: `auto-${tierName}`, moved: ids.length, labelName: tierName, subjects: subjects.slice(0, 5) };
   }));
   return results.filter(Boolean);
 }

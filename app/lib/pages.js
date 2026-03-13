@@ -1033,11 +1033,15 @@ export function settingsPage(settings) {
                 `<option value="${h}"${h === (settings.schedulerStartHour ?? 10) ? " selected" : ""}>${h < 12 ? h+" AM" : h === 12 ? "12 PM" : (h-12)+" PM"}</option>`
               ).join("")}
             </select>
+            <select name="startMinute" style="margin-left:4px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+              <option value="0"${(settings.schedulerStartMinute ?? 0) === 0 ? " selected" : ""}>:00</option>
+              <option value="30"${(settings.schedulerStartMinute ?? 0) === 30 ? " selected" : ""}>:30</option>
+            </select>
           </label>
           <label style="font-size:.85rem">Every
             <select name="intervalHours" style="margin-left:6px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
-              ${[1,2,3,4,6,8].map(h =>
-                `<option value="${h}"${h === (settings.schedulerIntervalHours ?? 2) ? " selected" : ""}>${h}h</option>`
+              ${[[0.5,"30 min"],[1,"1 hr"],[2,"2 hr"],[3,"3 hr"],[4,"4 hr"],[6,"6 hr"],[8,"8 hr"]].map(([v,label]) =>
+                `<option value="${v}"${(settings.schedulerIntervalHours ?? 2) === v ? " selected" : ""}>${label}</option>`
               ).join("")}
             </select>
           </label>

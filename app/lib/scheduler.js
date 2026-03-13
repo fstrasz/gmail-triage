@@ -41,20 +41,22 @@ function msUntilHour(targetHour) {
 
 function msUntilNextScan() {
   const s = loadSettings();
-  const startHour = s.schedulerStartHour ?? 10;
-  const interval  = s.schedulerIntervalHours ?? 2;
-  const hours = [];
-  for (let h = startHour; h < 24; h += interval) hours.push(h);
+  const startHour   = s.schedulerStartHour ?? 10;
+  const startMinute = s.schedulerStartMinute ?? 0;
+  const intervalMin = Math.round((s.schedulerIntervalHours ?? 2) * 60);
 
-  const parts   = tzParts(new Date());
-  const curHour = parseInt(parts.hour);
-  const curMin  = parseInt(parts.minute);
+  // Build schedule as minutes-since-midnight
+  const schedule = [];
+  for (let m = startHour * 60 + startMinute; m < 24 * 60; m += intervalMin) schedule.push(m);
 
-  let nextHour = hours.find(h => h > curHour || (h === curHour && curMin < 1));
+  const parts      = tzParts(new Date());
+  const curTotalMin = parseInt(parts.hour) * 60 + parseInt(parts.minute);
+
+  let nextTotalMin = schedule.find(m => m >= curTotalMin);
   let addDays = 0;
-  if (nextHour === undefined) { nextHour = hours[0]; addDays = 1; }
+  if (nextTotalMin === undefined) { nextTotalMin = schedule[0]; addDays = 1; }
 
-  const minUntil = addDays * 24 * 60 + (nextHour - curHour) * 60 - curMin;
+  const minUntil = addDays * 24 * 60 + nextTotalMin - curTotalMin;
   return Math.max(minUntil * 60 * 1000, 60 * 1000);
 }
 
@@ -141,12 +143,18 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
       if (!groups[key]) groups[key] = [];
       groups[key].push(e);
     }
+    const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     const rows = Object.entries(groups).map(([time, entries]) => {
-      const entryRows = entries.map(e =>
-        `<tr><td style="padding:4px 12px;font-size:13px;color:#374151">${e.email}</td>
-              <td style="padding:4px 12px;font-size:13px;color:#6b7280">${e.reason.replace(/^⏰[^-]*-\s*/,"")}</td>
-              <td style="padding:4px 12px;font-size:13px;text-align:right;color:#374151">${e.moved} labeled</td></tr>`
-      ).join("");
+      const entryRows = entries.map(e => {
+        const label = e.labelName || "DelPend";
+        const searchUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:${e.email} label:${label}`)}`;
+        const subjectHtml = (e.subjects || []).length
+          ? `<div style="margin-top:3px">${e.subjects.map(s => `<span style="display:block;font-size:11px;color:#9ca3af">${esc(s)}</span>`).join("")}</div>`
+          : "";
+        return `<tr><td style="padding:4px 12px;font-size:13px;color:#374151"><a href="${searchUrl}" style="color:#2563eb;text-decoration:none">${esc(e.email)}</a>${subjectHtml}</td>
+              <td style="padding:4px 12px;font-size:13px;color:#6b7280">${esc(e.reason.replace(/^⏰[^-]*-\s*/,""))}</td>
+              <td style="padding:4px 12px;font-size:13px;text-align:right;color:#374151">${e.moved} labeled</td></tr>`;
+      }).join("");
       return `<tr><td colspan="3" style="padding:10px 12px 4px;font-size:12px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">${time}</td></tr>${entryRows}`;
     }).join("");
 
