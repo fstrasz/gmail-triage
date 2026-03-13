@@ -75,6 +75,7 @@ export function shell(title, body, script = "") {
     .preview-iframe{flex:1;border:none;width:100%;height:100%}
     .email-row{background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:10px;overflow:hidden}
     .email-row.done{opacity:.35;pointer-events:none}
+    .email-row.preview-active{background:#f0f9ff;border-color:#93c5fd}
     .email-row.junked{border-left:4px solid #ef4444!important}
     .email-row.unsubbed{border-left:4px solid #f59e0b!important}
     .email-row.r-kept{border-left:4px solid #22c55e!important}
