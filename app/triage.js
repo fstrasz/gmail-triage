@@ -99,7 +99,7 @@ app.get("/api/next", async (req, res) => {
     let autoCleaned=0; const autoCleanedEntries=[];
     let pageToken=null;
     do {
-      const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:DelPend -label:..OK",maxResults:50,...(pageToken?{pageToken}:{})});
+      const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
       const messages=result.data.messages||[];
       pageToken=result.data.nextPageToken||null;
       for(const msg of messages){
