@@ -81,8 +81,13 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
   if (results.length) {
     appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
   }
-  console.log(`[scheduler] ${timeLabel}: ${results.length} items labeled`);
-  return { results, timeLabel };
+  const sumMoved = arr => arr.reduce((s, r) => s + r.moved, 0);
+  const blocklistMoved = sumMoved(scanClean);
+  const vipMoved = sumMoved(scanVip);
+  const okMoved = sumMoved(scanOk);
+  const totalMoved = blocklistMoved + vipMoved + okMoved;
+  console.log(`[scheduler] ${timeLabel}: ${totalMoved} emails labeled (blocklist:${blocklistMoved} vip:${vipMoved} ok:${okMoved})`);
+  return { results, timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved };
 }
 
 export function startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist,
@@ -139,7 +144,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
     const rows = Object.entries(groups).map(([time, entries]) => {
       const entryRows = entries.map(e =>
         `<tr><td style="padding:4px 12px;font-size:13px;color:#374151">${e.email}</td>
-              <td style="padding:4px 12px;font-size:13px;color:#6b7280">${e.reason.replace(/⏰[^–]*–\s*/,"")}</td>
+              <td style="padding:4px 12px;font-size:13px;color:#6b7280">${e.reason.replace(/^⏰[^-]*-\s*/,"")}</td>
               <td style="padding:4px 12px;font-size:13px;text-align:right;color:#374151">${e.moved} labeled</td></tr>`
       ).join("");
       return `<tr><td colspan="3" style="padding:10px 12px 4px;font-size:12px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">${time}</td></tr>${entryRows}`;

@@ -439,10 +439,10 @@ app.post("/settings/daily-summary/test", async (req, res) => {
 });
 app.post("/settings/run-scan", async (req, res) => {
   try {
-    const { results, timeLabel } = await runScheduledScan(
+    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved } = await runScheduledScan(
       getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier
     );
-    res.json({ ok: true, count: results.length, timeLabel });
+    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, timeLabel });
   } catch(e) { res.json({ ok: false, error: e.message }); }
 });
 
