@@ -24,6 +24,35 @@ if (-not (Test-Path $Dest)) {
     exit 1
 }
 
+# -- Auto-increment version in pages.js and commit locally (no push) -----------
+if (-not $WhatIf) {
+    $pagesFile = "$Source\app\lib\pages.js"
+    $content = Get-Content $pagesFile -Raw
+    if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
+        $major = $Matches[1]
+        $minor = $Matches[2]
+        $patch = [int]$Matches[3] + 1
+        $newVersion = "v${major}.${minor}.$( '{0:D2}' -f $patch )"
+        $newContent = $content -replace 'const APP_VERSION = "v[^"]+"', "const APP_VERSION = `"$newVersion`""
+        Set-Content $pagesFile $newContent -NoNewline
+
+        $commitMsg = "Bump version to $newVersion`n`nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+        git -C $Source add app/lib/pages.js | Out-Null
+        git -C $Source commit -m $commitMsg | Out-Null
+
+        Write-Host "  Version: $newVersion" -ForegroundColor Cyan
+
+        if ($patch % 10 -eq 0) {
+            Write-Host ""
+            Write-Host "  REMINDER: $newVersion is a milestone -- consider tagging a stable GitHub release." -ForegroundColor Yellow
+        }
+        Write-Host ""
+    } else {
+        Write-Host "  WARNING: Could not find APP_VERSION in pages.js -- skipping version bump." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
 $robocopyArgs = @(
     $Source, $Dest,
     "/MIR",
