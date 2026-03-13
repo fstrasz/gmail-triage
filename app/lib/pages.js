@@ -187,7 +187,7 @@ function clientScript() { return `
     document.getElementById('scan-card').style.display='';
     autoCleaned+=moved;document.getElementById('scan-total').textContent=autoCleaned;
     var row=document.createElement('div');row.className='scan-row';
-    row.innerHTML='<span>'+email+' <span style="color:#94a3b8;font-size:.75rem">('+reason+')</span></span><span class="scan-badge">'+moved+' moved</span>';
+    row.innerHTML='<span>'+email+' <span style="color:#94a3b8;font-size:.75rem">('+reason+')</span></span><span class="scan-badge">'+moved+' labeled</span>';
     document.getElementById('scan-rows').appendChild(row);updateStats();
   }
   function updateStats(){
@@ -326,7 +326,7 @@ function clientScript() { return `
     try{
       var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName})});
       var data=await r.json();junked+=data.moved||1;updateStats();
-      document.getElementById('tag-'+id).textContent='🗑 Junked ('+(data.moved||0)+' moved)';
+      document.getElementById('tag-'+id).textContent='🗑 Junked ('+(data.moved||0)+' labeled)';
       document.getElementById('tag-'+id).className='status-tag tag-junk';
       updateBlCount(1);
       scheduleDismiss(id);
