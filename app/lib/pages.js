@@ -1203,9 +1203,16 @@ export function settingsPage(settings) {
             style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
-        <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:center">
-          <button class="btn btn-secondary" id="test-summary-btn" type="button">Send Test Email Now</button>
-          <span id="test-summary-status" style="font-size:.82rem;color:#64748b"></span>
+        <div style="padding:0 18px 14px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="btn btn-secondary" id="test-summary-btn" type="button">Send Test Email Now</button>
+            <span id="test-summary-status" style="font-size:.82rem;color:#64748b"></span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;cursor:pointer;color:#64748b">
+            <input type="checkbox" id="debug-summary-cb" ${settings.dailySummaryDebug ? "checked" : ""} style="width:14px;height:14px">
+            Debug: send after each auto-clean (auto-disables after 12h)
+            ${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `<span style="color:#f59e0b;font-size:.75rem">· enabled ${Math.round((Date.now()-new Date(settings.dailySummaryDebugEnabledAt).getTime())/3600000*10)/10}h ago</span>` : ""}
+          </label>
         </div>
       </div>
     </div>`;
@@ -1277,6 +1284,14 @@ export function settingsPage(settings) {
         status.textContent = d.ok ? (d.sent ? 'Sent!' : 'Nothing to report — no activity in last 24h') : ('Error: ' + d.error);
       } catch(e) { status.textContent = 'Error: ' + e.message; }
       btn.disabled = false;
+    };
+    document.getElementById('debug-summary-cb').onchange = async function() {
+      var cb = this;
+      try {
+        var r = await fetch('/settings/daily-summary/debug', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled: cb.checked }) });
+        var d = await r.json();
+        if (!d.ok) { cb.checked = !cb.checked; }
+      } catch(e) { cb.checked = !cb.checked; }
     };`;
 
   return { body, script };

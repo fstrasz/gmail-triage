@@ -10,7 +10,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug } from "./lib/settings.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -444,6 +444,11 @@ app.post("/settings/daily-summary", (req, res) => {
   const { enabled, email } = req.body;
   setDailySummary(enabled === "on", email);
   res.redirect("/settings");
+});
+app.post("/settings/daily-summary/debug", (req, res) => {
+  const { enabled } = req.body;
+  setDailySummaryDebug(!!enabled);
+  res.json({ ok: true });
 });
 app.post("/settings/daily-summary/test", async (req, res) => {
   try {

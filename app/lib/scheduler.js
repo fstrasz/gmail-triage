@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings } from "./settings.js";
+import { loadSettings, setDailySummaryDebug } from "./settings.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -52,7 +52,7 @@ function msUntilNextScan() {
   const parts      = tzParts(new Date());
   const curTotalMin = parseInt(parts.hour) * 60 + parseInt(parts.minute);
 
-  let nextTotalMin = schedule.find(m => m >= curTotalMin);
+  let nextTotalMin = schedule.find(m => m > curTotalMin);
   let addDays = 0;
   if (nextTotalMin === undefined) { nextTotalMin = schedule[0]; addDays = 1; }
 
@@ -89,6 +89,19 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
   const okMoved = sumMoved(scanOk);
   const totalMoved = blocklistMoved + vipMoved + okMoved;
   console.log(`[scheduler] ${timeLabel}: ${totalMoved} emails labeled (blocklist:${blocklistMoved} vip:${vipMoved} ok:${okMoved})`);
+
+  // Debug mode: send summary email after each scan, auto-disable after 12h
+  const sd = loadSettings();
+  if (sd.dailySummaryDebug && sd.dailySummaryDebugEnabledAt) {
+    const elapsedHrs = (Date.now() - new Date(sd.dailySummaryDebugEnabledAt).getTime()) / 3600000;
+    if (elapsedHrs >= 12) {
+      setDailySummaryDebug(false);
+      console.log("[scheduler] debug summary mode auto-disabled after 12h");
+    } else {
+      try { await sendDailySummary(gmail, { force: true }); } catch(e) { console.error(`[scheduler] debug summary failed: ${e.message}`); }
+    }
+  }
+
   return { results, timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved };
 }
 
