@@ -1,4 +1,4 @@
-import { emailCard } from "./html.js";
+import { triageEmailRow } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 
 const APP_VERSION = "v0.9.1";
@@ -55,83 +55,110 @@ function buildDelPendSection(delPendSummary) {
     </div>${senderRows}</div>`;
 }
 
+// ─── Shared: sidebar navigation ─────────────────────────────────────────────
+function sidebar({ active = '', blCount = 0, vipCount = 0, okCount = 0 } = {}) {
+  const total = blCount + vipCount + okCount;
+  const item = (href, icon, label, badge, isActive) => {
+    const badgeHtml = badge !== null && badge !== undefined && badge !== ''
+      ? `<span class="sb-badge"${isActive ? ' style="background:#c7d2fe;color:#4f46e5"' : ''}>${badge}</span>` : '';
+    return `<a href="${href}" class="sb-item${isActive ? ' sb-active' : ''}">${icon} ${label}${badgeHtml}</a>`;
+  };
+  return `<div class="sidebar">
+    <div class="sb-logo">
+      <div style="font-size:.9rem;font-weight:700;color:#1e293b">📧 Gmail Triage</div>
+      <div style="font-size:.68rem;color:#94a3b8;margin-top:1px">${APP_VERSION}</div>
+    </div>
+    <div class="sb-nav">
+      ${item('/triage','▶','Start Triage','',active==='triage')}
+      ${item('/stats','📊','Stats',null,active==='stats')}
+      ${item('/review','🤖','Review',null,active==='review')}
+      <div class="sb-section">Label Lists</div>
+      ${item('/lists','🏷','All Lists',total||'',active==='lists')}
+      <div class="sb-divider"></div>
+      ${item('/settings','⚙️','Settings',null,active==='settings')}
+    </div>
+    <div class="sb-stat-block">
+      <div class="sb-stat-row"><span>🚫 Blocked</span><span class="sb-stat-val" id="sb-block-count">${blCount}</span></div>
+      <div class="sb-stat-row"><span>⭐ VIP</span><span class="sb-stat-val">${vipCount}</span></div>
+      <div class="sb-stat-row"><span>✅ OK</span><span class="sb-stat-val">${okCount}</span></div>
+    </div>
+  </div>`;
+}
+
 // ─── Home page ─────────────────────────────────────────────────────────────────
 export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = null, keptDelPendConflicts = []) {
   const conflictSection = buildConflictSection(keptDelPendConflicts);
   const delPendSection  = buildDelPendSection(delPendSummary);
+  const nav = sidebar({ active: 'home', blCount: blocklist.length, vipCount: viplist.length, okCount: oklist.length });
   return `
-    <div class="topbar">
-      <h1>📧 Gmail Triage <span style="font-weight:normal;opacity:0.45;font-size:0.7em">${APP_VERSION}</span></h1>
-      <div class="topbar-right">
-        <a href="/stats" class="btn-nav">📊 Stats</a>
-        <a href="/review" class="btn-nav">🤖 Review</a>
-        <a href="/viplist" class="btn-nav">⭐ VIP (${viplist.length})</a>
-        <a href="/oklist" class="btn-nav">✅ OK (${oklist.length})</a>
-        <a href="/blocklist" class="btn-nav">🚫 Blocklist (${blocklist.length})</a>
-        <a href="/settings" class="btn-nav">⚙️ Settings</a>
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-scroll" style="display:flex;flex-direction:column;align-items:center;justify-content:${conflictSection || delPendSection ? 'flex-start' : 'center'}">
+          <div style="max-width:520px;width:100%;padding:${conflictSection || delPendSection ? '32px 16px 16px' : '0 16px'}">
+            <div style="text-align:center;margin-bottom:${conflictSection || delPendSection ? '32px' : '0'}">
+              <div style="font-size:2.5rem;margin-bottom:14px">📬</div>
+              <h2 style="font-size:1.15rem;margin-bottom:8px">Ready to triage your inbox?</h2>
+              <p style="color:#64748b;font-size:.88rem;margin-bottom:24px">⭐ VIP · ✅ OK · ✅ OK &amp; Clean · 🗑 Junk · 🚫 Unsubscribe</p>
+              <a href="/triage" style="display:inline-block;padding:12px 28px;background:#4f46e5;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem">▶ Start Triaging</a>
+              <br>
+              <a href="/reset" onclick="return confirm('Reset all stats and clear the blocklist?')" style="display:inline-block;margin-top:10px;padding:8px 22px;background:#ef4444;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem">🗑 Reset All</a>
+            </div>
+            ${conflictSection}
+            ${delPendSection}
+          </div>
+        </div>
       </div>
-    </div>
-    <div style="max-width:600px;margin:0 auto;padding:40px 16px;overflow-y:auto;height:calc(100vh - 53px)">
-      <div style="text-align:center;margin-bottom:${delPendSection ? "32px" : "0"}">
-        <div style="font-size:3rem;margin-bottom:16px">📬</div>
-        <h2 style="font-size:1.2rem;margin-bottom:8px">Ready to triage your inbox?</h2>
-        <p style="color:#64748b;font-size:.9rem;margin-bottom:28px">
-          ⭐ VIP · ✅ OK · ✅ OK &amp; Clean · 🗑 Junk · 🚫 Unsubscribe
-        </p>
-        <a href="/triage" style="display:inline-block;padding:12px 28px;background:#4f46e5;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem">▶ Start Triaging</a>
-        <br>
-        <a href="/reset" onclick="return confirm('Reset all stats and clear the blocklist?')" style="display:inline-block;margin-top:12px;padding:12px 28px;background:#ef4444;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem">🗑 Reset All</a>
-      </div>
-      ${conflictSection}
-      ${delPendSection}
     </div>
   `;
 }
 
 // ─── Triage page ───────────────────────────────────────────────────────────────
 export function triagePage(emails, blocklist, savedStats, scanResults) {
-  const rows = emails.map(emailCard).join("");
+  const rows = emails.map(triageEmailRow).join("");
   const dataScript = `<script type="application/json" id="page-data">${JSON.stringify({
     total: emails.length, blCount: blocklist.length, savedStats, scanResults,
     seenSenders: emails.map(e => extractName(e.from) + "<" + extractEmail(e.from) + ">"),
     seenIds: emails.map(e => e.id),
   })}</script>`;
 
+  const nav = sidebar({ active: 'triage', blCount: blocklist.length });
+
   const body = `
     ${dataScript}
-    <div class="topbar">
-      <h1>📧 Triage <span style="opacity:.5;font-weight:400;font-size:.85rem">${emails.length} emails</span></h1>
-      <div class="topbar-right">
-        <span id="progress">0 / ${emails.length} actioned</span>
-        <a href="/blocklist" class="btn-nav" id="bl-link">🚫 Blocklist (${blocklist.length})</a>
-        <span class="counter" id="junk-count">0 junked</span>
-        <a href="/settings" class="btn-nav">⚙️ Settings</a>
-        <a href="/" class="btn-nav">← Home</a>
-      </div>
-    </div>
-    <div class="layout">
-      <div class="email-panel" id="email-panel">
-        <div class="scan-summary" id="scan-card" style="${scanResults.length === 0 ? "display:none" : ""}">
-          <div class="scan-header" onclick="toggleScan()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-            <span>🧹 Auto-cleaned: <span id="scan-total">0</span> emails</span>
-            <span id="scan-chevron">▲</span>
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">Inbox Triage <span style="font-weight:400;color:#94a3b8;font-size:.82rem">${emails.length} emails</span></span>
+          <div style="display:flex;align-items:center;gap:10px;font-size:.82rem">
+            <span id="progress">0 / ${emails.length} actioned</span>
+            <span class="counter" id="junk-count">0 junked</span>
           </div>
-          <div id="scan-body"><div id="scan-rows"></div></div>
         </div>
-        <div class="session-stats">
-          <div class="stat-item"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Processed</span></div>
-          <div class="stat-item"><span class="stat-num stat-vip" id="stat-vip">${savedStats.vip||0}</span><span class="stat-label">⭐ VIP</span></div>
-          <div class="stat-item"><span class="stat-num stat-ok" id="stat-ok">${savedStats.ok||0}</span><span class="stat-label">✅ OK</span></div>
-          <div class="stat-item"><span class="stat-num stat-clean" id="stat-clean">${savedStats.cleaned}</span><span class="stat-label">✅ OK &amp; Cleaned</span></div>
-          <div class="stat-item"><span class="stat-num stat-junk" id="stat-junk">${savedStats.junked}</span><span class="stat-label">🗑 Junked</span></div>
-          <div class="stat-item"><span class="stat-num stat-unsub" id="stat-unsub">${savedStats.unsubbed}</span><span class="stat-label">🚫 Unsub</span></div>
-        </div>
-        <div id="email-list">${rows}</div>
-        <div id="done-section" style="display:none">
-          <div class="done-banner">
-            <h2>✅ Triage complete!</h2>
-            <p id="done-summary"></p>
-            <a href="/" class="home-btn">← Back to Home</a>
+        <div class="main-scroll" id="email-panel">
+          <div class="scan-summary" id="scan-card" style="${scanResults.length === 0 ? "display:none" : ""}">
+            <div class="scan-header" onclick="toggleScan()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+              <span>🧹 Auto-cleaned: <span id="scan-total">0</span> emails</span>
+              <span id="scan-chevron">▲</span>
+            </div>
+            <div id="scan-body"><div id="scan-rows"></div></div>
+          </div>
+          <div class="session-stats">
+            <div class="stat-item"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Processed</span></div>
+            <div class="stat-item"><span class="stat-num stat-vip" id="stat-vip">${savedStats.vip||0}</span><span class="stat-label">⭐ VIP</span></div>
+            <div class="stat-item"><span class="stat-num stat-ok" id="stat-ok">${savedStats.ok||0}</span><span class="stat-label">✅ OK</span></div>
+            <div class="stat-item"><span class="stat-num stat-clean" id="stat-clean">${savedStats.cleaned}</span><span class="stat-label">✅ OK &amp; Cleaned</span></div>
+            <div class="stat-item"><span class="stat-num stat-junk" id="stat-junk">${savedStats.junked}</span><span class="stat-label">🗑 Junked</span></div>
+            <div class="stat-item"><span class="stat-num stat-unsub" id="stat-unsub">${savedStats.unsubbed}</span><span class="stat-label">🚫 Unsub</span></div>
+          </div>
+          <div id="email-list">${rows}</div>
+          <div id="done-section" style="display:none">
+            <div class="done-banner">
+              <h2>✅ Triage complete!</h2>
+              <p id="done-summary"></p>
+              <a href="/" class="home-btn">← Back to Home</a>
+            </div>
           </div>
         </div>
       </div>
@@ -160,8 +187,7 @@ function clientScript() { return `
   var previewPanel=document.getElementById('preview-panel');
   var previewIframe=document.getElementById('preview-iframe');
 
-  function applyWidths(){emailPanel.style.width=previewPanel.classList.contains('open')?Math.floor(window.innerWidth*.52)+'px':'100%';}
-  window.addEventListener('resize',applyWidths);applyWidths();
+  function applyWidths(){/* flex layout handles sizing */}
   window.addEventListener('pageshow',function(){
     var ds=JSON.parse(sessionStorage.getItem('deletedSenders')||'[]');
     if(!ds.length)return;
@@ -169,14 +195,14 @@ function clientScript() { return `
     if(activePreviewId){
       var activeRow=document.getElementById('row-'+activePreviewId);
       if(activeRow&&ds.includes(activeRow.dataset.fromEmail)){
-        var all=Array.from(document.querySelectorAll('.email-row'));
+        var all=Array.from(document.querySelectorAll('.triage-row'));
         var idx=all.indexOf(activeRow);
         for(var i=idx+1;i<all.length;i++){if(!ds.includes(all[i].dataset.fromEmail)&&!all[i].classList.contains('done')){nextId=all[i].id.replace('row-','');break;}}
         if(!nextId)for(var i=idx-1;i>=0;i--){if(!ds.includes(all[i].dataset.fromEmail)&&!all[i].classList.contains('done')){nextId=all[i].id.replace('row-','');break;}}
       }
     }
     ds.forEach(function(email){
-      document.querySelectorAll('.email-row[data-from-email="'+email+'"]').forEach(function(r){r.remove();});
+      document.querySelectorAll('.triage-row[data-from-email="'+email+'"]').forEach(function(r){r.remove();});
     });
     sessionStorage.removeItem('deletedSenders');
     if(activePreviewId&&!document.getElementById('row-'+activePreviewId)){
@@ -202,16 +228,16 @@ function clientScript() { return `
     document.getElementById('progress').textContent=actioned+' / '+total+' actioned';
     document.getElementById('junk-count').textContent=junked+' junked';
   }
-  function updateBlCount(d){blCount+=d;document.getElementById('bl-link').textContent='🚫 Blocklist ('+blCount+')';}
+  function updateBlCount(d){blCount+=d;var el=document.getElementById('sb-block-count');if(el)el.textContent=blCount;}
   scanResults.forEach(function(r){addScanRow(r.email,r.reason,r.moved);});
 
   function toggleSnippet(id){openPreview(id);}
   function openPreview(id){
     if(activePreviewId===id&&previewPanel.classList.contains('open')){closePreview();return;}
-    document.querySelectorAll('.email-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
+    document.querySelectorAll('.triage-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
     activePreviewId=id;
     previewIframe.src='/api/preview/'+id;
-    previewPanel.classList.add('open');applyWidths();
+    previewPanel.classList.add('open');
     document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
     var btn=document.querySelector('#row-'+id+' .btn-expand');
     if(btn)btn.textContent='▲ Close';
@@ -219,10 +245,10 @@ function clientScript() { return `
     if(row)row.classList.add('preview-active');
   }
   function closePreview(){
-    previewPanel.classList.remove('open');applyWidths();
+    previewPanel.classList.remove('open');
     previewIframe.src='';
     document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
-    document.querySelectorAll('.email-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
+    document.querySelectorAll('.triage-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
     activePreviewId=null;
   }
   function setStatus(id,cls,text){
@@ -249,7 +275,7 @@ function clientScript() { return `
     if(pendingLoads>0){pendingLoads--;loadNext();}
   }
   function removeDuplicates(fromEmail,exceptId){
-    var dupes=Array.from(document.querySelectorAll('.email-row:not(.done)'))
+    var dupes=Array.from(document.querySelectorAll('.triage-row:not(.done)'))
       .filter(function(r){return r.dataset.fromEmail===fromEmail&&r.id!=='row-'+exceptId;});
     if(!dupes.length)return;
     dupes.forEach(function(row){
@@ -266,7 +292,7 @@ function clientScript() { return `
     row.classList.add('done',rowCls);actioned++;updateStats();
     // Auto-advance preview
     if(activePreviewId===id){
-      var all=Array.from(document.querySelectorAll('.email-row'));
+      var all=Array.from(document.querySelectorAll('.triage-row'));
       var idx=all.findIndex(function(r){return r.id==='row-'+id;});
       var nextRow=null;
       for(var i=idx+1;i<all.length;i++){if(!all[i].classList.contains('done')){nextRow=all[i];break;}}
@@ -277,7 +303,7 @@ function clientScript() { return `
         closePreview();
         loadNext().then(function(){
           setTimeout(function(){
-            var fresh=document.querySelectorAll('.email-row:not(.done)');
+            var fresh=document.querySelectorAll('.triage-row:not(.done)');
             if(fresh.length)openPreview(fresh[fresh.length-1].id.replace('row-',''));
           },200);
         });
@@ -704,6 +730,116 @@ export function viplistPage(list) {
       </div>
     </div>
   `;
+}
+
+// ─── Unified Lists page ────────────────────────────────────────────────────────
+export function listsPage(blocklist, viplist, oklist) {
+  const all = [
+    ...blocklist.map(e => ({ ...e, listType: 'block' })),
+    ...viplist.map(e => ({ ...e, listType: 'vip' })),
+    ...oklist.map(e => ({ ...e, listType: 'ok' })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const rows = all.map(e => {
+    const lbl = e.name
+      ? `${e.name} <span style="color:#94a3b8;font-weight:400">&lt;${e.email}&gt;</span>`
+      : e.email;
+    const badge = e.listType === 'block'
+      ? `<span class="badge-block">🚫 ${e.reason || 'blocked'}</span>`
+      : e.listType === 'vip'
+      ? `<span class="badge-vip">⭐ VIP</span>`
+      : `<span class="badge-ok">✅ OK</span>`;
+    return `<div class="list-row" data-type="${e.listType}" data-email="${e.email.toLowerCase()}" data-name="${(e.name||"").toLowerCase()}">
+      <div>
+        <div style="font-weight:600;font-size:.88rem">${lbl}</div>
+        <div style="font-size:.72rem;color:#94a3b8;margin-top:2px">Added ${new Date(e.date).toLocaleDateString()}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${badge}
+        <form method="POST" action="/lists/remove" style="margin:0">
+          <input type="hidden" name="email" value="${e.email}"/>
+          <input type="hidden" name="name" value="${e.name||""}"/>
+          <input type="hidden" name="listType" value="${e.listType}"/>
+          <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:4px 10px">✕</button>
+        </form>
+      </div>
+    </div>`;
+  }).join("");
+
+  const nav = sidebar({ active: 'lists', blCount: blocklist.length, vipCount: viplist.length, okCount: oklist.length });
+
+  const body = `
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">🏷 Label Lists</span>
+          <span style="font-size:.8rem;color:#94a3b8">${all.length} senders</span>
+        </div>
+        <div class="main-scroll">
+          <div class="list-toolbar">
+            <button class="list-chip list-chip-active" onclick="filterList('all',this)">All ${all.length}</button>
+            <button class="list-chip" onclick="filterList('block',this)">🚫 Blocked ${blocklist.length}</button>
+            <button class="list-chip" onclick="filterList('vip',this)">⭐ VIP ${viplist.length}</button>
+            <button class="list-chip" onclick="filterList('ok',this)">✅ OK ${oklist.length}</button>
+            <input class="list-search" type="text" placeholder="Search by name or email…" oninput="searchList(this.value)"/>
+          </div>
+          <div class="card">
+            <div id="list-rows">${all.length ? rows : '<div class="empty">No entries yet.</div>'}</div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="card-header" style="cursor:pointer" onclick="toggleAdd()">
+              <span>+ Add Sender</span><span id="add-chev">▼</span>
+            </div>
+            <div id="add-panel" style="display:none">
+              <form class="add-form" id="add-form" method="POST" action="/blocklist/add">
+                <input type="text" name="name" placeholder="Display name (optional)" style="max-width:180px"/>
+                <input type="text" name="email" placeholder="email@domain.com" required/>
+                <select id="add-list" onchange="updateAddForm(this)" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+                  <option value="blocklist">🚫 Blocklist</option>
+                  <option value="viplist">⭐ VIP</option>
+                  <option value="oklist">✅ OK</option>
+                </select>
+                <select name="reason" id="add-reason" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+                  <option value="manual">manual</option><option value="junk">junk</option><option value="unsub">unsub</option>
+                </select>
+                <button class="btn btn-primary" type="submit">+ Add</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const script = `
+    var _filter='all',_search='';
+    function filterList(type,btn){
+      _filter=type;
+      document.querySelectorAll('.list-chip').forEach(function(b){b.classList.remove('list-chip-active');});
+      btn.classList.add('list-chip-active');
+      applyFilters();
+    }
+    function searchList(q){_search=q.toLowerCase();applyFilters();}
+    function applyFilters(){
+      document.querySelectorAll('.list-row').forEach(function(r){
+        var tm=_filter==='all'||r.dataset.type===_filter;
+        var sm=!_search||r.dataset.email.includes(_search)||r.dataset.name.includes(_search);
+        r.style.display=(tm&&sm)?'':'none';
+      });
+    }
+    function toggleAdd(){
+      var p=document.getElementById('add-panel'),c=document.getElementById('add-chev');
+      var open=p.style.display==='none';
+      p.style.display=open?'block':'none';c.textContent=open?'▲':'▼';
+    }
+    function updateAddForm(sel){
+      document.getElementById('add-form').action='/'+sel.value+'/add';
+      document.getElementById('add-reason').style.display=sel.value==='blocklist'?'':'none';
+    }
+  `;
+
+  return { body, script };
 }
 
 // ─── Review page ───────────────────────────────────────────────────────────────

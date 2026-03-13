@@ -4,8 +4,8 @@ import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isB
 import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
-import { shell, emailCard } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, senderPage, reviewPage, settingsPage } from "./lib/pages.js";
+import { shell, triageEmailRow } from "./lib/html.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
@@ -90,6 +90,21 @@ app.post("/oklist/add",    (req, res) => { const {email,name}=req.body; if(email
 app.post("/oklist/bulk",   (req, res) => { (req.body.emails||"").split("\n").map(l=>l.trim()).filter(Boolean).forEach(l=>addToOklist(l.toLowerCase())); res.redirect("/oklist"); });
 app.post("/oklist/remove", (req, res) => { removeFromOklist(req.body.email, req.body.name||null); res.redirect("/oklist"); });
 
+// ─── Unified Lists page ────────────────────────────────────────────────────────
+app.get("/lists", (req, res) => {
+  try {
+    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist());
+    res.send(shell("Label Lists", body, script));
+  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+});
+app.post("/lists/remove", (req, res) => {
+  const { email, name, listType } = req.body;
+  if (listType === 'block') removeFromBlocklist(email, name);
+  else if (listType === 'vip') removeFromViplist(email, name || null);
+  else if (listType === 'ok') removeFromOklist(email, name || null);
+  res.redirect("/lists");
+});
+
 // ─── API: Next ─────────────────────────────────────────────────────────────────
 app.get("/api/next", async (req, res) => {
   const seenSenders = new Set((req.query.seen||"").split(",").filter(Boolean));
@@ -121,7 +136,7 @@ app.get("/api/next", async (req, res) => {
         const tier=lbls.includes(vipId)?"..VIP":lbls.includes(okId)?"..OK":null;
         // VIP/OK emails that are already read need no action — skip them
         if(tier&&!lbls.includes("UNREAD"))continue;
-        return res.json({html:emailCard({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
+        return res.json({html:triageEmailRow({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
       }
     } while(pageToken);
     return res.json({html:null,autoCleaned,autoCleanedEntries});
