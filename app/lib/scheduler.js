@@ -53,7 +53,7 @@ function msUntilNextScan() {
   const parts      = tzParts(new Date());
   const curTotalMin = parseInt(parts.hour) * 60 + parseInt(parts.minute);
 
-  let nextTotalMin = schedule.find(m => m >= curTotalMin);
+  let nextTotalMin = schedule.find(m => m > curTotalMin);
   let addDays = 0;
   if (nextTotalMin === undefined) { nextTotalMin = schedule[0]; addDays = 1; }
 
