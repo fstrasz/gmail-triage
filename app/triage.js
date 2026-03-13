@@ -93,13 +93,13 @@ app.get("/api/next", async (req, res) => {
   const seenIds     = new Set((req.query.seenIds||"").split(",").filter(Boolean));
   try {
     const gmail   = await getGmailClient();
-    const labelId = await ensureLabel(gmail, "DelPend");
+    const labelId = await ensureLabel(gmail, ".DelPend");
     const vipId   = getLabelId("..VIP") || await ensureLabel(gmail, "..VIP");
     const okId    = getLabelId("..OK")  || await ensureLabel(gmail, "..OK");
     let autoCleaned=0; const autoCleanedEntries=[];
     let pageToken=null;
     do {
-      const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
+      const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:.DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
       const messages=result.data.messages||[];
       pageToken=result.data.nextPageToken||null;
       for(const msg of messages){
@@ -422,7 +422,7 @@ app.get("/debug", async (req, res) => {
     const labels=labelList.data.labels||[];
     out.push("\n📋 Labels ("+labels.length+"):");
     for(const l of labels)out.push("  "+l.id+"  "+l.name);
-    for(const n of ["DelPend","..VIP","..OK"]){const l=labels.find(x=>x.name===n);out.push(l?"✅ "+n+": id="+l.id:"⚠️  "+n+" does not exist");}
+    for(const n of [".DelPend","..VIP","..OK"]){const l=labels.find(x=>x.name===n);out.push(l?"✅ "+n+": id="+l.id:"⚠️  "+n+" does not exist");}
     const bl=loadBlocklist();out.push("\n🚫 Blocklist ("+bl.length+"):");
     for(const e of bl)out.push("  "+(e.name?e.name+" <"+e.email+">":e.email)+"  ["+e.reason+"]");
   }catch(e){out.push("\n❌ "+e.message+"\n"+e.stack);}

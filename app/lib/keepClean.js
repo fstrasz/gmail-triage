@@ -6,7 +6,7 @@ import { ensureLabel, extractName } from "./gmail.js";
 // Returns { cleaned: number }.
 export async function keepAndClean(gmail, id, fromEmail, fromName) {
   const okId      = await ensureLabel(gmail, "..OK");
-  const delPendId = await ensureLabel(gmail, "DelPend");
+  const delPendId = await ensureLabel(gmail, ".DelPend");
 
   // Label the kept message ..OK (stays in inbox, marks sender as OK)
   await gmail.users.messages.modify({
