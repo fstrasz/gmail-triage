@@ -146,7 +146,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
     const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     const rows = Object.entries(groups).map(([time, entries]) => {
       const entryRows = entries.map(e => {
-        const label = e.labelName || "DelPend";
+        const label = e.labelName || ".DelPend";
         const searchUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:${e.email} label:${label}`)}`;
         const subjectHtml = (e.subjects || []).length
           ? `<div style="margin-top:3px">${e.subjects.map(s => `<span style="display:block;font-size:11px;color:#9ca3af">${esc(s)}</span>`).join("")}</div>`
