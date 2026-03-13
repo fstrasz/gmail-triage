@@ -167,6 +167,7 @@ function clientScript() { return `
       document.querySelectorAll('.email-row[data-from-email="'+email+'"]').forEach(function(r){r.remove();});
     });
     sessionStorage.removeItem('deletedSenders');
+    if(activePreviewId&&!document.getElementById('row-'+activePreviewId))closePreview();
   });
 
   function toggleScan(){scanOpen=!scanOpen;document.getElementById('scan-body').style.display=scanOpen?'':'none';document.getElementById('scan-chevron').textContent=scanOpen?'▲':'▼';}
@@ -193,17 +194,21 @@ function clientScript() { return `
   function toggleSnippet(id){openPreview(id);}
   function openPreview(id){
     if(activePreviewId===id&&previewPanel.classList.contains('open')){closePreview();return;}
+    document.querySelectorAll('.email-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
     activePreviewId=id;
     previewIframe.src='/api/preview/'+id;
     previewPanel.classList.add('open');applyWidths();
     document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
     var btn=document.querySelector('#row-'+id+' .btn-expand');
     if(btn)btn.textContent='▲ Close';
+    var row=document.getElementById('row-'+id);
+    if(row)row.classList.add('preview-active');
   }
   function closePreview(){
     previewPanel.classList.remove('open');applyWidths();
     previewIframe.src='';
     document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
+    document.querySelectorAll('.email-row.preview-active').forEach(function(r){r.classList.remove('preview-active');});
     activePreviewId=null;
   }
   function setStatus(id,cls,text){
