@@ -7,6 +7,7 @@ const DEFAULTS = {
   timezone: "America/Los_Angeles",
   schedulerEnabled: true,
   schedulerStartHour: 10,
+  schedulerStartMinute: 0,
   schedulerIntervalHours: 2,
   dailySummaryEnabled: false,
   dailySummaryEmail: "",
@@ -34,11 +35,12 @@ export function setTimezone(tz) {
   s.timezone = tz.trim();
   saveSettings(s);
 }
-export function setScheduler(enabled, startHour, intervalHours) {
+export function setScheduler(enabled, startHour, startMinute, intervalHours) {
   const s = loadSettings();
   s.schedulerEnabled = !!enabled;
   s.schedulerStartHour = parseInt(startHour);
-  s.schedulerIntervalHours = parseInt(intervalHours);
+  s.schedulerStartMinute = parseInt(startMinute) || 0;
+  s.schedulerIntervalHours = parseFloat(intervalHours);
   saveSettings(s);
 }
 export function setDailySummary(enabled, email) {
