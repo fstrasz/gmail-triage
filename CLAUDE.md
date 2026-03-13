@@ -5,7 +5,7 @@ Complete ALL steps before responding to the user. Do not greet until every step 
 
 1. Read the project memory file at `.claude/memory/MEMORY.md`
 2. Check for stale worktree session memory files:
-   - Look for `MEMORY.md` files under `C:\Users\frank\.claude\projects\` in any directory matching `*--claude-worktrees-*`
+   - Look for `MEMORY.md` files under `C:\Users\<user>\.claude\projects\` in any directory matching `*--claude-worktrees-*`
    - For each one found, read it and compare to `.claude/memory/MEMORY.md`
    - If it contains anything not already captured, merge the new information into `.claude/memory/MEMORY.md`, then delete the stale file
    - If nothing new, just delete the stale file silently
