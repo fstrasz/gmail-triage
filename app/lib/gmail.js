@@ -163,7 +163,7 @@ export async function fetchEmails(gmail, max = 25) {
   await Promise.all(["..VIP", "..OK", "DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
 
   const res = await gmail.users.messages.list({
-    userId: "me", q: "in:inbox -label:DelPend -label:..OK", maxResults: 100,
+    userId: "me", q: "in:inbox -label:DelPend", maxResults: 100,
   });
   const messages = res.data.messages || [];
   const details = await Promise.all(messages.map(msg =>
