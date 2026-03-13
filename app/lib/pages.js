@@ -160,6 +160,14 @@ function clientScript() { return `
 
   function applyWidths(){emailPanel.style.width=previewPanel.classList.contains('open')?Math.floor(window.innerWidth*.52)+'px':'100%';}
   window.addEventListener('resize',applyWidths);applyWidths();
+  window.addEventListener('pageshow',function(){
+    var ds=JSON.parse(sessionStorage.getItem('deletedSenders')||'[]');
+    if(!ds.length)return;
+    ds.forEach(function(email){
+      document.querySelectorAll('.email-row[data-from-email="'+email+'"]').forEach(function(r){r.remove();});
+    });
+    sessionStorage.removeItem('deletedSenders');
+  });
 
   function toggleScan(){scanOpen=!scanOpen;document.getElementById('scan-body').style.display=scanOpen?'':'none';document.getElementById('scan-chevron').textContent=scanOpen?'▲':'▼';}
   function addScanRow(email,reason,moved){
@@ -495,11 +503,18 @@ export function senderPage(emails, fromEmail, fromName) {
     </div>
   `;
 
+  const safeEmail = fromEmail.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   const script = `
+    var pageFromEmail='${safeEmail}';
     var emailPanel=document.getElementById('email-panel');
     var previewPanel=document.getElementById('preview-panel');
     var previewIframe=document.getElementById('preview-iframe');
     var activePreviewId=null;
+    function markSenderDeleted(){
+      var ds=JSON.parse(sessionStorage.getItem('deletedSenders')||'[]');
+      if(!ds.includes(pageFromEmail))ds.push(pageFromEmail);
+      sessionStorage.setItem('deletedSenders',JSON.stringify(ds));
+    }
     function applyWidths(){emailPanel.style.width=previewPanel.classList.contains('open')?Math.floor(window.innerWidth*.52)+'px':'100%';}
     window.addEventListener('resize',applyWidths);applyWidths();
     function openPreview(id){
@@ -548,6 +563,7 @@ export function senderPage(emails, fromEmail, fromName) {
         document.getElementById('tag-'+id).textContent='🗑 Deleted';
         document.getElementById('tag-'+id).className='status-tag tag-junk';
         advancePreviewFrom(id);
+        markSenderDeleted();
         fadeRow(id);dismissRow(id);
       }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
     }
@@ -569,6 +585,7 @@ export function senderPage(emails, fromEmail, fromName) {
       if(!confirm('Trash '+ids.length+' selected email'+(ids.length!==1?'s':'')+'?'))return;
       try{
         await fetch('/api/delete-many',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+        markSenderDeleted();
         var previewDeleted=ids.indexOf(activePreviewId)!==-1;
         ids.forEach(function(id){
           setStatus(id,'tag-junk','🗑 Deleted');fadeRow(id);dismissRow(id);
