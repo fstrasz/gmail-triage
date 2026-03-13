@@ -9,23 +9,23 @@ function buildConflictSection(conflicts) {
     return `<div class="bl-row">
       <div>
         <div class="bl-email">${lbl}</div>
-        <div class="bl-meta">${s.count} message${s.count !== 1 ? "s" : ""} have both OK and DelPend labels</div>
+        <div class="bl-meta">${s.count} message${s.count !== 1 ? "s" : ""} have both OK and .DelPend labels</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <form method="POST" action="/api/conflict/remove-delpend">
           <input type="hidden" name="email" value="${s.email}"/>
-          <button class="btn btn-primary" type="submit" title="Keep this sender — remove DelPend label">✅ Keep (remove DelPend)</button>
+          <button class="btn btn-primary" type="submit" title="Keep this sender — remove .DelPend label">✅ Keep (remove .DelPend)</button>
         </form>
         <form method="POST" action="/api/conflict/remove-ok">
           <input type="hidden" name="email" value="${s.email}"/>
-          <button class="btn btn-danger" type="submit" title="Remove OK label — leave in DelPend queue">🗑 Remove OK</button>
+          <button class="btn btn-danger" type="submit" title="Remove OK label — leave in .DelPend queue">🗑 Remove OK</button>
         </form>
       </div>
     </div>`;
   }).join("");
   return `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:20px">
     <div class="card-header" style="background:#fef3c7;color:#92400e">
-      <span>⚠️ OK / DelPend Conflicts (${conflicts.length} sender${conflicts.length !== 1 ? "s" : ""})</span>
+      <span>⚠️ OK / .DelPend Conflicts (${conflicts.length} sender${conflicts.length !== 1 ? "s" : ""})</span>
     </div>${rows}</div>`;
 }
 
@@ -37,7 +37,7 @@ function buildDelPendSection(delPendSummary) {
         const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
         return `<div class="bl-row">
           <div><div class="bl-email">${lbl}</div>
-          <div class="bl-meta">${s.count.toLocaleString()} message${s.count !== 1 ? "s" : ""} in DelPend</div></div>
+          <div class="bl-meta">${s.count.toLocaleString()} message${s.count !== 1 ? "s" : ""} in .DelPend</div></div>
           <form method="POST" action="/api/delpend/trash-sender">
             <input type="hidden" name="email" value="${s.email}"/>
             <button class="btn btn-danger" type="submit">🗑 Trash</button>
@@ -46,7 +46,7 @@ function buildDelPendSection(delPendSummary) {
     : `<div class="empty">No per-sender data.</div>`;
   return `<div class="card">
     <div class="card-header">
-      <span>🗑 DelPend Queue (${delPendSummary.total.toLocaleString()} messages)</span>
+      <span>🗑 .DelPend Queue (${delPendSummary.total.toLocaleString()} messages)</span>
       <form method="POST" action="/api/delpend/trash-all" style="margin:0">
         <button class="btn btn-danger" type="submit">🗑 Trash All</button>
       </form>
