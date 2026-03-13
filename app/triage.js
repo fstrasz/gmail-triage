@@ -139,6 +139,11 @@ app.post("/api/tier", async (req, res) => {
       else      addToOklist(fromEmail,fromName||null);
       labeled=await labelSender(gmail,tier,fromEmail,fromName||null,[]);
       addToStats({[isVip?"vip":"ok"]:labeled});
+    } else {
+      // Already listed — count inbox emails that were auto-labeled by the scan
+      const q=`from:${fromEmail} in:inbox -in:sent -in:trash`;
+      const r=await gmail.users.messages.list({userId:"me",q,maxResults:500});
+      labeled=(r.data.messages||[]).length;
     }
     if(id) await gmail.users.messages.modify({userId:"me",id,requestBody:{removeLabelIds:["UNREAD"]}});
     res.json({ok:true,labeled,tier});
