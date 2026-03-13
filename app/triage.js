@@ -10,7 +10,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageRead } from "./lib/settings.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -41,8 +41,10 @@ app.get("/triage", async (req, res) => {
     const viplist  = loadViplist();
     const oklist   = loadOklist();
 
-    const scheduledResults = loadScanLog();
-    clearScanLog();
+    const lastRead = loadSettings().lastTriageRead;
+    const scheduledResults = loadScanLog()
+      .filter(e => !lastRead || !e.runAt || new Date(e.runAt) > new Date(lastRead));
+    setLastTriageRead();
     const [scanClean, scanVip, scanOk] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
