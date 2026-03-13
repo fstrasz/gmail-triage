@@ -1116,7 +1116,15 @@ export function settingsPage(settings) {
       try {
         var r = await fetch('/settings/run-scan', { method: 'POST' });
         var d = await r.json();
-        status.textContent = d.ok ? (d.count ? d.count + ' emails labeled at ' + d.timeLabel : 'Nothing to clean') : ('Error: ' + d.error);
+        if (!d.ok) { status.textContent = 'Error: ' + d.error; }
+        else if (!d.totalMoved) { status.textContent = 'Nothing to clean at ' + d.timeLabel; }
+        else {
+          var parts = [];
+          if (d.blocklistMoved) parts.push('blocklist: ' + d.blocklistMoved);
+          if (d.vipMoved) parts.push('VIP: ' + d.vipMoved);
+          if (d.okMoved) parts.push('OK: ' + d.okMoved);
+          status.textContent = d.totalMoved + ' emails labeled at ' + d.timeLabel + ' (' + parts.join(', ') + ')';
+        }
       } catch(e) { status.textContent = 'Error: ' + e.message; }
       btn.disabled = false;
     };
