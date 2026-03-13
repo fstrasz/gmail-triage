@@ -1,6 +1,8 @@
 import { emailCard } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 
+const APP_VERSION = "v0.9.1";
+
 // ─── Shared: OK/DelPend conflict card ─────────────────────────────────────────
 function buildConflictSection(conflicts) {
   if (!conflicts || !conflicts.length) return "";
@@ -59,7 +61,7 @@ export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = 
   const delPendSection  = buildDelPendSection(delPendSummary);
   return `
     <div class="topbar">
-      <h1>📧 Gmail Triage</h1>
+      <h1>📧 Gmail Triage <span style="font-weight:normal;opacity:0.45;font-size:0.7em">${APP_VERSION}</span></h1>
       <div class="topbar-right">
         <a href="/stats" class="btn-nav">📊 Stats</a>
         <a href="/review" class="btn-nav">🤖 Review</a>
