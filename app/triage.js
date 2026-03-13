@@ -10,7 +10,8 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary } from "./lib/settings.js";
+import { startScheduler, startDailySummaryScheduler, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
 const PORT = 3000;
@@ -40,12 +41,14 @@ app.get("/triage", async (req, res) => {
     const viplist  = loadViplist();
     const oklist   = loadOklist();
 
+    const scheduledResults = loadScanLog();
+    clearScanLog();
     const [scanClean, scanVip, scanOk] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
       scanAndLabelTier(gmail, oklist, "..OK"),
     ]);
-    const scanResults = [...scanClean, ...scanVip, ...scanOk];
+    const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk];
     const emails = await fetchEmails(gmail, 25);
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
@@ -417,6 +420,23 @@ app.post("/settings/timezone", (req, res) => {
   if (timezone?.trim()) setTimezone(timezone.trim());
   res.redirect("/settings");
 });
+app.post("/settings/scheduler", (req, res) => {
+  const { enabled, startHour, intervalHours } = req.body;
+  setScheduler(enabled === "on", startHour ?? 10, intervalHours ?? 2);
+  res.redirect("/settings");
+});
+app.post("/settings/daily-summary", (req, res) => {
+  const { enabled, email } = req.body;
+  setDailySummary(enabled === "on", email);
+  res.redirect("/settings");
+});
+app.post("/settings/daily-summary/test", async (req, res) => {
+  try {
+    const gmail = await getGmailClient();
+    const sent = await sendDailySummary(gmail, { force: true });
+    res.json({ ok: true, sent });
+  } catch(e) { res.json({ ok: false, error: e.message }); }
+});
 
 // ─── Debug / Reset ─────────────────────────────────────────────────────────────
 app.get("/debug", async (req, res) => {
@@ -436,4 +456,8 @@ app.get("/debug", async (req, res) => {
 
 app.get("/reset", (req, res) => { resetBlocklist(); resetStats(); res.redirect("/"); });
 
-app.listen(PORT, () => console.log("Gmail triage server on http://localhost:" + PORT));
+app.listen(PORT, () => {
+  console.log("Gmail triage server on http://localhost:" + PORT);
+  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier);
+  startDailySummaryScheduler(getGmailClient);
+});

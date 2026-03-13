@@ -1008,7 +1008,7 @@ export function settingsPage(settings) {
       <div class="card" style="margin-top:16px">
         <div class="card-header">
           Timezone
-          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Used when creating Google Calendar events</span>
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Used when creating Google Calendar events and for scheduling</span>
         </div>
         <form method="POST" action="/settings/timezone" style="padding:14px 18px;display:flex;gap:10px;align-items:center">
           <select name="timezone" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff;flex:1">
@@ -1016,6 +1016,53 @@ export function settingsPage(settings) {
           </select>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          Auto-Clean Schedule
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Runs blocklist + VIP/OK scan on a timer while the app is running</span>
+        </div>
+        <form method="POST" action="/settings/scheduler" style="padding:14px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
+            <input type="checkbox" name="enabled" ${settings.schedulerEnabled !== false ? "checked" : ""} style="width:16px;height:16px">
+            Enabled
+          </label>
+          <label style="font-size:.85rem">Start time
+            <select name="startHour" style="margin-left:6px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+              ${[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22].map(h =>
+                `<option value="${h}"${h === (settings.schedulerStartHour ?? 10) ? " selected" : ""}>${h < 12 ? h+" AM" : h === 12 ? "12 PM" : (h-12)+" PM"}</option>`
+              ).join("")}
+            </select>
+          </label>
+          <label style="font-size:.85rem">Every
+            <select name="intervalHours" style="margin-left:6px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+              ${[1,2,3,4,6,8].map(h =>
+                `<option value="${h}"${h === (settings.schedulerIntervalHours ?? 2) ? " selected" : ""}>${h}h</option>`
+              ).join("")}
+            </select>
+          </label>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          Daily Email Summary
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Sends a 6am summary of the previous 24h of auto-clean activity</span>
+        </div>
+        <form method="POST" action="/settings/daily-summary" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
+            <input type="checkbox" name="enabled" ${settings.dailySummaryEnabled ? "checked" : ""} style="width:16px;height:16px">
+            Enabled
+          </label>
+          <input type="email" name="email" value="${settings.dailySummaryEmail || ""}"
+            placeholder="Leave blank to send to your Gmail account"
+            style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+        <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-secondary" id="test-summary-btn" type="button">Send Test Email Now</button>
+          <span id="test-summary-status" style="font-size:.82rem;color:#64748b"></span>
+        </div>
       </div>
     </div>`;
 
@@ -1058,6 +1105,16 @@ export function settingsPage(settings) {
         alert('Unable to retrieve your location. Please check browser permissions.');
         btn.textContent = '📍 Use My Location'; btn.disabled = false;
       });
+    };
+    document.getElementById('test-summary-btn').onclick = async function() {
+      var btn = this, status = document.getElementById('test-summary-status');
+      btn.disabled = true; status.textContent = 'Sending...';
+      try {
+        var r = await fetch('/settings/daily-summary/test', { method: 'POST' });
+        var d = await r.json();
+        status.textContent = d.ok ? (d.sent ? 'Sent!' : 'Nothing to report — no activity in last 24h') : ('Error: ' + d.error);
+      } catch(e) { status.textContent = 'Error: ' + e.message; }
+      btn.disabled = false;
     };`;
 
   return { body, script };
