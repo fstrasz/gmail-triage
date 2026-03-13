@@ -24,20 +24,6 @@ if (-not (Test-Path $Dest)) {
     exit 1
 }
 
-# -- Bump APP_VERSION in pages.js -----------------------------------------------
-if (-not $WhatIf) {
-    $pagesFile = "$Source\app\lib\pages.js"
-    $content = [System.IO.File]::ReadAllText($pagesFile)
-    if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
-        $newVersion = "v$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
-        $content = $content -replace 'const APP_VERSION = "v[\d.]+"', "const APP_VERSION = `"$newVersion`""
-        [System.IO.File]::WriteAllText($pagesFile, $content)
-        git -C $Source add "app\lib\pages.js"
-        git -C $Source commit -m "Bump version to $newVersion"
-        Write-Host "  Version: $newVersion" -ForegroundColor Cyan
-    }
-}
-
 $robocopyArgs = @(
     $Source, $Dest,
     "/MIR",
