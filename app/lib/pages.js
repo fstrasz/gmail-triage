@@ -1,7 +1,7 @@
 import { emailCard } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 
-const APP_VERSION = "v0.9.01";
+const APP_VERSION = "v0.9.02";
 
 // ─── Shared: OK/DelPend conflict card ─────────────────────────────────────────
 function buildConflictSection(conflicts) {
