@@ -163,11 +163,23 @@ function clientScript() { return `
   window.addEventListener('pageshow',function(){
     var ds=JSON.parse(sessionStorage.getItem('deletedSenders')||'[]');
     if(!ds.length)return;
+    var nextId=null;
+    if(activePreviewId){
+      var activeRow=document.getElementById('row-'+activePreviewId);
+      if(activeRow&&ds.includes(activeRow.dataset.fromEmail)){
+        var all=Array.from(document.querySelectorAll('.email-row'));
+        var idx=all.indexOf(activeRow);
+        for(var i=idx+1;i<all.length;i++){if(!ds.includes(all[i].dataset.fromEmail)&&!all[i].classList.contains('done')){nextId=all[i].id.replace('row-','');break;}}
+        if(!nextId)for(var i=idx-1;i>=0;i--){if(!ds.includes(all[i].dataset.fromEmail)&&!all[i].classList.contains('done')){nextId=all[i].id.replace('row-','');break;}}
+      }
+    }
     ds.forEach(function(email){
       document.querySelectorAll('.email-row[data-from-email="'+email+'"]').forEach(function(r){r.remove();});
     });
     sessionStorage.removeItem('deletedSenders');
-    if(activePreviewId&&!document.getElementById('row-'+activePreviewId))closePreview();
+    if(activePreviewId&&!document.getElementById('row-'+activePreviewId)){
+      if(nextId)openPreview(nextId);else closePreview();
+    }
   });
 
   function toggleScan(){scanOpen=!scanOpen;document.getElementById('scan-body').style.display=scanOpen?'':'none';document.getElementById('scan-chevron').textContent=scanOpen?'▲':'▼';}
