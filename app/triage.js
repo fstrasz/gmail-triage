@@ -40,13 +40,13 @@ app.get("/triage", async (req, res) => {
     const viplist  = loadViplist();
     const oklist   = loadOklist();
 
-    const [scanClean, scanVip, scanOk, emails] = await Promise.all([
+    const [scanClean, scanVip, scanOk] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
       scanAndLabelTier(gmail, oklist, "..OK"),
-      fetchEmails(gmail, 25),
     ]);
     const scanResults = [...scanClean, ...scanVip, ...scanOk];
+    const emails = await fetchEmails(gmail, 25);
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
     const { body, script } = triagePage(filtered, blocklist, savedStats, scanResults);
@@ -283,7 +283,7 @@ app.get("/api/preview/:id", async (req, res) => {
     const raw=htmlData||plainData;
     const decoded=raw?Buffer.from(raw,"base64url").toString("utf8"):"<p>No content</p>";
     const body=htmlData?decoded:"<pre style='white-space:pre-wrap;font-family:sans-serif;font-size:14px'>"+decoded.replace(/</g,"&lt;")+"</pre>";
-    res.send("<!DOCTYPE html><html><head><meta charset='UTF-8'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body><div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>"+body+"</body></html>");
+    res.send("<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body><div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>"+body+"</body></html>");
   }catch(e){res.send("<pre style='color:red'>Error: "+e.message+"</pre>");}
 });
 
