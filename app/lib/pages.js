@@ -101,8 +101,6 @@ export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = 
               <h2 style="font-size:1.15rem;margin-bottom:8px">Ready to triage your inbox?</h2>
               <p style="color:#64748b;font-size:.88rem;margin-bottom:24px">⭐ VIP · ✅ OK · ✅ OK &amp; Clean · 🗑 Junk · 🚫 Unsubscribe</p>
               <a href="/triage" style="display:inline-block;padding:12px 28px;background:#4f46e5;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem">▶ Start Triaging</a>
-              <br>
-              <a href="/reset" onclick="return confirm('Reset all stats and clear the blocklist?')" style="display:inline-block;margin-top:10px;padding:8px 22px;background:#ef4444;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem">🗑 Reset All</a>
             </div>
             ${conflictSection}
             ${delPendSection}
@@ -733,7 +731,7 @@ export function viplistPage(list) {
 }
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
-export function listsPage(blocklist, viplist, oklist) {
+export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
   const all = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
     ...viplist.map(e => ({ ...e, listType: 'vip' })),
@@ -807,6 +805,37 @@ export function listsPage(blocklist, viplist, oklist) {
               </form>
             </div>
           </div>
+          <div class="card" style="margin-top:14px;border:1px solid #fecaca">
+            <div class="card-header" style="background:#fff5f5;color:#b91c1c;border-bottom:1px solid #fecaca">
+              Danger Zone
+            </div>
+            <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:600;font-size:.88rem;color:#374151">Reset Blocklist</div>
+                <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">Permanently clears all ${blocklist.length} blocked sender${blocklist.length !== 1 ? 's' : ''}. A backup will be saved automatically.</div>
+              </div>
+              <button class="btn btn-danger" onclick="openResetModal()">🗑 Reset Blocklist</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="reset-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="font-size:2rem;text-align:center;margin-bottom:12px">⚠️</div>
+        <h3 style="margin:0 0 10px;text-align:center;color:#b91c1c;font-size:1.05rem">Reset Blocklist?</h3>
+        <p style="font-size:.85rem;color:#374151;margin:0 0 8px">You are about to <strong>permanently delete all ${blocklist.length} blocked sender${blocklist.length !== 1 ? 's' : ''}</strong>. This list may represent hours of triage work.</p>
+        <p style="font-size:.85rem;color:#374151;margin:0 0 18px">A backup will be saved and can be restored from Settings. Gmail labels already applied to emails are not affected.</p>
+        <div style="font-size:.82rem;color:#64748b;margin-bottom:6px">Type <strong>RESET</strong> to confirm:</div>
+        <input id="reset-confirm-input" type="text" autocomplete="off" placeholder="RESET"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:.9rem;margin-bottom:16px"
+          oninput="document.getElementById('reset-confirm-btn').disabled=this.value!=='RESET'"/>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="closeResetModal()">Cancel</button>
+          <form method="POST" action="/lists/reset-blocklist" style="margin:0">
+            <button id="reset-confirm-btn" class="btn btn-danger" type="submit" disabled>Reset Blocklist</button>
+          </form>
         </div>
       </div>
     </div>
@@ -837,6 +866,16 @@ export function listsPage(blocklist, viplist, oklist) {
       document.getElementById('add-form').action='/'+sel.value+'/add';
       document.getElementById('add-reason').style.display=sel.value==='blocklist'?'':'none';
     }
+    function openResetModal(){
+      var m=document.getElementById('reset-modal');
+      m.style.display='flex';
+      document.getElementById('reset-confirm-input').value='';
+      document.getElementById('reset-confirm-btn').disabled=true;
+    }
+    function closeResetModal(){
+      document.getElementById('reset-modal').style.display='none';
+    }
+    document.getElementById('reset-modal').addEventListener('click',function(e){if(e.target===this)closeResetModal();});
   `;
 
   return { body, script };
@@ -1104,7 +1143,7 @@ const TIMEZONES = [
   ["Australia/Sydney",    "Sydney"],
 ];
 
-export function settingsPage(settings) {
+export function settingsPage(settings, backupInfo = null) {
   const locations = settings.locations || [];
   const timezone  = settings.timezone  || "America/Los_Angeles";
   const locationRows = locations.length
@@ -1215,6 +1254,23 @@ export function settingsPage(settings) {
           </label>
         </div>
       </div>
+      ${backupInfo ? `
+      <div class="card" style="margin-top:16px;border:1px solid #fde68a">
+        <div class="card-header" style="background:#fffbeb;border-bottom:1px solid #fde68a">
+          Blocklist Backup
+          <span style="font-size:.75rem;font-weight:400;color:#92400e">Saved automatically before a reset</span>
+        </div>
+        <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:.88rem;color:#374151"><strong>${backupInfo.list.length}</strong> blocked sender${backupInfo.list.length !== 1 ? 's' : ''}</div>
+            <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">Backed up ${new Date(backupInfo.backedUpAt).toLocaleString()}</div>
+          </div>
+          <form method="POST" action="/settings/restore-blocklist-backup" style="margin:0"
+            onsubmit="return confirm('Restore ${backupInfo.list.length} sender${backupInfo.list.length !== 1 ? 's' : ''} from backup? This will replace your current blocklist.')">
+            <button class="btn btn-secondary" type="submit">↩ Restore Backup</button>
+          </form>
+        </div>
+      </div>` : ""}
     </div>`;
 
   const script = `

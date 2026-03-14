@@ -1,6 +1,6 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
-import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked } from "./lib/blocklist.js";
+import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup } from "./lib/blocklist.js";
 import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
@@ -93,7 +93,7 @@ app.post("/oklist/remove", (req, res) => { removeFromOklist(req.body.email, req.
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 app.get("/lists", (req, res) => {
   try {
-    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist());
+    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup());
     res.send(shell("Label Lists", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -102,6 +102,11 @@ app.post("/lists/remove", (req, res) => {
   if (listType === 'block') removeFromBlocklist(email, name);
   else if (listType === 'vip') removeFromViplist(email, name || null);
   else if (listType === 'ok') removeFromOklist(email, name || null);
+  res.redirect("/lists");
+});
+app.post("/lists/reset-blocklist", (req, res) => {
+  backupBlocklist();
+  resetBlocklist();
   res.redirect("/lists");
 });
 
@@ -414,7 +419,7 @@ app.post("/api/review/dismiss", async (req, res) => {
 // ─── Settings ──────────────────────────────────────────────────────────────────
 app.get("/settings", (req, res) => {
   try {
-    const { body, script } = settingsPage(loadSettings());
+    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup());
     res.send(shell("Settings", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -483,7 +488,11 @@ app.get("/debug", async (req, res) => {
   res.send("<pre style='font-family:monospace;padding:24px;line-height:1.6'>"+out.join("\n")+"</pre>");
 });
 
-app.get("/reset", (req, res) => { resetBlocklist(); resetStats(); res.redirect("/"); });
+app.post("/settings/restore-blocklist-backup", (req, res) => {
+  try { restoreBlocklistBackup(); res.redirect("/settings"); }
+  catch(e) { res.redirect("/settings"); }
+});
+app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
 
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);
