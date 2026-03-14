@@ -30,6 +30,7 @@ services:
       - ./config/token.json:/app/token.json
       - ./config/blocklist.json:/app/blocklist.json
       - ./config/blocklist.backup.json:/app/blocklist.backup.json
+      - ./config/blocklist.backups.json:/app/blocklist.backups.json
       - ./config/stats.json:/app/stats.json
       - ./config/keptlist.json:/app/keptlist.json
       - ./config/viplist.json:/app/viplist.json

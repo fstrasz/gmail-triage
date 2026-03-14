@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { loadSettings, setDailySummaryDebug } from "./settings.js";
-import { backupBlocklist } from "./blocklist.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -74,7 +73,6 @@ function fmtDate(date) {
 export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
                                         scanAndCleanBlocklist, scanAndLabelTier) {
   const timeLabel = fmtTime(new Date());
-  try { backupBlocklist(); } catch(e) { console.error(`[scheduler] blocklist backup failed: ${e.message}`); }
   const gmail = await getGmailClient();
   const [scanClean, scanVip, scanOk] = await Promise.all([
     scanAndCleanBlocklist(gmail, loadBlocklist()),

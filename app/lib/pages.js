@@ -731,7 +731,7 @@ export function viplistPage(list) {
 }
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
-export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
+export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = []) {
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const all = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
@@ -793,6 +793,8 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
             <button class="list-chip" id="chip-vip" onclick="filterList('vip',this)">⭐ VIP ${viplist.length}</button>
             <button class="list-chip" id="chip-ok" onclick="filterList('ok',this)">✅ OK ${oklist.length}</button>
             <input class="list-search" id="list-search" type="text" placeholder="Search by name or email…" oninput="searchList(this.value)"/>
+            <button class="btn btn-secondary" id="create-backup-btn" style="margin-left:auto;font-size:.78rem;padding:5px 12px;white-space:nowrap" type="button">💾 Create Backup</button>
+            <span id="backup-status" style="font-size:.78rem;color:#64748b"></span>
           </div>
           <div class="card" style="overflow:hidden">
             <div style="overflow-x:auto">
@@ -982,6 +984,16 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
       document.getElementById('add-form').action = '/'+sel.value+'/add';
       document.getElementById('add-reason').style.display = sel.value==='blocklist'?'':'none';
     }
+    document.getElementById('create-backup-btn').onclick = async function() {
+      var btn = this, status = document.getElementById('backup-status');
+      btn.disabled = true; status.textContent = 'Saving...';
+      try {
+        var r = await fetch('/lists/backup', { method: 'POST' });
+        var d = await r.json();
+        status.textContent = d.ok ? ('Backup #' + d.n + ' saved') : ('Error: ' + d.error);
+      } catch(e) { status.textContent = 'Error: ' + e.message; }
+      btn.disabled = false;
+    };
     function openResetModal() {
       document.getElementById('reset-modal').style.display='flex';
       document.getElementById('reset-confirm-input').value='';
@@ -1272,7 +1284,7 @@ const TIMEZONES = [
   ["Australia/Sydney",    "Sydney"],
 ];
 
-export function settingsPage(settings, backupInfo = null) {
+export function settingsPage(settings, backupInfo = null, namedBackups = []) {
   const locations = settings.locations || [];
   const timezone  = settings.timezone  || "America/Los_Angeles";
   const locationRows = locations.length
@@ -1383,21 +1395,63 @@ export function settingsPage(settings, backupInfo = null) {
           </label>
         </div>
       </div>
-      ${backupInfo ? `
+      ${(backupInfo && backupInfo.backedUpAt) || namedBackups.length ? `
       <div class="card" style="margin-top:16px;border:1px solid #fde68a">
         <div class="card-header" style="background:#fffbeb;border-bottom:1px solid #fde68a">
-          Blocklist Backup
-          <span style="font-size:.75rem;font-weight:400;color:#92400e">Saved automatically before a reset</span>
+          Blocklist Backups
+          <span style="font-size:.75rem;font-weight:400;color:#92400e">Manage saved snapshots · <a href="/lists" style="color:#92400e">Create new backup on Lists page</a></span>
         </div>
-        <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:.88rem;color:#374151"><strong>${backupInfo.list.length}</strong> blocked sender${backupInfo.list.length !== 1 ? 's' : ''}</div>
-            <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">Backed up ${new Date(backupInfo.backedUpAt).toLocaleString()}</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#fffbeb">
+            <th style="padding:6px 14px;text-align:left;font-size:.74rem;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a">#</th>
+            <th style="padding:6px 14px;text-align:left;font-size:.74rem;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a">Date</th>
+            <th style="padding:6px 14px;text-align:left;font-size:.74rem;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a">Senders</th>
+            <th style="padding:6px 14px;text-align:left;font-size:.74rem;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a">Type</th>
+            <th style="padding:6px 14px;border-bottom:1px solid #fde68a"></th>
+          </tr></thead>
+          <tbody>
+            ${namedBackups.slice().reverse().map(b => `<tr>
+              <td style="padding:7px 14px;font-size:.84rem;color:#374151;font-weight:600">#${b.n}</td>
+              <td style="padding:7px 14px;font-size:.82rem;color:#64748b">${new Date(b.backedUpAt).toLocaleString()}</td>
+              <td style="padding:7px 14px;font-size:.84rem;color:#374151">${b.list.length}</td>
+              <td style="padding:7px 14px;font-size:.78rem;color:#94a3b8">manual</td>
+              <td style="padding:7px 14px;text-align:right;display:flex;gap:6px;justify-content:flex-end">
+                <button class="btn btn-secondary" style="font-size:.75rem;padding:3px 10px" onclick="openRestoreModal('named',${b.n},${b.list.length},'${new Date(b.backedUpAt).toLocaleDateString()}')">↩ Restore</button>
+                <form method="POST" action="/settings/delete-named-backup" style="margin:0" onsubmit="return confirm('Delete backup #${b.n}?')">
+                  <input type="hidden" name="n" value="${b.n}"/>
+                  <button class="btn btn-danger" style="font-size:.75rem;padding:3px 9px" type="submit">✕</button>
+                </form>
+              </td>
+            </tr>`).join('')}
+            ${backupInfo && backupInfo.backedUpAt ? `<tr>
+              <td style="padding:7px 14px;font-size:.84rem;color:#374151;font-weight:600">—</td>
+              <td style="padding:7px 14px;font-size:.82rem;color:#64748b">${new Date(backupInfo.backedUpAt).toLocaleString()}</td>
+              <td style="padding:7px 14px;font-size:.84rem;color:#374151">${backupInfo.list.length}</td>
+              <td style="padding:7px 14px;font-size:.78rem;color:#94a3b8">pre-reset</td>
+              <td style="padding:7px 14px;text-align:right">
+                <button class="btn btn-secondary" style="font-size:.75rem;padding:3px 10px" onclick="openRestoreModal('auto',0,${backupInfo.list.length},'${new Date(backupInfo.backedUpAt).toLocaleDateString()}')">↩ Restore</button>
+              </td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+      <div id="restore-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:12px;padding:24px 28px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,.25)">
+          <h3 style="margin:0 0 10px;font-size:1rem;color:#1e293b" id="restore-modal-title">Restore Backup</h3>
+          <p id="restore-modal-body" style="font-size:.84rem;color:#64748b;margin:0 0 18px"></p>
+          <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="closeRestoreModal()">Cancel</button>
+            <form id="restore-form-replace" method="POST" style="margin:0">
+              <input type="hidden" name="merge" value="false"/>
+              <input type="hidden" id="restore-n" name="n" value=""/>
+              <button class="btn btn-primary" type="submit">Replace current list</button>
+            </form>
+            <form id="restore-form-merge" method="POST" style="margin:0">
+              <input type="hidden" name="merge" value="true"/>
+              <input type="hidden" id="restore-n-merge" name="n" value=""/>
+              <button class="btn btn-secondary" type="submit" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac">Merge into current list</button>
+            </form>
           </div>
-          <form method="POST" action="/settings/restore-blocklist-backup" style="margin:0"
-            onsubmit="return confirm('Restore ${backupInfo.list.length} sender${backupInfo.list.length !== 1 ? 's' : ''} from backup? This will replace your current blocklist.')">
-            <button class="btn btn-secondary" type="submit">↩ Restore Backup</button>
-          </form>
         </div>
       </div>` : ""}
     </div>`;
@@ -1499,7 +1553,25 @@ export function settingsPage(settings, backupInfo = null) {
         else { cb.checked = !intended; }
       } catch(e) { cb.checked = !intended; }
     };
-    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : 'null'});`;
+    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : 'null'});
+    function openRestoreModal(type, n, count, date) {
+      var modal = document.getElementById('restore-modal');
+      if (!modal) return;
+      document.getElementById('restore-modal-title').textContent = type === 'auto' ? 'Restore Pre-Reset Backup' : 'Restore Backup #' + n;
+      document.getElementById('restore-modal-body').textContent = count + ' senders from ' + date + '. Choose how to restore:';
+      var action = type === 'auto' ? '/settings/restore-blocklist-backup' : '/settings/restore-named-backup';
+      document.getElementById('restore-form-replace').action = action;
+      document.getElementById('restore-form-merge').action = action;
+      document.getElementById('restore-n').value = n;
+      document.getElementById('restore-n-merge').value = n;
+      modal.style.display = 'flex';
+    }
+    function closeRestoreModal() {
+      var modal = document.getElementById('restore-modal');
+      if (modal) modal.style.display = 'none';
+    }
+    var _rm = document.getElementById('restore-modal');
+    if (_rm) _rm.addEventListener('click', function(e) { if (e.target === this) closeRestoreModal(); });`;
 
   return { body, script };
 }

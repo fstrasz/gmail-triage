@@ -1,6 +1,6 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
-import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup } from "./lib/blocklist.js";
+import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
 import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
@@ -93,7 +93,7 @@ app.post("/oklist/remove", (req, res) => { removeFromOklist(req.body.email, req.
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 app.get("/lists", (req, res) => {
   try {
-    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup());
+    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup(), loadNamedBackups());
     res.send(shell("Label Lists", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -108,6 +108,10 @@ app.post("/lists/reset-blocklist", (req, res) => {
   backupBlocklist();
   resetBlocklist();
   res.redirect("/lists");
+});
+app.post("/lists/backup", (req, res) => {
+  try { const n = createNamedBackup(); res.json({ ok: true, n }); }
+  catch(e) { res.json({ ok: false, error: e.message }); }
 });
 
 // ─── API: Next ─────────────────────────────────────────────────────────────────
@@ -419,7 +423,7 @@ app.post("/api/review/dismiss", async (req, res) => {
 // ─── Settings ──────────────────────────────────────────────────────────────────
 app.get("/settings", (req, res) => {
   try {
-    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup());
+    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup(), loadNamedBackups());
     res.send(shell("Settings", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -489,8 +493,16 @@ app.get("/debug", async (req, res) => {
 });
 
 app.post("/settings/restore-blocklist-backup", (req, res) => {
-  try { restoreBlocklistBackup(); res.redirect("/settings"); }
+  try { restoreBlocklistBackup(req.body.merge === 'true'); res.redirect("/settings"); }
   catch(e) { res.redirect("/settings"); }
+});
+app.post("/settings/restore-named-backup", (req, res) => {
+  try { restoreNamedBackup(parseInt(req.body.n), req.body.merge === 'true'); res.redirect("/settings"); }
+  catch(e) { res.redirect("/settings"); }
+});
+app.post("/settings/delete-named-backup", (req, res) => {
+  try { deleteNamedBackup(parseInt(req.body.n)); } catch(e) {}
+  res.redirect("/settings");
 });
 app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
 
