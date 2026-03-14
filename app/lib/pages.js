@@ -1211,7 +1211,7 @@ export function settingsPage(settings) {
           <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;cursor:pointer;color:#64748b">
             <input type="checkbox" id="debug-summary-cb" ${settings.dailySummaryDebug ? "checked" : ""} style="width:14px;height:14px">
             Debug: send after each auto-clean (auto-disables after 12h)
-            ${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `<span style="color:#f59e0b;font-size:.75rem">· enabled ${Math.round((Date.now()-new Date(settings.dailySummaryDebugEnabledAt).getTime())/3600000*10)/10}h ago</span>` : ""}
+            <span id="debug-summary-ts" style="color:#f59e0b;font-size:.75rem">${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `· enabled ${Math.round((Date.now()-new Date(settings.dailySummaryDebugEnabledAt).getTime())/3600000*10)/10}h ago` : ""}</span>
           </label>
         </div>
       </div>
@@ -1285,14 +1285,33 @@ export function settingsPage(settings) {
       } catch(e) { status.textContent = 'Error: ' + e.message; }
       btn.disabled = false;
     };
+    function updateDebugTs(enabled, enabledAt) {
+      var cb = document.getElementById('debug-summary-cb');
+      var ts = document.getElementById('debug-summary-ts');
+      cb.checked = enabled;
+      if (enabled && enabledAt) {
+        var hrs = Math.round((Date.now() - new Date(enabledAt).getTime()) / 3600000 * 10) / 10;
+        ts.textContent = '· enabled ' + hrs + 'h ago';
+      } else {
+        ts.textContent = '';
+      }
+    }
     document.getElementById('debug-summary-cb').onchange = async function() {
       var cb = this;
+      var intended = cb.checked;
       try {
-        var r = await fetch('/settings/daily-summary/debug', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled: cb.checked }) });
+        var r = await fetch('/settings/daily-summary/debug', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled: intended }) });
         var d = await r.json();
-        if (!d.ok) { cb.checked = !cb.checked; }
-      } catch(e) { cb.checked = !cb.checked; }
-    };`;
+        if (d.ok) { updateDebugTs(intended, d.enabledAt); } else { cb.checked = !intended; }
+      } catch(e) { cb.checked = !intended; }
+    };
+    setInterval(async function() {
+      try {
+        var r = await fetch('/settings/daily-summary/debug');
+        var d = await r.json();
+        if (d.ok) updateDebugTs(d.enabled, d.enabledAt);
+      } catch(e) {}
+    }, 30000);`;
 
   return { body, script };
 }
