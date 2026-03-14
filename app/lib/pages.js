@@ -732,41 +732,53 @@ export function viplistPage(list) {
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
+  const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const all = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
     ...viplist.map(e => ({ ...e, listType: 'vip' })),
     ...oklist.map(e => ({ ...e, listType: 'ok' })),
-  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+  ];
 
   const rows = all.map(e => {
-    const lbl = e.name
-      ? `${e.name} <span style="color:#94a3b8;font-weight:400">&lt;${e.email}&gt;</span>`
-      : e.email;
     const badge = e.listType === 'block'
-      ? `<span class="badge-block">🚫 ${e.reason || 'blocked'}</span>`
+      ? `<span class="badge-block">🚫 ${esc(e.reason || 'blocked')}</span>`
       : e.listType === 'vip'
       ? `<span class="badge-vip">⭐ VIP</span>`
       : `<span class="badge-ok">✅ OK</span>`;
-    return `<div class="list-row" data-type="${e.listType}" data-email="${e.email.toLowerCase()}" data-name="${(e.name||"").toLowerCase()}">
-      <div>
-        <div style="font-weight:600;font-size:.88rem">${lbl}</div>
-        <div style="font-size:.72rem;color:#94a3b8;margin-top:2px">Added ${new Date(e.date).toLocaleDateString()}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        ${badge}
+    return `<tr data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+      <td data-col="name" class="lt-td">${e.name ? `<span class="lt-name">${esc(e.name)}</span>` : `<span style="color:#cbd5e1">—</span>`}</td>
+      <td data-col="email" class="lt-td"><span class="lt-email">${esc(e.email)}</span></td>
+      <td data-col="date" class="lt-td" style="white-space:nowrap">${e.date ? new Date(e.date).toLocaleDateString() : "—"}</td>
+      <td data-col="label" class="lt-td">${badge}</td>
+      <td data-col="action" class="lt-td lt-action">
         <form method="POST" action="/lists/remove" style="margin:0">
-          <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name||""}"/>
+          <input type="hidden" name="email" value="${esc(e.email)}"/>
+          <input type="hidden" name="name" value="${esc(e.name||"")}"/>
           <input type="hidden" name="listType" value="${e.listType}"/>
-          <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:4px 10px">✕</button>
+          <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:3px 9px">✕</button>
         </form>
-      </div>
-    </div>`;
+      </td>
+    </tr>`;
   }).join("");
 
   const nav = sidebar({ active: 'lists', blCount: blocklist.length, vipCount: viplist.length, okCount: oklist.length });
 
   const body = `
+    <style>
+      .lt-table{width:100%;border-collapse:collapse}
+      .lt-th{padding:9px 12px;text-align:left;font-size:.76rem;font-weight:700;color:#6b7280;background:#f8fafc;border-bottom:2px solid #e2e8f0;white-space:nowrap;user-select:none}
+      .lt-th.sortable{cursor:pointer}.lt-th.sortable:hover{background:#f1f5f9;color:#374151}
+      .lt-th.draggable{cursor:grab}
+      .lt-th-dragging{opacity:.35}
+      .lt-th-over{background:#e0e7ff!important;color:#4338ca!important}
+      .lt-td{padding:7px 12px;font-size:.84rem;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+      .lt-action{width:38px;text-align:right}
+      .lt-name{font-weight:600;color:#1e293b}
+      .lt-email{color:#374151;font-size:.81rem}
+      .sort-arrow{color:#4f46e5;font-size:.68rem;margin-left:3px;vertical-align:middle}
+      #list-tbody tr:hover td{background:#f8fafc}
+      .lt-empty{padding:28px;text-align:center;color:#94a3b8;font-size:.85rem}
+    </style>
     <div class="app-layout">
       ${nav}
       <div class="main-content">
@@ -776,14 +788,20 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
         </div>
         <div class="main-scroll">
           <div class="list-toolbar">
-            <button class="list-chip list-chip-active" onclick="filterList('all',this)">All ${all.length}</button>
-            <button class="list-chip" onclick="filterList('block',this)">🚫 Blocked ${blocklist.length}</button>
-            <button class="list-chip" onclick="filterList('vip',this)">⭐ VIP ${viplist.length}</button>
-            <button class="list-chip" onclick="filterList('ok',this)">✅ OK ${oklist.length}</button>
-            <input class="list-search" type="text" placeholder="Search by name or email…" oninput="searchList(this.value)"/>
+            <button class="list-chip list-chip-active" id="chip-all" onclick="filterList('all',this)">All ${all.length}</button>
+            <button class="list-chip" id="chip-block" onclick="filterList('block',this)">🚫 Blocked ${blocklist.length}</button>
+            <button class="list-chip" id="chip-vip" onclick="filterList('vip',this)">⭐ VIP ${viplist.length}</button>
+            <button class="list-chip" id="chip-ok" onclick="filterList('ok',this)">✅ OK ${oklist.length}</button>
+            <input class="list-search" id="list-search" type="text" placeholder="Search by name or email…" oninput="searchList(this.value)"/>
           </div>
-          <div class="card">
-            <div id="list-rows">${all.length ? rows : '<div class="empty">No entries yet.</div>'}</div>
+          <div class="card" style="overflow:hidden">
+            <div style="overflow-x:auto">
+              <table class="lt-table">
+                <thead><tr id="list-thead-row"></tr></thead>
+                <tbody id="list-tbody">${all.length ? rows : ''}</tbody>
+              </table>
+              ${!all.length ? '<div class="lt-empty">No entries yet.</div>' : ''}
+            </div>
           </div>
           <div class="card" style="margin-top:14px">
             <div class="card-header" style="cursor:pointer" onclick="toggleAdd()">
@@ -806,9 +824,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
             </div>
           </div>
           <div class="card" style="margin-top:14px;border:1px solid #fecaca">
-            <div class="card-header" style="background:#fff5f5;color:#b91c1c;border-bottom:1px solid #fecaca">
-              Danger Zone
-            </div>
+            <div class="card-header" style="background:#fff5f5;color:#b91c1c;border-bottom:1px solid #fecaca">Danger Zone</div>
             <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
               <div>
                 <div style="font-weight:600;font-size:.88rem;color:#374151">Reset Blocklist</div>
@@ -842,40 +858,153 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null) {
   `;
 
   const script = `
-    var _filter='all',_search='';
-    function filterList(type,btn){
-      _filter=type;
-      document.querySelectorAll('.list-chip').forEach(function(b){b.classList.remove('list-chip-active');});
-      btn.classList.add('list-chip-active');
-      applyFilters();
+    var COLS = ['name','email','date','label','action'];
+    var COL_LABELS = {name:'Name',email:'Email Address',date:'Date Added',label:'Label',action:''};
+    var _filter='all', _search='', _sortCol='date', _sortDir='desc';
+    var _colOrder = ['name','email','date','label','action'];
+    var _dragCol = null;
+
+    function loadPrefs() {
+      try {
+        var p = JSON.parse(localStorage.getItem('listsLayout')||'{}');
+        if (p.colOrder && p.colOrder.length === COLS.length && COLS.every(function(c){return p.colOrder.indexOf(c)>=0;})) _colOrder = p.colOrder;
+        if (p.sortCol && COLS.indexOf(p.sortCol)>=0) _sortCol = p.sortCol;
+        if (p.sortDir) _sortDir = p.sortDir;
+        if (p.filter) _filter = p.filter;
+        if (p.search) _search = p.search;
+      } catch(e){}
     }
-    function searchList(q){_search=q.toLowerCase();applyFilters();}
-    function applyFilters(){
-      document.querySelectorAll('.list-row').forEach(function(r){
-        var tm=_filter==='all'||r.dataset.type===_filter;
-        var sm=!_search||r.dataset.email.includes(_search)||r.dataset.name.includes(_search);
-        r.style.display=(tm&&sm)?'':'none';
+    function savePrefs() {
+      localStorage.setItem('listsLayout', JSON.stringify({colOrder:_colOrder,sortCol:_sortCol,sortDir:_sortDir,filter:_filter,search:_search}));
+    }
+
+    function renderHeaders() {
+      var thead = document.getElementById('list-thead-row');
+      thead.innerHTML = '';
+      _colOrder.forEach(function(col) {
+        var th = document.createElement('th');
+        th.className = 'lt-th' + (col!=='action'?' sortable draggable':'');
+        th.dataset.col = col;
+        if (col !== 'action') {
+          th.draggable = true;
+          th.addEventListener('click', function(){ sortBy(col); });
+          th.addEventListener('dragstart', onDragStart);
+          th.addEventListener('dragover', onDragOver);
+          th.addEventListener('drop', onDrop);
+          th.addEventListener('dragend', onDragEnd);
+          var arrow = _sortCol===col ? '<span class="sort-arrow">'+(_sortDir==='asc'?'▲':'▼')+'</span>' : '';
+          th.innerHTML = COL_LABELS[col] + arrow;
+        } else {
+          th.innerHTML = '';
+        }
+        thead.appendChild(th);
       });
     }
-    function toggleAdd(){
-      var p=document.getElementById('add-panel'),c=document.getElementById('add-chev');
-      var open=p.style.display==='none';
-      p.style.display=open?'block':'none';c.textContent=open?'▲':'▼';
+
+    function reorderCells() {
+      document.querySelectorAll('#list-tbody tr[data-type]').forEach(function(tr) {
+        var cells = {};
+        tr.querySelectorAll('td[data-col]').forEach(function(td){ cells[td.dataset.col] = td; });
+        _colOrder.forEach(function(col){ if (cells[col]) tr.appendChild(cells[col]); });
+      });
     }
-    function updateAddForm(sel){
-      document.getElementById('add-form').action='/'+sel.value+'/add';
-      document.getElementById('add-reason').style.display=sel.value==='blocklist'?'':'none';
+
+    function sortRows() {
+      var tbody = document.getElementById('list-tbody');
+      var rows = Array.from(tbody.querySelectorAll('tr[data-type]'));
+      rows.sort(function(a, b) {
+        var av = a.dataset[_sortCol==='label'?'type':_sortCol] || '';
+        var bv = b.dataset[_sortCol==='label'?'type':_sortCol] || '';
+        if (_sortCol === 'date') { av = new Date(av).getTime()||0; bv = new Date(bv).getTime()||0; }
+        var cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        return _sortDir === 'asc' ? cmp : -cmp;
+      });
+      rows.forEach(function(r){ tbody.appendChild(r); });
     }
-    function openResetModal(){
-      var m=document.getElementById('reset-modal');
-      m.style.display='flex';
+
+    function sortBy(col) {
+      if (_sortCol === col) { _sortDir = _sortDir==='asc'?'desc':'asc'; }
+      else { _sortCol = col; _sortDir = col==='date'?'desc':'asc'; }
+      savePrefs();
+      renderHeaders();
+      sortRows();
+      applyFilters();
+    }
+
+    function onDragStart(e) {
+      _dragCol = this.dataset.col;
+      this.classList.add('lt-th-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    function onDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.lt-th').forEach(function(t){ t.classList.remove('lt-th-over'); });
+      if (this.dataset.col !== 'action') this.classList.add('lt-th-over');
+    }
+    function onDrop(e) {
+      e.preventDefault();
+      var target = this.dataset.col;
+      if (!_dragCol || _dragCol === target || target === 'action') return;
+      var fi = _colOrder.indexOf(_dragCol), ti = _colOrder.indexOf(target);
+      _colOrder.splice(fi, 1); _colOrder.splice(ti, 0, _dragCol);
+      savePrefs();
+      renderHeaders();
+      reorderCells();
+      applyFilters();
+    }
+    function onDragEnd() {
+      document.querySelectorAll('.lt-th').forEach(function(t){ t.classList.remove('lt-th-dragging','lt-th-over'); });
+    }
+
+    function filterList(type, btn) {
+      _filter = type;
+      document.querySelectorAll('.list-chip').forEach(function(b){ b.classList.remove('list-chip-active'); });
+      btn.classList.add('list-chip-active');
+      savePrefs();
+      applyFilters();
+    }
+    function searchList(q) { _search = q.toLowerCase(); savePrefs(); applyFilters(); }
+    function applyFilters() {
+      document.querySelectorAll('#list-tbody tr[data-type]').forEach(function(r) {
+        var tm = _filter==='all' || r.dataset.type===_filter;
+        var sm = !_search || r.dataset.email.includes(_search) || r.dataset.name.includes(_search);
+        r.style.display = (tm && sm) ? '' : 'none';
+      });
+    }
+
+    function toggleAdd() {
+      var p=document.getElementById('add-panel'), c=document.getElementById('add-chev');
+      var open = p.style.display==='none';
+      p.style.display = open?'block':'none'; c.textContent = open?'▲':'▼';
+    }
+    function updateAddForm(sel) {
+      document.getElementById('add-form').action = '/'+sel.value+'/add';
+      document.getElementById('add-reason').style.display = sel.value==='blocklist'?'':'none';
+    }
+    function openResetModal() {
+      document.getElementById('reset-modal').style.display='flex';
       document.getElementById('reset-confirm-input').value='';
       document.getElementById('reset-confirm-btn').disabled=true;
     }
-    function closeResetModal(){
-      document.getElementById('reset-modal').style.display='none';
-    }
+    function closeResetModal() { document.getElementById('reset-modal').style.display='none'; }
     document.getElementById('reset-modal').addEventListener('click',function(e){if(e.target===this)closeResetModal();});
+
+    // Init
+    loadPrefs();
+    renderHeaders();
+    reorderCells();
+    sortRows();
+    // Restore filter chip
+    var chipMap = {all:'chip-all',block:'chip-block',vip:'chip-vip',ok:'chip-ok'};
+    if (chipMap[_filter]) {
+      document.querySelectorAll('.list-chip').forEach(function(b){b.classList.remove('list-chip-active');});
+      var chip = document.getElementById(chipMap[_filter]);
+      if (chip) chip.classList.add('list-chip-active');
+    }
+    // Restore search
+    if (_search) { var si=document.getElementById('list-search'); if(si){si.value=_search;} }
+    applyFilters();
   `;
 
   return { body, script };
