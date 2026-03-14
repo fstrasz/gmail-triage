@@ -38,4 +38,6 @@ services:
       - ./config/settings.json:/app/settings.json
       - ./config/scan-log.json:/app/scan-log.json
 
+    stdin_open: true
+    tty: true
     restart: unless-stopped
