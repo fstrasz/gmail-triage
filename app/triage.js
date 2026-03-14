@@ -445,10 +445,6 @@ app.post("/settings/daily-summary", (req, res) => {
   setDailySummary(enabled === "on", email);
   res.redirect("/settings");
 });
-app.get("/settings/daily-summary/debug", (req, res) => {
-  const s = loadSettings();
-  res.json({ ok: true, enabled: !!s.dailySummaryDebug, enabledAt: s.dailySummaryDebugEnabledAt || null });
-});
 app.post("/settings/daily-summary/debug", (req, res) => {
   const { enabled } = req.body;
   setDailySummaryDebug(!!enabled);

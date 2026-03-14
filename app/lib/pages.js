@@ -1285,6 +1285,14 @@ export function settingsPage(settings) {
       } catch(e) { status.textContent = 'Error: ' + e.message; }
       btn.disabled = false;
     };
+    var debugExpireTimer = null;
+    function scheduleDebugExpiry(enabledAt) {
+      if (debugExpireTimer) { clearTimeout(debugExpireTimer); debugExpireTimer = null; }
+      if (!enabledAt) return;
+      var msLeft = new Date(enabledAt).getTime() + 12 * 3600000 - Date.now();
+      if (msLeft <= 0) { updateDebugTs(false, null); return; }
+      debugExpireTimer = setTimeout(function() { updateDebugTs(false, null); }, msLeft);
+    }
     function updateDebugTs(enabled, enabledAt) {
       var cb = document.getElementById('debug-summary-cb');
       var ts = document.getElementById('debug-summary-ts');
@@ -1302,16 +1310,11 @@ export function settingsPage(settings) {
       try {
         var r = await fetch('/settings/daily-summary/debug', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled: intended }) });
         var d = await r.json();
-        if (d.ok) { updateDebugTs(intended, d.enabledAt); } else { cb.checked = !intended; }
+        if (d.ok) { updateDebugTs(intended, d.enabledAt); scheduleDebugExpiry(intended ? d.enabledAt : null); }
+        else { cb.checked = !intended; }
       } catch(e) { cb.checked = !intended; }
     };
-    setInterval(async function() {
-      try {
-        var r = await fetch('/settings/daily-summary/debug');
-        var d = await r.json();
-        if (d.ok) updateDebugTs(d.enabled, d.enabledAt);
-      } catch(e) {}
-    }, 30000);`;
+    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : 'null'});`;
 
   return { body, script };
 }
