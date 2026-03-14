@@ -236,9 +236,10 @@ export async function trashMessage(gmail, id) {
 // Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
 // Returns exact counts for every sender in DelPend regardless of blocklist.
 export async function getDelPendSummary(gmail) {
+  const delPendId = await ensureLabel(gmail, "DelPend");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: "label:DelPend", maxResults: 500 };
+    const params = { userId: "me", labelIds: [delPendId], maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
