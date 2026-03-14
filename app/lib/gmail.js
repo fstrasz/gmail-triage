@@ -83,7 +83,7 @@ export async function labelSender(gmail, labelName, fromEmail, fromName = null, 
 
 // ─── Block sender → DelPend ────────────────────────────────────────────────────
 export async function blockSender(gmail, fromEmail, fromName = null, excludeId = null) {
-  const labelId = await ensureLabel(gmail, "DelPend");
+  const labelId = await ensureLabel(gmail, ".DelPend");
   const ids = [];
   let pageToken = null;
   do {
@@ -117,14 +117,14 @@ export async function blockSender(gmail, fromEmail, fromName = null, excludeId =
 // ─── Scan inbox for blocked senders ───────────────────────────────────────────
 export async function scanAndCleanBlocklist(gmail, blocklist) {
   if (!blocklist.length) return [];
-  const labelId    = await ensureLabel(gmail, "DelPend");
+  const labelId    = await ensureLabel(gmail, ".DelPend");
   const vipLabelId = await ensureLabel(gmail, "..VIP");
   const okLabelId  = await ensureLabel(gmail, "..OK");
   const skip = new Set([labelId, vipLabelId, okLabelId]);
 
   const results = await Promise.all(blocklist.map(async entry => {
     const base = entry.email.startsWith("@") ? "from:*" + entry.email : "from:" + entry.email;
-    const q = base + " in:inbox -label:DelPend -label:..OK -label:..VIP -in:sent -in:trash";
+    const q = base + " in:inbox -label:.DelPend -label:..OK -label:..VIP -in:sent -in:trash";
     const ids = []; const subjects = [];
     let pageToken = null;
     do {
@@ -154,17 +154,17 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
       });
     }
-    return { email: entry.email, reason: entry.reason, moved: ids.length, labelName: "DelPend", subjects: subjects.slice(0, 5) };
+    return { email: entry.email, reason: entry.reason, moved: ids.length, labelName: ".DelPend", subjects: subjects.slice(0, 5) };
   }));
   return results.filter(Boolean);
 }
 
 // ─── Fetch emails for triage ───────────────────────────────────────────────────
 export async function fetchEmails(gmail, max = 25) {
-  await Promise.all(["..VIP", "..OK", "DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
+  await Promise.all(["..VIP", "..OK", ".DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
 
   const res = await gmail.users.messages.list({
-    userId: "me", q: "in:inbox -label:DelPend", maxResults: 100,
+    userId: "me", q: "in:inbox -label:.DelPend", maxResults: 100,
   });
   const messages = res.data.messages || [];
   const details = await Promise.all(messages.map(msg =>
@@ -236,7 +236,7 @@ export async function trashMessage(gmail, id) {
 // Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
 // Returns exact counts for every sender in DelPend regardless of blocklist.
 export async function getDelPendSummary(gmail) {
-  const delPendId = await ensureLabel(gmail, "DelPend");
+  const delPendId = await ensureLabel(gmail, ".DelPend");
   const ids = []; let pageToken = null;
   do {
     const params = { userId: "me", labelIds: [delPendId], maxResults: 500 };
@@ -273,8 +273,8 @@ export async function getDelPendSummary(gmail) {
 
 // ─── Trash all DelPend messages (optionally scoped to one sender) ───────────────
 export async function trashDelPend(gmail, fromEmail = null) {
-  const delPendId = await ensureLabel(gmail, "DelPend");
-  const q = fromEmail ? `label:DelPend from:${fromEmail}` : "label:DelPend";
+  const delPendId = await ensureLabel(gmail, ".DelPend");
+  const q = fromEmail ? `label:.DelPend from:${fromEmail}` : "label:.DelPend";
   const ids = []; let pageToken = null;
   do {
     const params = { userId: "me", q, maxResults: 500 };
@@ -310,7 +310,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
   const results = await Promise.all(list.map(async entry => {
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const otherTier = tierName === "..VIP" ? "-label:..OK" : "-label:..VIP";
-    const q = `${fromClause} in:inbox -label:${tierName} ${otherTier} -label:DelPend -in:sent -in:trash`;
+    const q = `${fromClause} in:inbox -label:${tierName} ${otherTier} -label:.DelPend -in:sent -in:trash`;
     const ids = []; const subjects = [];
     let pageToken = null;
     do {
@@ -354,7 +354,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
 export async function getKeptDelPendConflicts(gmail) {
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: "label:DelPend label:..OK", maxResults: 500 };
+    const params = { userId: "me", q: "label:.DelPend label:..OK", maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
@@ -382,10 +382,10 @@ export async function getKeptDelPendConflicts(gmail) {
 }
 
 export async function removeDelPendFromSender(gmail, fromEmail) {
-  const delPendId = await ensureLabel(gmail, "DelPend");
+  const delPendId = await ensureLabel(gmail, ".DelPend");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: `label:DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    const params = { userId: "me", q: `label:.DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
@@ -404,7 +404,7 @@ export async function removeOkLabelFromSender(gmail, fromEmail) {
   const okId = await ensureLabel(gmail, "..OK");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: `label:DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    const params = { userId: "me", q: `label:.DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
