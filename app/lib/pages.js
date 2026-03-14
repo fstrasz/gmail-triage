@@ -1,5 +1,6 @@
 import { triageEmailRow } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
+import { loadStats } from "./stats.js";
 
 const APP_VERSION = "v0.9.1";
 
@@ -78,9 +79,10 @@ function sidebar({ active = '', blCount = 0, vipCount = 0, okCount = 0 } = {}) {
       ${item('/settings','⚙️','Settings',null,active==='settings')}
     </div>
     <div class="sb-stat-block">
-      <div class="sb-stat-row"><span>🚫 Blocked</span><span class="sb-stat-val" id="sb-block-count">${blCount}</span></div>
-      <div class="sb-stat-row"><span>⭐ VIP</span><span class="sb-stat-val">${vipCount}</span></div>
-      <div class="sb-stat-row"><span>✅ OK</span><span class="sb-stat-val">${okCount}</span></div>
+      ${(() => { const s = loadStats(); return `
+      <div class="sb-stat-row"><span>🚫 Blocked</span><span class="sb-stat-val">${(s.cleaned||0).toLocaleString()}</span></div>
+      <div class="sb-stat-row"><span>⭐ VIP</span><span class="sb-stat-val">${(s.vip||0).toLocaleString()}</span></div>
+      <div class="sb-stat-row"><span>✅ OK</span><span class="sb-stat-val">${(s.ok||0).toLocaleString()}</span></div>`; })()}
     </div>
   </div>`;
 }
