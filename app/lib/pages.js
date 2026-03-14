@@ -1,6 +1,8 @@
 import { triageEmailRow } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 import { loadStats } from "./stats.js";
+import { loadBlocklist } from "./blocklist.js";
+import { loadViplist, loadOklist } from "./viplist.js";
 
 const APP_VERSION = "v0.9.1";
 
@@ -57,7 +59,10 @@ function buildDelPendSection(delPendSummary) {
 }
 
 // ─── Shared: sidebar navigation ─────────────────────────────────────────────
-function sidebar({ active = '', blCount = 0, vipCount = 0, okCount = 0 } = {}) {
+function sidebar({ active = '' } = {}) {
+  const blCount = loadBlocklist().length;
+  const vipCount = loadViplist().length;
+  const okCount = loadOklist().length;
   const total = blCount + vipCount + okCount;
   const item = (href, icon, label, badge, isActive) => {
     const badgeHtml = badge !== null && badge !== undefined && badge !== ''
@@ -91,7 +96,7 @@ function sidebar({ active = '', blCount = 0, vipCount = 0, okCount = 0 } = {}) {
 export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = null, keptDelPendConflicts = []) {
   const conflictSection = buildConflictSection(keptDelPendConflicts);
   const delPendSection  = buildDelPendSection(delPendSummary);
-  const nav = sidebar({ active: 'home', blCount: blocklist.length, vipCount: viplist.length, okCount: oklist.length });
+  const nav = sidebar({ active: 'home' });
   return `
     <div class="app-layout">
       ${nav}
@@ -122,7 +127,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults) {
     seenIds: emails.map(e => e.id),
   })}</script>`;
 
-  const nav = sidebar({ active: 'triage', blCount: blocklist.length });
+  const nav = sidebar({ active: 'triage' });
 
   const body = `
     ${dataScript}
@@ -441,11 +446,18 @@ export function statsPage(stats, blocklist) {
     ? topBlocked.map(e => { const cls=e.reason==="junk"?"bl-junk":e.reason==="unsub"?"bl-unsub":"bl-manual"; const lbl=e.name?e.name+" &lt;"+e.email+"&gt;":e.email; return `<div class="ts-row"><span class="ts-email" title="${lbl}">${lbl}</span><span class="ts-badge ${cls}">${e.reason}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:8px;white-space:nowrap">${new Date(e.date).toLocaleDateString()}</span></div>`; }).join("")
     : `<div class="empty">No blocked senders yet.</div>`;
 
+  const nav = sidebar({ active: 'stats' });
   const body = `
     <script type="application/json" id="stats-data">${JSON.stringify({last30,topBlocked,inboxSeries})}</script>
-    <div class="topbar"><h1>📊 Stats Dashboard</h1><div class="topbar-right"><a href="/" style="color:#94a3b8;text-decoration:none">← Home</a></div></div>
-    <div style="max-width:900px;margin:0 auto;padding:20px 16px;overflow-y:auto;height:calc(100vh - 53px)">
-      <div class="stats-grid">${totalCards}</div>
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">📊 Stats Dashboard</span>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:900px;margin:0 auto">
+            <div class="stats-grid">${totalCards}</div>
       <div class="chart-wrap">
         <h3>Activity — last 30 days</h3>
         <div class="legend">
@@ -459,6 +471,9 @@ export function statsPage(stats, blocklist) {
       </div>
       <div class="chart-wrap" id="inbox-wrap" style="display:none"><h3>Inbox size over time</h3><div class="inbox-line" id="inbox-chart"></div></div>
       <div class="card"><div class="card-header">Recently Blocked (${topBlocked.length})</div><div style="padding:4px 18px 12px" class="top-senders">${topRows}</div></div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -519,16 +534,17 @@ export function senderPage(emails, fromEmail, fromName) {
     ? emails.map(senderEmailCard).join("")
     : `<div class="empty">No emails found from this sender.</div>`;
 
+  const nav = sidebar({ active: '' });
   const body = `
-    <div class="topbar">
-      <h1>👤 ${displayName.replace(/</g,"&lt;")}</h1>
-      <div class="topbar-right">
-        <span style="color:#94a3b8;font-size:.8rem">&lt;${fromEmail}&gt;</span>
-        <a href="javascript:history.back()" class="btn-nav">← Back</a>
-      </div>
-    </div>
-    <div class="layout">
-      <div class="email-panel" id="email-panel">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">👤 ${displayName.replace(/</g,"&lt;")} <span style="font-weight:400;color:#94a3b8;font-size:.8rem">&lt;${fromEmail}&gt;</span></span>
+          <a href="javascript:history.back()" class="btn-nav">← Back</a>
+        </div>
+        <div style="flex:1;min-height:0;display:flex;overflow:hidden">
+          <div class="email-panel" id="email-panel">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:4px 0">
           <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;color:#475569">
             <input type="checkbox" id="select-all" style="width:16px;height:16px;cursor:pointer"/> Select all
@@ -544,6 +560,8 @@ export function senderPage(emails, fromEmail, fromName) {
           <button class="preview-close" onclick="closePreview()">✕</button>
         </div>
         <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
+      </div>
+        </div>
       </div>
     </div>
   `;
@@ -664,9 +682,16 @@ export function blocklistPage(list) {
       </div>
     </div>`).join("") : `<div class="empty">No blocked senders yet.</div>`;
 
+  const nav = sidebar({ active: 'lists' });
   return `
-    <div class="topbar"><h1>🚫 Blocklist Manager</h1><div class="topbar-right"><a href="/" style="color:#94a3b8;text-decoration:none">← Home</a></div></div>
-    <div style="max-width:800px;margin:0 auto;padding:20px 16px;overflow-y:auto;height:calc(100vh - 53px)">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">🚫 Blocklist Manager</span>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:800px;margin:0 auto">
       <div class="card">
         <div class="card-header">Blocked Senders (${list.length})</div>
         ${rows}
@@ -688,6 +713,9 @@ export function blocklistPage(list) {
           </div>
         </form>
       </div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -706,9 +734,16 @@ export function viplistPage(list) {
       </div>
     </div>`).join("") : `<div class="empty">No VIP senders yet.</div>`;
 
+  const nav = sidebar({ active: 'lists' });
   return `
-    <div class="topbar"><h1>⭐ VIP Senders</h1><div class="topbar-right"><a href="/" style="color:#94a3b8;text-decoration:none">← Home</a></div></div>
-    <div style="max-width:800px;margin:0 auto;padding:20px 16px;overflow-y:auto;height:calc(100vh - 53px)">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">⭐ VIP Senders</span>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:800px;margin:0 auto">
       <div class="card">
         <div class="card-header">VIP Senders (${list.length})</div>
         ${rows}
@@ -727,6 +762,9 @@ export function viplistPage(list) {
             <button class="btn btn-primary" type="submit">Import</button>
           </div>
         </form>
+      </div>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -763,7 +801,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     </tr>`;
   }).join("");
 
-  const nav = sidebar({ active: 'lists', blCount: blocklist.length, vipCount: viplist.length, okCount: oklist.length });
+  const nav = sidebar({ active: 'lists' });
 
   const body = `
     <style>
@@ -1128,13 +1166,16 @@ export function reviewPage(items) {
   const listRows   = allItems.map(i => itemRow(i,  i.status === "pending")).join("");
   const detailDivs = allItems.map(i => detailPanel(i)).join("");
 
+  const nav = sidebar({ active: 'review' });
   const body = `
-    <div class="topbar">
-      <h1>🤖 Claude Review Queue <span style="opacity:.5;font-weight:400;font-size:.85rem">${pending.length} pending</span></h1>
-      <div class="topbar-right"><a href="/" class="btn-nav">← Home</a></div>
-    </div>
-    <div class="layout">
-      <div class="email-panel" style="width:380px;flex:none">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">🤖 Claude Review Queue <span style="font-weight:400;color:#94a3b8;font-size:.82rem">${pending.length} pending</span></span>
+        </div>
+        <div style="flex:1;min-height:0;display:flex;overflow:hidden">
+          <div class="email-panel" style="width:380px;flex:none">
         ${allItems.length === 0
           ? `<div class="empty" style="margin-top:60px">No emails in the review queue yet.<br><br><a href="/triage" style="color:#6366f1">Start Triaging →</a></div>`
           : listRows}
@@ -1144,6 +1185,8 @@ export function reviewPage(items) {
           Select an email to see Claude's analysis
         </div>
         ${detailDivs}
+      </div>
+        </div>
       </div>
     </div>
   `;
@@ -1245,9 +1288,16 @@ export function oklistPage(list) {
       </div>
     </div>`).join("") : `<div class="empty">No OK senders yet.</div>`;
 
+  const nav = sidebar({ active: 'lists' });
   return `
-    <div class="topbar"><h1>✅ OK Senders</h1><div class="topbar-right"><a href="/" style="color:#94a3b8;text-decoration:none">← Home</a></div></div>
-    <div style="max-width:800px;margin:0 auto;padding:20px 16px;overflow-y:auto;height:calc(100vh - 53px)">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">✅ OK Senders</span>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:800px;margin:0 auto">
       <div class="card">
         <div class="card-header">OK Senders (${list.length})</div>
         ${rows}
@@ -1266,6 +1316,9 @@ export function oklistPage(list) {
             <button class="btn btn-primary" type="submit">Import</button>
           </div>
         </form>
+      </div>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -1302,12 +1355,16 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
       </div>`).join("")
     : `<div class="empty">No locations set — Claude will surface events from any location.</div>`;
 
+  const nav = sidebar({ active: 'settings' });
   const body = `
-    <div class="topbar">
-      <h1>⚙️ Settings</h1>
-      <div class="topbar-right"><a href="/" class="btn-nav">← Home</a></div>
-    </div>
-    <div style="max-width:800px;margin:0 auto;padding:20px 16px;overflow-y:auto;height:calc(100vh - 53px)">
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar">
+          <span style="font-weight:600;font-size:.92rem">⚙️ Settings</span>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:800px;margin:0 auto">
       <div class="card">
         <div class="card-header">
           Locations of Interest
@@ -1456,6 +1513,9 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
           </div>
         </div>
       </div>` : ""}
+          </div>
+        </div>
+      </div>
     </div>`;
 
   const script = `
