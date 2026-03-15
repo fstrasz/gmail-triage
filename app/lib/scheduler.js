@@ -298,10 +298,12 @@ export async function runEventsSearchNow(getGmailClient) {
   const locations = s.locations || [];
   console.log(`[scheduler] events search: searching web + inbox for ${interests.length} interest(s)...`);
   const gmail = await getGmailClient();
-  const [webEvents, emailEvents] = await Promise.all([
+  const [webResult, emailResult] = await Promise.allSettled([
     searchEventsOfInterest(interests, locations),
     scanEmailsForEvents(gmail, interests, locations),
   ]);
+  const webEvents   = webResult.status   === 'fulfilled' ? webResult.value   : (console.error('[scheduler] web search failed:', webResult.reason?.message), []);
+  const emailEvents = emailResult.status === 'fulfilled' ? emailResult.value : (console.error('[scheduler] email scan failed:', emailResult.reason?.message), []);
   const allEvents = [...webEvents, ...emailEvents];
   const added = upsertFoundEvents(allEvents);
   await sendEventsEmail(gmail, allEvents, s);
