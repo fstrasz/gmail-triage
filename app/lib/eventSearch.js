@@ -112,7 +112,7 @@ function renderEventItem(e) {
 
 export async function sendEventsEmail(gmail, events, settings) {
   const to = settings.eventsSearchEmail || settings.dailySummaryEmail;
-  if (!to) return;
+  if (!to) { console.warn('[eventSearch] no recipient configured — set Events Email in Settings'); return; }
 
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
