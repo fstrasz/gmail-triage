@@ -1959,7 +1959,8 @@ export function rulesPage(rules) {
 
 // ─── Events page ───────────────────────────────────────────────────────────────
 export function eventsPage(events, settings) {
-  const active = (events || []).filter(e => !e.ignored).sort((a, b) => (a.date||'') < (b.date||'') ? -1 : 1);
+  const today = new Date().toISOString().slice(0, 10);
+  const active = (events || []).filter(e => !e.ignored && (!e.date || e.date >= today)).sort((a, b) => (a.date||'') < (b.date||'') ? -1 : 1);
   const interests = settings.eventInterests || [];
 
   // Group by configured location
