@@ -1944,10 +1944,10 @@ export function eventsPage(events, settings) {
   const active = (events || []).filter(e => !e.ignored).sort((a, b) => (a.date||'') < (b.date||'') ? -1 : 1);
   const interests = settings.eventInterests || [];
 
-  // Group by interest
+  // Group by configured location
   const grouped = {};
   for (const e of active) {
-    const key = e.interest || 'Other';
+    const key = e.configuredLocation || e.location || 'Other';
     (grouped[key] = grouped[key] || []).push(e);
   }
 
@@ -1963,9 +1963,9 @@ export function eventsPage(events, settings) {
       </div>` : '';
 
   const eventCards = active.length
-    ? Object.entries(grouped).map(([interest, evs]) => `
+    ? Object.entries(grouped).map(([loc, evs]) => `
         <div style="margin-bottom:24px">
-          <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${interest}</h3>
+          <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
             ${evs.map(e => `
             <li class="card" style="margin:0;padding:0">
@@ -2025,6 +2025,9 @@ export function eventsPage(events, settings) {
           <span style="font-weight:600;font-size:.92rem">📅 Upcoming Events</span>
           <div style="display:flex;align-items:center;gap:12px">
             <span style="font-size:.78rem;color:#94a3b8">${lastRun}</span>
+            <form method="POST" action="/events/send-email" style="margin:0">
+              <button class="btn btn-secondary" type="submit" style="font-size:.82rem">Send Email</button>
+            </form>
             <form method="POST" action="/events/search" style="margin:0">
               <button class="btn btn-primary" type="submit" style="font-size:.82rem">Search Now</button>
             </form>

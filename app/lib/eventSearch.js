@@ -16,7 +16,7 @@ ${interests.map(i => `- ${i}`).join('\n')}
 Locations: ${locations.length ? locations.join(', ') : 'any'}
 
 For every event found return a JSON array (no markdown, raw JSON only):
-[{ "title", "date" (YYYY-MM-DD), "time" (HH:MM 24h or null), "location" (venue + city), "url", "description" (1-2 sentences), "interest" (which interest matched) }]
+[{ "title", "date" (YYYY-MM-DD), "time" (HH:MM 24h or null), "location" (venue + city), "url", "description" (1-2 sentences), "interest" (which interest matched), "configuredLocation" (which of the Locations listed above matched, exactly as written) }]
 
 Return [] if nothing found.`;
 
@@ -39,24 +39,25 @@ export async function sendEventsEmail(gmail, events, settings) {
 
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-  // Group events by interest category
+  // Group events by configured location
   const grouped = {};
   for (const e of events) {
-    const key = e.interest || 'Other';
+    const key = e.configuredLocation || e.location || 'Other';
     (grouped[key] = grouped[key] || []).push(e);
   }
 
   const eventBlocks = events.length
-    ? Object.entries(grouped).map(([interest, evs]) => `
-      <h3 style="color:#1e293b;margin:20px 0 8px;font-size:15px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">${interest}</h3>
+    ? Object.entries(grouped).map(([loc, evs]) => `
+      <h3 style="color:#1e293b;margin:20px 0 8px;font-size:15px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">&#128205; ${loc}</h3>
       <ul style="margin:0;padding-left:20px">
         ${evs.map(e => `<li style="margin-bottom:12px">
-          <strong>${e.url ? `<a href="${e.url}" style="color:#1d4ed8">${e.title}</a>` : e.title}</strong><br>
-          <span style="color:#374151">&#128197; ${e.date || 'TBD'}${e.time ? ' at ' + e.time : ''} &nbsp;|&nbsp; &#128205; ${e.location || 'TBD'}</span><br>
+          <strong>${e.url ? `<a href="${e.url}" style="color:#1d4ed8">${e.title}</a>` : e.title}</strong>
+          <span style="color:#6b7280;font-size:12px"> &mdash; ${e.interest || ''}</span><br>
+          <span style="color:#374151">&#128197; ${e.date || 'TBD'}${e.time ? ' at ' + e.time : ''} &nbsp;|&nbsp; ${e.location || 'TBD'}</span><br>
           <span style="color:#6b7280;font-size:13px">${e.description || ''}</span>
         </li>`).join('')}
       </ul>`).join('')
-    : `<p style="color:#6b7280">No new events found.</p>`;
+    : `<p style="color:#6b7280">No events found.</p>`;
 
   const html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto">
     <h2 style="color:#1e293b">Upcoming Events &mdash; ${dateStr}</h2>

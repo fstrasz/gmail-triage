@@ -13,6 +13,7 @@ import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/r
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, setEventsSearchSettings } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
+import { sendEventsEmail } from "./lib/eventSearch.js";
 import { appendLog, loadLog } from "./lib/activityLog.js";
 import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink } from "./lib/foundEvents.js";
 
@@ -578,6 +579,14 @@ app.post("/events/search", async (req, res) => {
   } catch(e) { console.error("events search error:", e.message); }
   const ref = req.headers.referer || '/events';
   res.redirect(ref.includes('/settings') ? '/settings' : '/events');
+});
+app.post("/events/send-email", async (req, res) => {
+  try {
+    const gmail = await getGmailClient();
+    const active = loadFoundEvents().filter(e => !e.ignored);
+    await sendEventsEmail(gmail, active, loadSettings());
+  } catch(e) { console.error("events send-email error:", e.message); }
+  res.redirect("/events");
 });
 app.post("/events/ignore", (req, res) => {
   ignoreFoundEvent(req.body.id);
