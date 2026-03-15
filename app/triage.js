@@ -1,7 +1,7 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow } from "./lib/html.js";
@@ -20,18 +20,25 @@ const PORT = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
+function getListConflicts(viplist, oklist, blocklist) {
+  const byEmail = {};
+  for (const e of viplist)   { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("VIP"); }
+  for (const e of oklist)    { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("OK"); }
+  for (const e of blocklist) { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name||null, lists: [] }).lists.push("Block"); }
+  return Object.values(byEmail).filter(e => e.lists.length > 1);
+}
+
 // ─── Home ──────────────────────────────────────────────────────────────────────
 app.get("/", async (req, res) => {
   let delPendSummary = null;
-  let keptDelPendConflicts = [];
   try {
     const gmail = await getGmailClient();
-    [delPendSummary, keptDelPendConflicts] = await Promise.all([
-      getDelPendSummary(gmail),
-      getKeptDelPendConflicts(gmail),
-    ]);
+    delPendSummary = await getDelPendSummary(gmail);
   } catch(e) { /* show home page without Gmail sections if Gmail fails */ }
-  res.send(shell("Gmail Triage", homePage(loadBlocklist(), loadViplist(), loadOklist(), delPendSummary, keptDelPendConflicts)));
+  const bl = loadBlocklist(), vip = loadViplist(), ok = loadOklist();
+  const listConflicts = getListConflicts(vip, ok, bl);
+  res.send(shell("Gmail Triage", homePage(bl, vip, ok, delPendSummary, listConflicts)));
 });
 
 // ─── Triage ────────────────────────────────────────────────────────────────────
@@ -295,23 +302,13 @@ app.post("/api/delpend/trash-sender", async (req, res) => {
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
 
-// ─── API: OK/DelPend conflict resolution ─────────────────────────────────────
-app.post("/api/conflict/remove-delpend", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const gmail = await getGmailClient();
-    await removeDelPendFromSender(gmail, email);
-    res.redirect("/");
-  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
-});
-app.post("/api/conflict/remove-ok", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const gmail = await getGmailClient();
-    await removeOkLabelFromSender(gmail, email);
-    removeFromOklist(email);          // also remove from oklist.json
-    res.redirect("/");
-  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+// ─── API: List-overlap conflict resolution ────────────────────────────────────
+app.post("/api/conflict/remove-from-list", (req, res) => {
+  const { email, list } = req.body;
+  if (list === "VIP")   removeFromViplist(email);
+  else if (list === "OK")    removeFromOklist(email);
+  else if (list === "Block") removeFromBlocklist(email);
+  res.redirect("/");
 });
 
 // ─── API: Preview ──────────────────────────────────────────────────────────────
