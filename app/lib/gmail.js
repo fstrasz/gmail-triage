@@ -175,7 +175,6 @@ export async function fetchEmails(gmail, max = 25) {
   ));
 
   const emails = [];
-  const seenSenders = new Set();
   for (const d of details) {
     if (emails.length >= max) break;
     const h = d.data.payload.headers;
@@ -183,9 +182,6 @@ export async function fetchEmails(gmail, max = 25) {
     const fromRaw   = g("From");
     const fromEmail = extractEmail(fromRaw);
     const fromName  = extractName(fromRaw);
-    const senderKey = fromName + "<" + fromEmail + ">";
-    if (seenSenders.has(senderKey)) continue;
-    seenSenders.add(senderKey);
 
     const lbls  = d.data.labelIds || [];
     const vipId = labelCache["..VIP"] || "";
