@@ -679,31 +679,40 @@ export function senderPage(emails, fromEmail, fromName) {
 
 // ─── Labeled emails page ───────────────────────────────────────────────────────
 export function labeledPage(labelName, emails) {
-  const LABELS = { '..VIP': { icon: '⭐', title: 'VIP Emails' }, '..OK': { icon: '✅', title: 'OK Emails' }, '.DelPend': { icon: '🗑', title: 'Delete Pending' } };
-  const meta = LABELS[labelName] || { icon: '🏷', title: labelName };
+  const LABELS = {
+    '..VIP':    { icon: '⭐', title: 'VIP Emails',      border: '#f59e0b' },
+    '..OK':     { icon: '✅', title: 'OK Emails',       border: '#14b8a6' },
+    '.DelPend': { icon: '🗑', title: 'Delete Pending',  border: '#ef4444' },
+  };
+  const meta = LABELS[labelName] || { icon: '🏷', title: labelName, border: '#6366f1' };
   const nav = sidebar({ active: 'labeled-' + labelName });
+  const safe = s => (s||'').replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const tz = ""; // date formatted server-side
 
   const rows = emails.length ? emails.map(e => {
-    const dateStr = e.date ? new Date(e.date).toLocaleDateString() : "";
-    const subj = (e.subject || "(no subject)").replace(/</g, "&lt;");
-    const from = (e.from || "").replace(/</g, "&lt;");
+    const fromEmail = extractEmail(e.from || '');
+    const fromName  = extractName(e.from || '') || fromEmail;
+    const dateStr   = e.date ? new Date(e.date).toLocaleDateString() : "";
+    const subj      = (e.subject || "(no subject)").replace(/</g, "&lt;");
     return `
-      <div class="email-row" id="row-${e.id}">
-        <div class="email-header" style="align-items:center">
-          <input type="checkbox" class="sel-check" data-id="${e.id}" style="margin-right:10px;cursor:pointer;width:16px;height:16px;flex-shrink:0"/>
-          <div class="email-meta">
-            <div class="email-subject" style="${e.isRead ? "color:#64748b" : "font-weight:700;color:#1e293b"}">${subj}</div>
-            <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">${from}</div>
+      <div class="triage-row" id="row-${e.id}" style="border-left:4px solid ${meta.border}" data-from-email="${fromEmail}">
+        <div class="triage-header" onclick="openPreview('${e.id}')">
+          <div class="triage-meta">
+            <div class="triage-from">${fromName} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
+            <div class="triage-subj" style="${e.isRead ? 'color:#94a3b8' : 'font-weight:600;color:#1e293b'}">${subj}</div>
           </div>
-          <div class="email-date">${dateStr}</div>
+          <div class="triage-date">${dateStr}</div>
           <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
         </div>
-        <div class="email-actions" id="actions-${e.id}">
+        <div class="triage-actions" id="actions-${e.id}">
           <button class="btn btn-danger" onclick="doDelete('${e.id}')">🗑 Delete</button>
+          <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
           <button class="btn btn-expand" onclick="openPreview('${e.id}')">▼ Preview</button>
         </div>
       </div>`;
   }).join("") : `<div class="empty">No emails with this label.</div>`;
+
+  const firstId = emails.length ? emails[0].id : null;
 
   const body = `
     <div class="app-layout">
@@ -713,63 +722,45 @@ export function labeledPage(labelName, emails) {
           <span style="font-weight:600;font-size:.92rem">${meta.icon} ${meta.title}</span>
           <span style="font-size:.78rem;color:#94a3b8">${emails.length} email${emails.length !== 1 ? "s" : ""}</span>
         </div>
-        <div style="flex:1;min-height:0;display:flex;overflow:hidden">
-          <div class="email-panel" id="email-panel">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:4px 0">
-              <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;color:#475569">
-                <input type="checkbox" id="select-all" style="width:16px;height:16px;cursor:pointer"/> Select all
-              </label>
-              <button class="btn btn-danger" id="trash-sel-btn" onclick="doDeleteSelected()" style="display:none">🗑 Trash Selected</button>
-            </div>
-            <div id="email-list">${rows}</div>
-          </div>
-          <div class="preview-panel" id="preview-panel">
-            <div class="preview-header">
-              <span>Preview</span>
-              <button class="preview-close" onclick="closePreview()">✕</button>
-            </div>
-            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
-          </div>
+        <div class="main-scroll" id="email-panel" style="flex:1;overflow-y:auto;padding:12px 16px">
+          <div id="email-list">${rows}</div>
         </div>
+      </div>
+      <div class="preview-panel" id="preview-panel">
+        <div class="preview-header">
+          <span>Preview</span>
+          <button class="preview-close" onclick="closePreview()">✕</button>
+        </div>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
       </div>
     </div>`;
 
   const script = `
-    var emailPanel=document.getElementById('email-panel');
     var previewPanel=document.getElementById('preview-panel');
     var previewIframe=document.getElementById('preview-iframe');
     var activePreviewId=null;
-    function applyWidths(){emailPanel.style.width=previewPanel.classList.contains('open')?Math.floor(window.innerWidth*.52)+'px':'100%';}
-    window.addEventListener('resize',applyWidths);applyWidths();
     function openPreview(id){
       if(activePreviewId===id&&previewPanel.classList.contains('open')){closePreview();return;}
       activePreviewId=id;previewIframe.src='/api/preview/'+id;
-      previewPanel.classList.add('open');applyWidths();
+      previewPanel.classList.add('open');
+      document.querySelectorAll('.triage-row').forEach(function(r){r.classList.remove('preview-active');});
+      var row=document.getElementById('row-'+id);if(row)row.classList.add('preview-active');
       document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
       var btn=document.querySelector('#row-'+id+' .btn-expand');if(btn)btn.textContent='▲ Close';
     }
-    function closePreview(){previewPanel.classList.remove('open');applyWidths();previewIframe.src='';document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});}
+    function closePreview(){
+      previewPanel.classList.remove('open');previewIframe.src='';
+      document.querySelectorAll('.triage-row').forEach(function(r){r.classList.remove('preview-active');});
+      document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
+    }
     function doDelete(id){
-      if(!confirm('Move this email to trash?'))return;
       fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
         .then(function(r){return r.json();}).then(function(){
-          var row=document.getElementById('row-'+id);if(row)row.remove();
+          var row=document.getElementById('row-'+id);if(row){row.style.transition='opacity .4s';row.style.opacity='0';setTimeout(function(){row.remove();},400);}
           if(activePreviewId===id)closePreview();
         });
     }
-    function updateTrashBtn(){var checked=document.querySelectorAll('.sel-check:checked');document.getElementById('trash-sel-btn').style.display=checked.length?'':'none';}
-    document.getElementById('select-all').addEventListener('change',function(){document.querySelectorAll('.sel-check').forEach(function(c){c.checked=this.checked;},this);updateTrashBtn();});
-    document.getElementById('email-list').addEventListener('change',function(e){if(e.target.classList.contains('sel-check'))updateTrashBtn();});
-    function doDeleteSelected(){
-      var ids=Array.from(document.querySelectorAll('.sel-check:checked')).map(function(c){return c.dataset.id;});
-      if(!ids.length||!confirm('Trash '+ids.length+' emails?'))return;
-      fetch('/api/delete-many',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})})
-        .then(function(r){return r.json();}).then(function(){
-          ids.forEach(function(id){var row=document.getElementById('row-'+id);if(row)row.remove();});
-          if(ids.includes(activePreviewId))closePreview();
-          document.getElementById('select-all').checked=false;updateTrashBtn();
-        });
-    }
+    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ''}
   `;
   return { body, script };
 }
