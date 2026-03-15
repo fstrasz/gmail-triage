@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
-import { searchEventsOfInterest, sendEventsEmail } from "./eventSearch.js";
+import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail } from "./eventSearch.js";
 import { upsertFoundEvents } from "./foundEvents.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
@@ -295,13 +295,18 @@ export async function runEventsSearchNow(getGmailClient) {
     console.log("[scheduler] events search: no interests configured");
     return 0;
   }
-  console.log(`[scheduler] events search: searching for ${interests.length} interest(s)...`);
-  const events = await searchEventsOfInterest(interests, s.locations || []);
-  const added = upsertFoundEvents(events);
+  const locations = s.locations || [];
+  console.log(`[scheduler] events search: searching web + inbox for ${interests.length} interest(s)...`);
   const gmail = await getGmailClient();
-  await sendEventsEmail(gmail, events, s);
+  const [webEvents, emailEvents] = await Promise.all([
+    searchEventsOfInterest(interests, locations),
+    scanEmailsForEvents(gmail, interests, locations),
+  ]);
+  const allEvents = [...webEvents, ...emailEvents];
+  const added = upsertFoundEvents(allEvents);
+  await sendEventsEmail(gmail, allEvents, s);
   setEventsSearchLastRunAt();
-  console.log(`[scheduler] events search complete: ${events.length} found, ${added} new`);
+  console.log(`[scheduler] events search complete: ${webEvents.length} web + ${emailEvents.length} email = ${allEvents.length} found, ${added} new`);
   return added;
 }
 

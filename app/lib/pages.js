@@ -1407,12 +1407,21 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           <span style="font-size:.75rem;font-weight:400;color:#94a3b8">What types of events Claude should search for in your locations</span>
         </div>
         ${(settings.eventInterests||[]).length
-          ? (settings.eventInterests||[]).map(t => `
-            <div class="bl-row">
-              <div class="bl-email">${t.replace(/</g,"&lt;")}</div>
-              <form method="POST" action="/settings/event-interests/remove" style="margin:0">
-                <input type="hidden" name="topic" value="${t.replace(/"/g,'&quot;')}">
-                <button class="btn btn-danger" type="submit">Remove</button>
+          ? (settings.eventInterests||[]).map((t,i) => `
+            <div class="bl-row" id="interest-row-${i}">
+              <div id="interest-view-${i}" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                <div class="bl-email">${t.replace(/</g,"&lt;")}</div>
+                <button class="btn btn-secondary" type="button" style="font-size:.78rem;padding:4px 8px" onclick="interestEditOpen(${i})">Edit</button>
+                <form method="POST" action="/settings/event-interests/remove" style="margin:0">
+                  <input type="hidden" name="topic" value="${t.replace(/"/g,'&quot;')}">
+                  <button class="btn btn-danger" type="submit" style="font-size:.78rem;padding:4px 8px">Remove</button>
+                </form>
+              </div>
+              <form id="interest-edit-${i}" method="POST" action="/settings/event-interests/edit" style="display:none;flex:1;gap:6px;align-items:center" onsubmit="">
+                <input type="hidden" name="old" value="${t.replace(/"/g,'&quot;')}">
+                <input type="text" name="new" value="${t.replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+                <button class="btn btn-primary" type="submit" style="font-size:.78rem;padding:4px 10px">Save</button>
+                <button class="btn btn-secondary" type="button" style="font-size:.78rem;padding:4px 8px" onclick="interestEditClose(${i})">Cancel</button>
               </form>
             </div>`).join("")
           : `<div class="empty">No interests set — add topics like "wine festivals" or "outdoor concerts".</div>`}
@@ -1656,6 +1665,15 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
     </div>`;
 
   const script = `
+    function interestEditOpen(i) {
+      document.getElementById('interest-view-'+i).style.display='none';
+      var ef=document.getElementById('interest-edit-'+i);
+      ef.style.display='flex'; ef.querySelector('input[name="new"]').focus();
+    }
+    function interestEditClose(i) {
+      document.getElementById('interest-edit-'+i).style.display='none';
+      document.getElementById('interest-view-'+i).style.display='flex';
+    }
     var interestInput = document.getElementById('interest-input');
     document.getElementById('interest-add-btn').onclick = function() {
       var val = interestInput.value.trim();
@@ -1967,14 +1985,25 @@ export function eventsPage(events, settings) {
         <div style="margin-bottom:24px">
           <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
-            ${evs.map(e => `
+            ${evs.map(e => {
+              const sourceIcon = e.source === 'email' ? '✉ ' : '';
+              const titleLink = e.url
+                ? `<a href="${e.url}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
+                : `${sourceIcon}${e.title}`;
+              const priceRating = [
+                e.pricePerPerson ? `<strong style="color:#16a34a;font-size:.88rem">${e.pricePerPerson} / person</strong>` : '',
+                e.rating ? `<span style="font-size:.85rem">⭐ ${e.rating}</span>` : '',
+              ].filter(Boolean).join(' &nbsp;&bull;&nbsp; ');
+              return `
             <li class="card" style="margin:0;padding:0">
               <div style="padding:14px 18px">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
                   <div style="flex:1;min-width:0">
                     <div style="font-weight:600;font-size:.9rem;margin-bottom:4px">
-                      ${e.url ? `<a href="${e.url}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${e.title} ↗</a>` : e.title}
+                      ${titleLink}
+                      <span style="font-weight:400;font-size:.78rem;color:#94a3b8"> &mdash; ${e.interest||''}</span>
                     </div>
+                    ${priceRating ? `<div style="margin-bottom:5px">${priceRating}</div>` : ''}
                     <div style="font-size:.82rem;color:#374151;margin-bottom:4px">
                       📅 ${e.date||'TBD'}${e.time ? ' at ' + e.time : ''} &nbsp;|&nbsp; 📍 ${e.location||'TBD'}
                     </div>
@@ -2008,7 +2037,7 @@ export function eventsPage(events, settings) {
                   </form>
                 </div>
               </div>
-            </li>`).join('')}
+            </li>`;}).join('')}
           </ul>
         </div>`).join('')
     : `<div class="empty" style="padding:40px 0;text-align:center;color:#94a3b8">

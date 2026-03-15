@@ -98,6 +98,12 @@ export function removeEventInterest(topic) {
   s.eventInterests = s.eventInterests.filter(t => t !== topic);
   saveSettings(s);
 }
+export function updateEventInterest(oldTopic, newTopic) {
+  const s = loadSettings();
+  const idx = s.eventInterests.indexOf(oldTopic);
+  if (idx >= 0) s.eventInterests[idx] = newTopic.trim();
+  saveSettings(s);
+}
 export function setEventsSearchSettings(enabled, intervalDays, email) {
   const s = loadSettings();
   s.eventsSearchEnabled = !!enabled;

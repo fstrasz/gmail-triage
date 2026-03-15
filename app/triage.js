@@ -10,7 +10,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, setEventsSearchSettings } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { sendEventsEmail } from "./lib/eventSearch.js";
@@ -609,6 +609,10 @@ app.post("/settings/event-interests/add", (req, res) => {
 });
 app.post("/settings/event-interests/remove", (req, res) => {
   removeEventInterest(req.body.topic || '');
+  res.redirect("/settings");
+});
+app.post("/settings/event-interests/edit", (req, res) => {
+  if (req.body.old && req.body.new) updateEventInterest(req.body.old, req.body.new);
   res.redirect("/settings");
 });
 app.post("/settings/events-search", (req, res) => {
