@@ -20,6 +20,11 @@ const DEFAULTS = {
   dailySummaryDebugEnabledAt: null,
   lastTriageAt: null,
   listsViewMode: "table",
+  eventInterests: [],
+  eventsSearchEnabled: false,
+  eventsSearchEmail: null,
+  eventsSearchIntervalDays: 7,
+  eventsSearchLastRunAt: null,
 };
 
 export function loadSettings() {
@@ -80,6 +85,29 @@ export function setDailySummarySchedule(hour, minute, intervalUnit, intervalValu
 export function setDailySummaryLastSentAt() {
   const s = loadSettings();
   s.dailySummaryLastSentAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function addEventInterest(topic) {
+  const s = loadSettings();
+  const t = topic.trim();
+  if (t && !s.eventInterests.includes(t)) s.eventInterests.push(t);
+  saveSettings(s);
+}
+export function removeEventInterest(topic) {
+  const s = loadSettings();
+  s.eventInterests = s.eventInterests.filter(t => t !== topic);
+  saveSettings(s);
+}
+export function setEventsSearchSettings(enabled, intervalDays, email) {
+  const s = loadSettings();
+  s.eventsSearchEnabled = !!enabled;
+  s.eventsSearchIntervalDays = Math.max(1, parseInt(intervalDays) || 7);
+  if (email !== undefined) s.eventsSearchEmail = email || null;
+  saveSettings(s);
+}
+export function setEventsSearchLastRunAt() {
+  const s = loadSettings();
+  s.eventsSearchLastRunAt = new Date().toISOString();
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {

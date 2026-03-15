@@ -1,7 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt } from "./settings.js";
+import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
+import { searchEventsOfInterest, sendEventsEmail } from "./eventSearch.js";
+import { upsertFoundEvents } from "./foundEvents.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -280,4 +282,49 @@ function _scheduleSummary() {
   const ms = msUntilNextSummary();
   console.log(`[scheduler] daily summary at ${fmtTime(new Date(Date.now() + ms))} (in ${Math.round(ms / 60000)} min)`);
   _summaryTimer = setTimeout(runSummary, ms);
+}
+
+// ─── Events search scheduler ───────────────────────────────────────────────────
+let _eventsTimer = null;
+let _eventsGmailGetter = null;
+
+export async function runEventsSearchNow(getGmailClient) {
+  const s = loadSettings();
+  const interests = s.eventInterests || [];
+  if (!interests.length) {
+    console.log("[scheduler] events search: no interests configured");
+    return 0;
+  }
+  console.log(`[scheduler] events search: searching for ${interests.length} interest(s)...`);
+  const events = await searchEventsOfInterest(interests, s.locations || []);
+  const added = upsertFoundEvents(events);
+  const gmail = await getGmailClient();
+  await sendEventsEmail(gmail, events, s);
+  setEventsSearchLastRunAt();
+  console.log(`[scheduler] events search complete: ${events.length} found, ${added} new`);
+  return added;
+}
+
+export function startEventsSearchScheduler(getGmailClient) {
+  _eventsGmailGetter = getGmailClient;
+  _scheduleEventsSearch();
+}
+
+function _scheduleEventsSearch() {
+  const s = loadSettings();
+  if (!s.eventsSearchEnabled) {
+    console.log("[scheduler] events search: disabled, not scheduling");
+    return;
+  }
+  const days = Math.max(1, parseInt(s.eventsSearchIntervalDays) || 7);
+  const last = s.eventsSearchLastRunAt ? new Date(s.eventsSearchLastRunAt).getTime() : null;
+  const next = last ? last + days * 86400000 : Date.now() + 60000;
+  const ms = Math.max(next - Date.now(), 60000);
+  _eventsTimer = setTimeout(async () => {
+    try { await runEventsSearchNow(_eventsGmailGetter); } catch(e) {
+      console.error(`[scheduler] events search failed: ${e.message}`);
+    }
+    _scheduleEventsSearch();
+  }, ms);
+  console.log(`[scheduler] next events search at ${fmtTime(new Date(Date.now() + ms))} (in ${Math.round(ms / 60000)} min)`);
 }

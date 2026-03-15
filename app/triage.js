@@ -5,15 +5,16 @@ import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSende
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage, rulesPage } from "./lib/pages.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, setEventsSearchSettings } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
-import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { appendLog, loadLog } from "./lib/activityLog.js";
+import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink } from "./lib/foundEvents.js";
 
 const app  = express();
 const PORT = 3000;
@@ -566,8 +567,49 @@ app.post("/settings/delete-named-backup", (req, res) => {
 });
 app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
 
+// ─── Events ────────────────────────────────────────────────────────────────────
+app.get("/events", (req, res) => {
+  const { body, script } = eventsPage(loadFoundEvents(), loadSettings());
+  res.send(shell("Events", body, script));
+});
+app.post("/events/search", async (req, res) => {
+  try {
+    await runEventsSearchNow(getGmailClient);
+  } catch(e) { console.error("events search error:", e.message); }
+  const ref = req.headers.referer || '/events';
+  res.redirect(ref.includes('/settings') ? '/settings' : '/events');
+});
+app.post("/events/ignore", (req, res) => {
+  ignoreFoundEvent(req.body.id);
+  res.redirect("/events");
+});
+app.post("/events/calendar", async (req, res) => {
+  const { id, title, date, time, location, description, url } = req.body;
+  try {
+    const calendar = await getCalendarClient();
+    const link = await createCalendarEvent(calendar, { title, date, time, location, description, url });
+    if (id) setEventCalendarLink(id, link);
+  } catch(e) { console.error("events calendar error:", e.message); }
+  res.redirect("/events");
+});
+
+// ─── Event interests settings ──────────────────────────────────────────────────
+app.post("/settings/event-interests/add", (req, res) => {
+  addEventInterest(req.body.topic || '');
+  res.redirect("/settings");
+});
+app.post("/settings/event-interests/remove", (req, res) => {
+  removeEventInterest(req.body.topic || '');
+  res.redirect("/settings");
+});
+app.post("/settings/events-search", (req, res) => {
+  setEventsSearchSettings(req.body.enabled === '1', req.body.intervalDays, req.body.email);
+  res.redirect("/settings");
+});
+
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);
   startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier, loadRules, scanAndApplyRules);
   startDailySummaryScheduler(getGmailClient);
+  startEventsSearchScheduler(getGmailClient);
 });

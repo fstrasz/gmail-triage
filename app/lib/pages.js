@@ -82,6 +82,8 @@ function sidebar({ active = '' } = {}) {
       ${item('/lists','🏷','All Lists',total||'',active==='lists')}
       ${item('/rules','⚡','Rules',loadRules().length||'',active==='rules')}
       <div class="sb-divider"></div>
+      ${item('/events','📅','Events',null,active==='events')}
+      <div class="sb-divider"></div>
       ${item('/settings','⚙️','Settings',null,active==='settings')}
     </div>
     <div class="sb-stat-block">
@@ -1400,6 +1402,52 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
         </div>
       </div>
       <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          Event Interests
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">What types of events Claude should search for in your locations</span>
+        </div>
+        ${(settings.eventInterests||[]).length
+          ? (settings.eventInterests||[]).map(t => `
+            <div class="bl-row">
+              <div class="bl-email">${t.replace(/</g,"&lt;")}</div>
+              <form method="POST" action="/settings/event-interests/remove" style="margin:0">
+                <input type="hidden" name="topic" value="${t.replace(/"/g,'&quot;')}">
+                <button class="btn btn-danger" type="submit">Remove</button>
+              </form>
+            </div>`).join("")
+          : `<div class="empty">No interests set — add topics like "wine festivals" or "outdoor concerts".</div>`}
+        <div class="add-form">
+          <input type="text" id="interest-input" placeholder="e.g. wine festivals" style="flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+          <button class="btn btn-primary" id="interest-add-btn" type="button">Add</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          Event Search Schedule
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Claude searches the web for your events of interest on a schedule</span>
+        </div>
+        <form method="POST" action="/settings/events-search" style="padding:14px 18px;display:flex;flex-direction:column;gap:12px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
+            <input type="checkbox" name="enabled" value="1" ${settings.eventsSearchEnabled ? 'checked' : ''}>
+            Enable scheduled event search
+          </label>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="font-size:.85rem;color:#374151">Every</label>
+            <input type="number" name="intervalDays" value="${settings.eventsSearchIntervalDays||7}" min="1" max="365" style="width:70px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+            <label style="font-size:.85rem;color:#374151">days</label>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="font-size:.85rem;color:#374151;width:80px">Send to</label>
+            <input type="email" name="email" value="${settings.eventsSearchEmail||settings.dailySummaryEmail||''}" placeholder="email address" style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+          </div>
+          ${settings.eventsSearchLastRunAt ? `<div style="font-size:.8rem;color:#64748b">Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}</div>` : ''}
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <button class="btn btn-secondary" type="submit" formaction="/events/search" formmethod="POST">Search Now</button>
+          </div>
+        </form>
+      </div>
+      <div class="card" style="margin-top:16px">
         <div class="card-header">Display</div>
         <form method="POST" action="/settings/lists-view-mode" style="padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
           <label style="font-size:.85rem;color:#374151;font-weight:500">Label Lists view</label>
@@ -1608,6 +1656,17 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
     </div>`;
 
   const script = `
+    var interestInput = document.getElementById('interest-input');
+    document.getElementById('interest-add-btn').onclick = function() {
+      var val = interestInput.value.trim();
+      if (!val) return;
+      var f = document.createElement('form');
+      f.method = 'POST'; f.action = '/settings/event-interests/add';
+      var i = document.createElement('input');
+      i.type = 'hidden'; i.name = 'topic'; i.value = val;
+      f.appendChild(i); document.body.appendChild(f); f.submit();
+    };
+    interestInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('interest-add-btn').click(); });
     var input = document.getElementById('loc-input');
     document.getElementById('add-btn').onclick = function() {
       var val = input.value.trim();
@@ -1877,5 +1936,114 @@ export function rulesPage(rules) {
       document.getElementById('edit-' + id).style.display = 'none';
       document.getElementById('view-' + id).style.display = 'block';
     }`;
+  return { body, script };
+}
+
+// ─── Events page ───────────────────────────────────────────────────────────────
+export function eventsPage(events, settings) {
+  const active = (events || []).filter(e => !e.ignored).sort((a, b) => (a.date||'') < (b.date||'') ? -1 : 1);
+  const interests = settings.eventInterests || [];
+
+  // Group by interest
+  const grouped = {};
+  for (const e of active) {
+    const key = e.interest || 'Other';
+    (grouped[key] = grouped[key] || []).push(e);
+  }
+
+  const lastRun = settings.eventsSearchLastRunAt
+    ? `Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}`
+    : 'Never searched';
+
+  const noInterests = !interests.length
+    ? `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:20px">
+        <div style="padding:16px 18px;color:#92400e">
+          No event interests configured. <a href="/settings" style="color:#1d4ed8">Add some in Settings</a> to start finding events.
+        </div>
+      </div>` : '';
+
+  const eventCards = active.length
+    ? Object.entries(grouped).map(([interest, evs]) => `
+        <div style="margin-bottom:24px">
+          <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${interest}</h3>
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
+            ${evs.map(e => `
+            <li class="card" style="margin:0;padding:0">
+              <div style="padding:14px 18px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:600;font-size:.9rem;margin-bottom:4px">
+                      ${e.url ? `<a href="${e.url}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${e.title} ↗</a>` : e.title}
+                    </div>
+                    <div style="font-size:.82rem;color:#374151;margin-bottom:4px">
+                      📅 ${e.date||'TBD'}${e.time ? ' at ' + e.time : ''} &nbsp;|&nbsp; 📍 ${e.location||'TBD'}
+                    </div>
+                    ${e.description ? `<div style="font-size:.82rem;color:#6b7280">${e.description}</div>` : ''}
+                    ${e.calendarEventUrl ? `<div style="margin-top:6px"><a href="${e.calendarEventUrl}" target="_blank" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ''}
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+                    ${e.url ? `<a href="${e.url}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ''}
+                    ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${e.id}')">+ Calendar</button>` : ''}
+                    <form method="POST" action="/events/ignore" style="margin:0">
+                      <input type="hidden" name="id" value="${e.id}">
+                      <button class="btn btn-danger" style="font-size:.78rem;padding:5px 10px;width:100%" type="submit">Ignore</button>
+                    </form>
+                  </div>
+                </div>
+                <div id="cal-form-${e.id}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9">
+                  <form method="POST" action="/events/calendar" style="display:flex;flex-direction:column;gap:8px">
+                    <input type="hidden" name="id" value="${e.id}">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <input type="text" name="title" value="${(e.title||'').replace(/"/g,'&quot;')}" placeholder="Title" style="flex:2;min-width:160px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="date" name="date" value="${e.date||''}" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="time" name="time" value="${e.time||''}" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    </div>
+                    <input type="text" name="location" value="${(e.location||'').replace(/"/g,'&quot;')}" placeholder="Location" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <input type="url" name="url" value="${(e.url||'').replace(/"/g,'&quot;')}" placeholder="URL (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <textarea name="description" rows="2" placeholder="Description (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;resize:vertical">${e.description||''}</textarea>
+                    <div style="display:flex;gap:8px">
+                      <button class="btn btn-primary" type="submit" style="font-size:.83rem">Add to Calendar</button>
+                      <button class="btn btn-secondary" type="button" onclick="toggleCalForm('${e.id}')" style="font-size:.83rem">Cancel</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </li>`).join('')}
+          </ul>
+        </div>`).join('')
+    : `<div class="empty" style="padding:40px 0;text-align:center;color:#94a3b8">
+        No upcoming events found yet.<br>
+        <span style="font-size:.85rem">Use "Search Now" to find events, or enable scheduled search in Settings.</span>
+      </div>`;
+
+  const nav = sidebar({ active: 'events' });
+  const body = `
+    <div class="app-layout">
+      ${nav}
+      <div class="main-content">
+        <div class="main-topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="font-weight:600;font-size:.92rem">📅 Upcoming Events</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:.78rem;color:#94a3b8">${lastRun}</span>
+            <form method="POST" action="/events/search" style="margin:0">
+              <button class="btn btn-primary" type="submit" style="font-size:.82rem">Search Now</button>
+            </form>
+          </div>
+        </div>
+        <div class="main-scroll">
+          <div style="max-width:800px;margin:0 auto;padding:20px 16px">
+            ${noInterests}
+            ${eventCards}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const script = `
+    function toggleCalForm(id) {
+      var el = document.getElementById('cal-form-' + id);
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }`;
+
   return { body, script };
 }
