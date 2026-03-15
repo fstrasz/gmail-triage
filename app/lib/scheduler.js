@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings, setDailySummaryDebug } from "./settings.js";
+import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt } from "./settings.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -207,8 +207,42 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
   await gmail.users.messages.send({ userId: "me", requestBody: { raw: encoded } });
+  setDailySummaryLastSentAt();
   console.log(`[scheduler] daily summary sent to ${to}`);
   return true;
+}
+
+// ─── Summary schedule helpers ──────────────────────────────────────────────────
+// Returns UTC ms of next occurrence of H:MM (in tz) at or after afterTs
+function nextTimeOccurrence(hour, minute, tz, afterTs) {
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "numeric", hour12: false });
+  const d = new Date(afterTs);
+  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]));
+  const curTotal = parseInt(parts.hour) * 60 + parseInt(parts.minute);
+  const targetTotal = hour * 60 + minute;
+  let minUntil = targetTotal - curTotal;
+  if (minUntil <= 0) minUntil += 24 * 60;
+  return afterTs + minUntil * 60000;
+}
+
+function msUntilNextSummary() {
+  const s = loadSettings();
+  const unit  = s.dailySummaryIntervalUnit  || "days";
+  const value = Math.max(1, parseFloat(s.dailySummaryIntervalValue) || 1);
+  const hour   = parseInt(s.dailySummaryHour   ?? 6);
+  const minute = parseInt(s.dailySummaryMinute ?? 0);
+  const tz = s.timezone || "America/Los_Angeles";
+  const now = Date.now();
+  const lastSent = s.dailySummaryLastSentAt ? new Date(s.dailySummaryLastSentAt).getTime() : null;
+
+  if (unit === "hours") {
+    const base = lastSent ?? now;
+    return Math.max(base + value * 3600000 - now, 60000);
+  }
+  const intervalMs = (unit === "weeks" ? value * 7 : value) * 24 * 3600000;
+  const earliest = lastSent ? lastSent + intervalMs : now;
+  const target = Math.max(earliest, now);
+  return Math.max(nextTimeOccurrence(hour, minute, tz, target) - now, 60000);
 }
 
 export function startDailySummaryScheduler(getGmailClient) {
@@ -222,10 +256,10 @@ export function startDailySummaryScheduler(getGmailClient) {
         console.error(`[scheduler] daily summary failed: ${e.message}`);
       }
     }
-    setTimeout(runSummary, msUntilHour(6));
+    setTimeout(runSummary, msUntilNextSummary());
   }
 
-  const ms = msUntilHour(6);
+  const ms = msUntilNextSummary();
   console.log(`[scheduler] daily summary at ${fmtTime(new Date(Date.now() + ms))} (in ${Math.round(ms / 60000)} min)`);
   setTimeout(runSummary, ms);
 }

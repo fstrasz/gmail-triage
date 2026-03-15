@@ -1459,9 +1459,9 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
       <div class="card" style="margin-top:16px">
         <div class="card-header">
           Daily Email Summary
-          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Sends a 6am summary of the previous 24h of auto-clean activity</span>
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Sends a summary of the previous 24h of auto-clean activity</span>
         </div>
-        <form method="POST" action="/settings/daily-summary" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <form method="POST" action="/settings/daily-summary" style="padding:14px 18px 10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
             <input type="checkbox" name="enabled" ${settings.dailySummaryEnabled ? "checked" : ""} style="width:16px;height:16px">
             Enabled
@@ -1470,6 +1470,23 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
             placeholder="Leave blank to send to your Gmail account"
             style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
           <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+        <form method="POST" action="/settings/daily-summary-schedule" style="padding:4px 18px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid #f1f5f9">
+          <span style="font-size:.82rem;color:#64748b;white-space:nowrap">Send at</span>
+          <input type="number" name="hour" min="0" max="23" value="${settings.dailySummaryHour ?? 6}"
+            style="width:54px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
+          <span style="font-size:.82rem;color:#64748b">:</span>
+          <input type="number" name="minute" min="0" max="59" value="${String(settings.dailySummaryMinute ?? 0).padStart(2,'0')}"
+            style="width:54px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
+          <span style="font-size:.82rem;color:#64748b;white-space:nowrap;margin-left:8px">every</span>
+          <input type="number" name="intervalValue" min="1" value="${settings.dailySummaryIntervalValue ?? 1}"
+            style="width:60px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
+          <select name="intervalUnit" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
+            <option value="hours" ${(settings.dailySummaryIntervalUnit||"days")==="hours"?"selected":""}>hours</option>
+            <option value="days"  ${(settings.dailySummaryIntervalUnit||"days")==="days" ?"selected":""}>days</option>
+            <option value="weeks" ${(settings.dailySummaryIntervalUnit||"days")==="weeks"?"selected":""}>weeks</option>
+          </select>
+          <button class="btn btn-secondary" type="submit" style="font-size:.82rem">Save Schedule</button>
         </form>
         <div style="padding:0 18px 14px;display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;gap:10px;align-items:center">

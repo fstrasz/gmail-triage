@@ -10,7 +10,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
@@ -456,6 +456,11 @@ app.post("/settings/scheduler", (req, res) => {
 app.post("/settings/daily-summary", (req, res) => {
   const { enabled, email } = req.body;
   setDailySummary(enabled === "on", email);
+  res.redirect("/settings");
+});
+app.post("/settings/daily-summary-schedule", (req, res) => {
+  const { hour, minute, intervalValue, intervalUnit } = req.body;
+  setDailySummarySchedule(hour, minute, intervalUnit, intervalValue);
   res.redirect("/settings");
 });
 app.post("/settings/daily-summary/debug", (req, res) => {

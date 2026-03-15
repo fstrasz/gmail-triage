@@ -11,6 +11,11 @@ const DEFAULTS = {
   schedulerIntervalHours: 2,
   dailySummaryEnabled: false,
   dailySummaryEmail: "",
+  dailySummaryHour: 6,
+  dailySummaryMinute: 0,
+  dailySummaryIntervalUnit: "days",
+  dailySummaryIntervalValue: 1,
+  dailySummaryLastSentAt: null,
   dailySummaryDebug: false,
   dailySummaryDebugEnabledAt: null,
   lastTriageAt: null,
@@ -61,6 +66,19 @@ export function setLastTriageAt() {
 export function setListsViewMode(mode) {
   const s = loadSettings();
   s.listsViewMode = mode === "compact" ? "compact" : "table";
+  saveSettings(s);
+}
+export function setDailySummarySchedule(hour, minute, intervalUnit, intervalValue) {
+  const s = loadSettings();
+  s.dailySummaryHour = Math.min(23, Math.max(0, parseInt(hour) || 6));
+  s.dailySummaryMinute = Math.min(59, Math.max(0, parseInt(minute) || 0));
+  s.dailySummaryIntervalUnit = ["hours", "days", "weeks"].includes(intervalUnit) ? intervalUnit : "days";
+  s.dailySummaryIntervalValue = Math.max(1, parseFloat(intervalValue) || 1);
+  saveSettings(s);
+}
+export function setDailySummaryLastSentAt() {
+  const s = loadSettings();
+  s.dailySummaryLastSentAt = new Date().toISOString();
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {
