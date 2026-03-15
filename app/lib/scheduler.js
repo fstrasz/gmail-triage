@@ -207,7 +207,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
   await gmail.users.messages.send({ userId: "me", requestBody: { raw: encoded } });
-  setDailySummaryLastSentAt();
+  if (!force) setDailySummaryLastSentAt();
   console.log(`[scheduler] daily summary sent to ${to}`);
   return true;
 }
