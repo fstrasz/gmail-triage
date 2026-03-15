@@ -323,10 +323,14 @@ function _scheduleEventsSearch() {
     console.log("[scheduler] events search: disabled, not scheduling");
     return;
   }
-  const days = Math.max(1, parseInt(s.eventsSearchIntervalDays) || 7);
-  const last = s.eventsSearchLastRunAt ? new Date(s.eventsSearchLastRunAt).getTime() : null;
-  const next = last ? last + days * 86400000 : Date.now() + 60000;
-  const ms = Math.max(next - Date.now(), 60000);
+  const days  = Math.max(1, parseInt(s.eventsSearchIntervalDays) || 7);
+  const hour   = parseInt(s.dailySummaryHour   ?? 6);
+  const minute = parseInt(s.dailySummaryMinute ?? 0);
+  const tz     = s.timezone || "America/Los_Angeles";
+  const last   = s.eventsSearchLastRunAt ? new Date(s.eventsSearchLastRunAt).getTime() : null;
+  const earliest = last ? last + days * 86400000 : Date.now();
+  const target   = Math.max(earliest, Date.now());
+  const ms = Math.max(nextTimeOccurrence(hour, minute, tz, target) - Date.now(), 60000);
   _eventsTimer = setTimeout(async () => {
     try { await runEventsSearchNow(_eventsGmailGetter); } catch(e) {
       console.error(`[scheduler] events search failed: ${e.message}`);

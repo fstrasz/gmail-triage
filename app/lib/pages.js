@@ -1433,21 +1433,23 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
       <div class="card" style="margin-top:16px">
         <div class="card-header">
           Event Search Schedule
-          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Claude searches the web for your events of interest on a schedule</span>
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Runs at the Daily Summary send time, every N days</span>
         </div>
-        <form method="POST" action="/settings/events-search" style="padding:14px 18px;display:flex;flex-direction:column;gap:12px">
+        <form method="POST" action="/settings/events-search" style="padding:14px 18px;display:flex;flex-direction:column;gap:14px">
           <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
             <input type="checkbox" name="enabled" value="1" ${settings.eventsSearchEnabled ? 'checked' : ''}>
             Enable scheduled event search
           </label>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <label style="font-size:.85rem;color:#374151">Every</label>
-            <input type="number" name="intervalDays" value="${settings.eventsSearchIntervalDays||7}" min="1" max="365" style="width:70px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
-            <label style="font-size:.85rem;color:#374151">days</label>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:.8rem;color:#64748b;font-weight:500">Run every</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" name="intervalDays" value="${settings.eventsSearchIntervalDays||7}" min="1" max="365" style="width:70px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+              <span style="font-size:.85rem;color:#374151">days, at ${String(settings.dailySummaryHour??6).padStart(2,'0')}:${String(settings.dailySummaryMinute??0).padStart(2,'0')} (set in Daily Summary)</span>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <label style="font-size:.85rem;color:#374151;width:80px">Send to</label>
-            <input type="email" name="email" value="${settings.eventsSearchEmail||settings.dailySummaryEmail||''}" placeholder="email address" style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:.8rem;color:#64748b;font-weight:500">Send results to</label>
+            <input type="text" name="email" value="${settings.eventsSearchEmail||''}" placeholder="email address (leave blank to use Daily Summary email)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
           </div>
           ${settings.eventsSearchLastRunAt ? `<div style="font-size:.8rem;color:#64748b">Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}</div>` : ''}
           <div style="display:flex;gap:10px">
