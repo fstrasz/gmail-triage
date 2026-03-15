@@ -12,7 +12,7 @@ import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
-import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
 const PORT = 3000;
@@ -461,6 +461,7 @@ app.post("/settings/daily-summary", (req, res) => {
 app.post("/settings/daily-summary-schedule", (req, res) => {
   const { hour, minute, intervalValue, intervalUnit } = req.body;
   setDailySummarySchedule(hour, minute, intervalUnit, intervalValue);
+  restartDailySummaryScheduler();
   res.redirect("/settings");
 });
 app.post("/settings/daily-summary/debug", (req, res) => {

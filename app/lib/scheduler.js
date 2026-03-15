@@ -245,12 +245,25 @@ function msUntilNextSummary() {
   return Math.max(nextTimeOccurrence(hour, minute, tz, target) - now, 60000);
 }
 
+let _summaryTimer = null;
+let _summaryGmailGetter = null;
+
 export function startDailySummaryScheduler(getGmailClient) {
+  _summaryGmailGetter = getGmailClient;
+  _scheduleSummary();
+}
+
+export function restartDailySummaryScheduler() {
+  if (_summaryTimer) { clearTimeout(_summaryTimer); _summaryTimer = null; }
+  if (_summaryGmailGetter) _scheduleSummary();
+}
+
+function _scheduleSummary() {
   async function runSummary() {
     const s = loadSettings();
     if (s.dailySummaryEnabled) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await _summaryGmailGetter();
         await sendDailySummary(gmail);
       } catch(e) {
         console.error(`[scheduler] daily summary failed: ${e.message}`);
@@ -258,10 +271,10 @@ export function startDailySummaryScheduler(getGmailClient) {
     }
     const ms2 = msUntilNextSummary();
     console.log(`[scheduler] next daily summary at ${fmtTime(new Date(Date.now() + ms2))} (in ${Math.round(ms2 / 60000)} min)`);
-    setTimeout(runSummary, ms2);
+    _summaryTimer = setTimeout(runSummary, ms2);
   }
 
   const ms = msUntilNextSummary();
   console.log(`[scheduler] daily summary at ${fmtTime(new Date(Date.now() + ms))} (in ${Math.round(ms / 60000)} min)`);
-  setTimeout(runSummary, ms);
+  _summaryTimer = setTimeout(runSummary, ms);
 }

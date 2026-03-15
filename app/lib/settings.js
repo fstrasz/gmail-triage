@@ -74,6 +74,7 @@ export function setDailySummarySchedule(hour, minute, intervalUnit, intervalValu
   s.dailySummaryMinute = Math.min(59, Math.max(0, parseInt(minute) || 0));
   s.dailySummaryIntervalUnit = ["hours", "days", "weeks"].includes(intervalUnit) ? intervalUnit : "days";
   s.dailySummaryIntervalValue = Math.max(1, parseFloat(intervalValue) || 1);
+  s.dailySummaryLastSentAt = null;
   saveSettings(s);
 }
 export function setDailySummaryLastSentAt() {
