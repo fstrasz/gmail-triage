@@ -1,11 +1,11 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
@@ -268,6 +268,22 @@ app.get("/sender", async (req, res) => {
     res.send(shell(name || email, body, script));
   } catch(e) {
     res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
+  }
+});
+
+// ─── Labeled emails browse ─────────────────────────────────────────────────────
+app.get("/labeled", async (req, res) => {
+  const { label } = req.query;
+  const allowed = ["..VIP", "..OK", ".DelPend"];
+  if (!allowed.includes(label)) return res.redirect("/");
+  try {
+    const gmail = await getGmailClient();
+    const emails = await fetchLabeledEmails(gmail, label);
+    const { body, script } = labeledPage(label, emails);
+    const titles = { "..VIP": "VIP Emails", "..OK": "OK Emails", ".DelPend": "Del. Pending" };
+    res.send(shell(titles[label], body, script));
+  } catch(e) {
+    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`));
   }
 });
 

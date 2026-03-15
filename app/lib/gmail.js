@@ -221,6 +221,30 @@ export async function fetchSenderEmails(gmail, fromEmail, maxResults = 100) {
   });
 }
 
+// ─── Fetch emails by label ─────────────────────────────────────────────────────
+export async function fetchLabeledEmails(gmail, labelName, maxResults = 200) {
+  const labelId = await ensureLabel(gmail, labelName);
+  let ids = [], pageToken;
+  do {
+    const p = { userId: "me", labelIds: [labelId], maxResults: 500 };
+    if (pageToken) p.pageToken = pageToken;
+    const r = await gmail.users.messages.list(p);
+    if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
+    pageToken = r.data.nextPageToken;
+  } while (pageToken && ids.length < maxResults);
+  ids = ids.slice(0, maxResults);
+  if (!ids.length) return [];
+  const details = await Promise.all(ids.map(id =>
+    gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] })
+  ));
+  return details.map(d => {
+    const h = d.data.payload.headers;
+    const g = n => h.find(x => x.name === n)?.value || "";
+    const lbls = d.data.labelIds || [];
+    return { id: d.data.id, subject: g("Subject"), from: g("From"), date: g("Date"), snippet: d.data.snippet, isRead: !lbls.includes("UNREAD") };
+  });
+}
+
 // ─── Trash a single message ────────────────────────────────────────────────────
 export async function trashMessage(gmail, id) {
   await gmail.users.messages.batchModify({
