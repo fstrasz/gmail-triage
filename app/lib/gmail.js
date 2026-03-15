@@ -32,7 +32,7 @@ export function extractName(from) {
   return m ? m[1].replace(/"/g, "").trim() : from;
 }
 export function fromQuery(fromEmail) {
-  return "from:" + fromEmail + " -in:trash";
+  return "from:" + fromEmail + " -in:sent -in:trash";
 }
 
 // ─── Label cache ───────────────────────────────────────────────────────────────
@@ -57,7 +57,9 @@ export async function labelSender(gmail, labelName, fromEmail, fromName = null, 
   const ids = [];
   let pageToken = null;
   do {
-    const params = { userId: "me", q: fromQuery(fromEmail), maxResults: 500 };
+    // Use in:inbox (not -in:sent) so self-sent emails (e.g. daily summary) are included
+    // while still excluding outgoing sent mail which never appears in inbox
+    const params = { userId: "me", q: "from:" + fromEmail + " in:inbox -in:trash", maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) {
