@@ -238,6 +238,11 @@ function clientScript() { return `
   function updateBlCount(d){blCount+=d;var el=document.getElementById('sb-block-count');if(el)el.textContent=blCount;}
   scanResults.forEach(function(r){addScanRow(r.email,r.reason,r.moved);});
 
+  // Auto-preview first email on load
+  (function(){
+    var first=document.querySelector('.triage-row:not(.done)');
+    if(first)openPreview(first.id.replace('row-',''));
+  })();
   function toggleSnippet(id){openPreview(id);}
   function openPreview(id){
     if(activePreviewId===id&&previewPanel.classList.contains('open')){closePreview();return;}
