@@ -287,19 +287,10 @@ function clientScript() { return `
     if(!dupes.length)return;
     dupes.forEach(function(row){
       var dupId=row.id.replace('row-','');
-      seenIds.add(dupId);
-      // Show the label badge on the duplicate card, then fade it out
+      // Just show the label badge — card stays visible and actionable
       var tag=document.getElementById('tag-'+dupId);
       if(tag){tag.className='status-tag '+tagCls;tag.textContent=tagText;tag.style.display='inline-block';}
-      var actions=document.getElementById('actions-'+dupId);
-      if(actions)actions.style.display='none';
-      row.classList.add('done',rowCls);
-      actioned++;updateStats();
-      setTimeout(function(){
-        row.style.transition='opacity 1s,max-height 1s,margin 1s,padding 1s';
-        row.style.opacity='0';row.style.maxHeight='0';row.style.marginBottom='0';row.style.overflow='hidden';
-        setTimeout(function(){if(row.parentNode){row.remove();loadNext();}},1000);
-      },3000);
+      row.style.borderLeft='4px solid '+(tagCls==='tag-vip'?'#f59e0b':tagCls==='tag-ok'?'#14b8a6':tagCls==='tag-junk'?'#ef4444':'#f59e0b');
     });
   }
   function markDone(id,rowCls){
