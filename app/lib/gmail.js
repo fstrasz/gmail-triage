@@ -32,7 +32,7 @@ export function extractName(from) {
   return m ? m[1].replace(/"/g, "").trim() : from;
 }
 export function fromQuery(fromEmail) {
-  return "from:" + fromEmail + " -in:sent -in:trash";
+  return "from:" + fromEmail + " -in:trash";
 }
 
 // ─── Label cache ───────────────────────────────────────────────────────────────
