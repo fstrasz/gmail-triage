@@ -14,6 +14,7 @@ const DEFAULTS = {
   dailySummaryDebug: false,
   dailySummaryDebugEnabledAt: null,
   lastTriageAt: null,
+  listsViewMode: "table",
 };
 
 export function loadSettings() {
@@ -55,6 +56,11 @@ export function setDailySummary(enabled, email) {
 export function setLastTriageAt() {
   const s = loadSettings();
   s.lastTriageAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function setListsViewMode(mode) {
+  const s = loadSettings();
+  s.listsViewMode = mode === "compact" ? "compact" : "table";
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {

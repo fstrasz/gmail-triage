@@ -10,7 +10,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -95,7 +95,7 @@ app.post("/oklist/remove", (req, res) => { removeFromOklist(req.body.email, req.
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 app.get("/lists", (req, res) => {
   try {
-    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup(), loadNamedBackups());
+    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup(), loadNamedBackups(), loadSettings().listsViewMode);
     res.send(shell("Label Lists", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -461,6 +461,10 @@ app.post("/settings/daily-summary/debug", (req, res) => {
   setDailySummaryDebug(!!enabled);
   const s = loadSettings();
   res.json({ ok: true, enabledAt: s.dailySummaryDebugEnabledAt || null });
+});
+app.post("/settings/lists-view-mode", (req, res) => {
+  setListsViewMode(req.body.mode);
+  res.redirect("/settings");
 });
 app.post("/settings/daily-summary/test", async (req, res) => {
   try {

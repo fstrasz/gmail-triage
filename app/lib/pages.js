@@ -771,7 +771,7 @@ export function viplistPage(list) {
 }
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
-export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = []) {
+export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = [], viewMode = "table") {
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const all = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
@@ -779,27 +779,33 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     ...oklist.map(e => ({ ...e, listType: 'ok' })),
   ];
 
-  const rows = all.map(e => {
-    const badge = e.listType === 'block'
-      ? `<span class="badge-block">🚫 ${esc(e.reason || 'blocked')}</span>`
-      : e.listType === 'vip'
-      ? `<span class="badge-vip">⭐ VIP</span>`
-      : `<span class="badge-ok">✅ OK</span>`;
-    return `<tr data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+  const removeForm = (e) => `<form method="POST" action="/lists/remove" style="margin:0">
+    <input type="hidden" name="email" value="${esc(e.email)}"/>
+    <input type="hidden" name="name" value="${esc(e.name||"")}"/>
+    <input type="hidden" name="listType" value="${e.listType}"/>
+    <button class="btn btn-danger" type="submit" style="font-size:.72rem;padding:2px 7px">✕</button>
+  </form>`;
+
+  const badge = (e) => e.listType === 'block'
+    ? `<span class="badge-block">🚫 ${esc(e.reason || 'blocked')}</span>`
+    : e.listType === 'vip'
+    ? `<span class="badge-vip">⭐ VIP</span>`
+    : `<span class="badge-ok">✅ OK</span>`;
+
+  const rows = all.map(e => `<tr data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
       <td data-col="name" class="lt-td">${e.name ? `<span class="lt-name">${esc(e.name)}</span>` : `<span style="color:#cbd5e1">—</span>`}</td>
       <td data-col="email" class="lt-td"><span class="lt-email">${esc(e.email)}</span></td>
       <td data-col="date" class="lt-td" style="white-space:nowrap">${e.date ? new Date(e.date).toLocaleDateString() : "—"}</td>
-      <td data-col="label" class="lt-td">${badge}</td>
-      <td data-col="action" class="lt-td lt-action">
-        <form method="POST" action="/lists/remove" style="margin:0">
-          <input type="hidden" name="email" value="${esc(e.email)}"/>
-          <input type="hidden" name="name" value="${esc(e.name||"")}"/>
-          <input type="hidden" name="listType" value="${e.listType}"/>
-          <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:3px 9px">✕</button>
-        </form>
-      </td>
-    </tr>`;
-  }).join("");
+      <td data-col="label" class="lt-td">${badge(e)}</td>
+      <td data-col="action" class="lt-td lt-action">${removeForm(e)}</td>
+    </tr>`).join("");
+
+  const compactRows = all.map(e => `<div class="lt-compact-row" data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+    ${badge(e)}
+    <span class="lt-compact-name">${e.name ? `<strong>${esc(e.name)}</strong> <span style="color:#94a3b8">&lt;${esc(e.email)}&gt;</span>` : `<span>${esc(e.email)}</span>`}</span>
+    <span class="lt-compact-date">${e.date ? new Date(e.date).toLocaleDateString() : ""}</span>
+    ${removeForm(e)}
+  </div>`).join("");
 
   const nav = sidebar({ active: 'lists' });
 
@@ -818,6 +824,11 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
       .sort-arrow{color:#4f46e5;font-size:.68rem;margin-left:3px;vertical-align:middle}
       #list-tbody tr:hover td{background:#f8fafc}
       .lt-empty{padding:28px;text-align:center;color:#94a3b8;font-size:.85rem}
+      .lt-compact-list{display:flex;flex-direction:column}
+      .lt-compact-row{display:flex;align-items:center;gap:10px;padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:.82rem}
+      .lt-compact-row:hover{background:#f8fafc}
+      .lt-compact-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lt-compact-date{flex-shrink:0;font-size:.74rem;color:#94a3b8;white-space:nowrap}
     </style>
     <div class="app-layout">
       ${nav}
@@ -837,13 +848,17 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
             <span id="backup-status" style="font-size:.78rem;color:#64748b"></span>
           </div>
           <div class="card" style="overflow:hidden">
+            ${viewMode === 'compact' ? `
+            <div class="lt-compact-list" id="list-tbody">
+              ${all.length ? compactRows : '<div class="lt-empty">No entries yet.</div>'}
+            </div>` : `
             <div style="overflow-x:auto">
               <table class="lt-table">
                 <thead><tr id="list-thead-row"></tr></thead>
                 <tbody id="list-tbody">${all.length ? rows : ''}</tbody>
               </table>
               ${!all.length ? '<div class="lt-empty">No entries yet.</div>' : ''}
-            </div>
+            </div>`}
           </div>
           <div class="card" style="margin-top:14px">
             <div class="card-header" style="cursor:pointer" onclick="toggleAdd()">
@@ -1008,7 +1023,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     }
     function searchList(q) { _search = q.toLowerCase(); savePrefs(); applyFilters(); }
     function applyFilters() {
-      document.querySelectorAll('#list-tbody tr[data-type]').forEach(function(r) {
+      document.querySelectorAll('#list-tbody [data-type]').forEach(function(r) {
         var tm = _filter==='all' || r.dataset.type===_filter;
         var sm = !_search || r.dataset.email.includes(_search) || r.dataset.name.includes(_search);
         r.style.display = (tm && sm) ? '' : 'none';
@@ -1043,10 +1058,9 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     document.getElementById('reset-modal').addEventListener('click',function(e){if(e.target===this)closeResetModal();});
 
     // Init
+    var _viewMode = '${viewMode}';
     loadPrefs();
-    renderHeaders();
-    reorderCells();
-    sortRows();
+    if (_viewMode !== 'compact') { renderHeaders(); reorderCells(); sortRows(); }
     // Restore filter chip
     var chipMap = {all:'chip-all',block:'chip-block',vip:'chip-vip',ok:'chip-ok'};
     if (chipMap[_filter]) {
@@ -1379,6 +1393,19 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
           <button class="btn btn-primary" id="geo-btn" type="button">📍 Use My Location</button>
           <button class="btn btn-primary" id="add-btn" type="button">Add</button>
         </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">Display</div>
+        <form method="POST" action="/settings/lists-view-mode" style="padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <label style="font-size:.85rem;color:#374151;font-weight:500">Label Lists view</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer">
+            <input type="radio" name="mode" value="table" ${settings.listsViewMode !== 'compact' ? 'checked' : ''}> Table
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer">
+            <input type="radio" name="mode" value="compact" ${settings.listsViewMode === 'compact' ? 'checked' : ''}> Compact
+          </label>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="card-header">
