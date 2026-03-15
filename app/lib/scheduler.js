@@ -255,6 +255,7 @@ export function startDailySummaryScheduler(getGmailClient) {
 
 export function restartDailySummaryScheduler() {
   if (_summaryTimer) { clearTimeout(_summaryTimer); _summaryTimer = null; }
+  console.log("[scheduler] daily summary schedule updated — rescheduling");
   if (_summaryGmailGetter) _scheduleSummary();
 }
 
