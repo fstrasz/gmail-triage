@@ -12,7 +12,8 @@ export function clearScanLog() {
   try { fs.writeFileSync(LOG_PATH, "[]"); } catch {}
 }
 function appendToLog(entries) {
-  const log = loadScanLog();
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const log = loadScanLog().filter(e => e.runAt && new Date(e.runAt).getTime() > cutoff);
   log.push(...entries);
   fs.writeFileSync(LOG_PATH, JSON.stringify(log, null, 2));
 }

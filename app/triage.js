@@ -10,8 +10,8 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug } from "./lib/settings.js";
-import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt } from "./lib/settings.js";
+import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
 const PORT = 3000;
@@ -41,8 +41,10 @@ app.get("/triage", async (req, res) => {
     const viplist  = loadViplist();
     const oklist   = loadOklist();
 
-    const scheduledResults = loadScanLog();
-    clearScanLog();
+    const { lastTriageAt } = loadSettings();
+    const scheduledResults = loadScanLog()
+      .filter(e => e.runAt && (!lastTriageAt || new Date(e.runAt) > new Date(lastTriageAt)));
+    setLastTriageAt();
     const [scanClean, scanVip, scanOk] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),

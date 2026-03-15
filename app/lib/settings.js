@@ -13,6 +13,7 @@ const DEFAULTS = {
   dailySummaryEmail: "",
   dailySummaryDebug: false,
   dailySummaryDebugEnabledAt: null,
+  lastTriageAt: null,
 };
 
 export function loadSettings() {
@@ -49,6 +50,11 @@ export function setDailySummary(enabled, email) {
   const s = loadSettings();
   s.dailySummaryEnabled = !!enabled;
   s.dailySummaryEmail = (email || "").trim();
+  saveSettings(s);
+}
+export function setLastTriageAt() {
+  const s = loadSettings();
+  s.lastTriageAt = new Date().toISOString();
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {
