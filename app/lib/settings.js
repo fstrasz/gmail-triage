@@ -25,6 +25,7 @@ const DEFAULTS = {
   eventsSearchEmail: null,
   eventsSearchIntervalDays: 7,
   eventsSearchLastRunAt: null,
+  scannedEmailIds: [],
 };
 
 export function loadSettings() {
@@ -87,10 +88,25 @@ export function setDailySummaryLastSentAt() {
   s.dailySummaryLastSentAt = new Date().toISOString();
   saveSettings(s);
 }
+export function addScannedEmailIds(ids) {
+  const s = loadSettings();
+  const set = new Set(s.scannedEmailIds || []);
+  for (const id of ids) set.add(id);
+  s.scannedEmailIds = [...set].slice(-2000); // cap to prevent unbounded growth
+  saveSettings(s);
+}
+export function clearScannedEmailIds() {
+  const s = loadSettings();
+  s.scannedEmailIds = [];
+  saveSettings(s);
+}
 export function addEventInterest(topic) {
   const s = loadSettings();
   const t = topic.trim();
-  if (t && !s.eventInterests.includes(t)) s.eventInterests.push(t);
+  if (t && !s.eventInterests.includes(t)) {
+    s.eventInterests.push(t);
+    s.scannedEmailIds = []; // new interest → re-scan all recent emails
+  }
   saveSettings(s);
 }
 export function removeEventInterest(topic) {

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { loadSettings } from './settings.js';
+import { loadSettings, addScannedEmailIds } from './settings.js';
 
 export async function searchEventsOfInterest(interests, locations) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -39,7 +39,10 @@ export async function scanEmailsForEvents(gmail, interests, locations) {
   const listRes = await gmail.users.messages.list({
     userId: 'me', q: 'in:inbox newer_than:3d', maxResults: 100,
   });
-  const messages = listRes.data.messages || [];
+  const allMessages = listRes.data.messages || [];
+  const alreadyScanned = new Set(loadSettings().scannedEmailIds || []);
+  const messages = allMessages.filter(m => !alreadyScanned.has(m.id));
+  console.log(`[eventSearch] email scan: ${allMessages.length} recent, ${messages.length} new to scan`);
   if (!messages.length) return [];
 
   // Fetch subject + snippet for each message
@@ -77,6 +80,9 @@ Return [] if no relevant events found.`;
     max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   });
+
+  // Mark all fetched emails as scanned regardless of whether events were found
+  addScannedEmailIds(messages.map(m => m.id));
 
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
   const match = text.match(/\[[\s\S]*\]/);
