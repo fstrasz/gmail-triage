@@ -13,6 +13,7 @@ import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/r
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { appendLog, loadLog } from "./lib/activityLog.js";
 
 const app  = express();
 const PORT = 3000;
@@ -53,6 +54,7 @@ app.get("/triage", async (req, res) => {
       scanAndApplyRules(gmail, loadRules()),
     ]);
     const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
+    for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
     const emails = await fetchEmails(gmail, 25);
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
@@ -177,6 +179,7 @@ app.post("/api/tier", async (req, res) => {
       labeled=(r.data.messages||[]).length;
     }
     if(id) await gmail.users.messages.modify({userId:"me",id,requestBody:{removeLabelIds:["UNREAD"]}});
+    appendLog({ type:"triage", action:isVip?"vip":"ok", sender:fromEmail, senderName:fromName||null, count:labeled });
     res.json({ok:true,labeled,tier});
   }catch(e){res.status(500).json({ok:false,error:e.message,labeled:0});}
 });
@@ -189,6 +192,7 @@ app.post("/api/ok-clean", async (req, res) => {
     const { cleaned } = await keepAndClean(gmail, id, fromEmail, fromName || null);
     addToOklist(fromEmail, fromName || null);
     addToStats({cleaned});
+    appendLog({ type:"triage", action:"ok-clean", sender:fromEmail, senderName:fromName||null, count:cleaned });
     res.json({ok:true,cleaned});
   }catch(e){res.status(500).json({ok:false,error:e.message,cleaned:0});}
 });
@@ -201,6 +205,7 @@ app.post("/api/junk", async (req, res) => {
     addToBlocklist(fromEmail,"junk",fromName||null);
     const moved=await blockSender(gmail,fromEmail,fromName||null);
     addToStats({junked:moved});
+    appendLog({ type:"triage", action:"junk", sender:fromEmail, senderName:fromName||null, count:moved });
     res.json({ok:true,moved});
   }catch(e){res.status(500).json({ok:false,error:e.message,moved:0});}
 });
@@ -214,6 +219,7 @@ app.post("/api/unsub", async (req, res) => {
     addToBlocklist(fromEmail, "unsub", fromName || null);
     const moved = await blockSender(gmail, fromEmail, fromName || null);
     addToStats({junked: moved, unsubbed: 1});
+    appendLog({ type:"triage", action:"unsub", sender:fromEmail, senderName:fromName||null, count:moved, unsubResult:result });
     res.json({ok: true, moved, unsubResult: result, unsubLabel: unsubLabel(result), openTab, openTabUrl});
   } catch(e) {
     res.status(500).json({ok: false, error: e.message, moved: 0});
@@ -226,6 +232,7 @@ app.post("/api/delete", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await trashMessage(gmail, id);
+    appendLog({ type:"triage", action:"delete", msgId:id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -236,6 +243,7 @@ app.post("/api/archive", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await archiveMessage(gmail, id);
+    appendLog({ type:"triage", action:"archive", msgId:id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -427,7 +435,7 @@ app.post("/api/review/dismiss", async (req, res) => {
 // ─── Settings ──────────────────────────────────────────────────────────────────
 app.get("/settings", (req, res) => {
   try {
-    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup(), loadNamedBackups());
+    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup(), loadNamedBackups(), loadLog());
     res.send(shell("Settings", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });

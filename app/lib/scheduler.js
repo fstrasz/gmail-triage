@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt } from "./settings.js";
+import { appendLog } from "./activityLog.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -85,6 +86,7 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
   const results = [...scanClean, ...scanVip, ...scanOk, ...scanRules];
   if (results.length) {
     appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
+    for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
   }
   const sumMoved = arr => arr.reduce((s, r) => s + r.moved, 0);
   const blocklistMoved = sumMoved(scanClean);

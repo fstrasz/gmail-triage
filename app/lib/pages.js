@@ -281,18 +281,26 @@ function clientScript() { return `
     loading=false;
     if(pendingLoads>0){pendingLoads--;loadNext();}
   }
-  function removeDuplicates(fromEmail,exceptId){
+  function applyLabelToDuplicates(fromEmail,exceptId,rowCls,tagText,tagCls){
     var dupes=Array.from(document.querySelectorAll('.triage-row:not(.done)'))
       .filter(function(r){return r.dataset.fromEmail===fromEmail&&r.id!=='row-'+exceptId;});
     if(!dupes.length)return;
     dupes.forEach(function(row){
-      seenIds.add(row.id.replace('row-',''));
-      row.style.transition='opacity .4s,max-height .4s,margin .4s,padding .4s';
-      row.style.opacity='0';row.style.maxHeight='0';row.style.marginBottom='0';row.style.overflow='hidden';
-      setTimeout(function(){if(row.parentNode)row.remove();},400);
+      var dupId=row.id.replace('row-','');
+      seenIds.add(dupId);
+      // Show the label badge on the duplicate card, then fade it out
+      var tag=document.getElementById('tag-'+dupId);
+      if(tag){tag.className='status-tag '+tagCls;tag.textContent=tagText;tag.style.display='inline-block';}
+      var actions=document.getElementById('actions-'+dupId);
+      if(actions)actions.style.display='none';
+      row.classList.add('done',rowCls);
+      actioned++;updateStats();
+      setTimeout(function(){
+        row.style.transition='opacity 1s,max-height 1s,margin 1s,padding 1s';
+        row.style.opacity='0';row.style.maxHeight='0';row.style.marginBottom='0';row.style.overflow='hidden';
+        setTimeout(function(){if(row.parentNode){row.remove();loadNext();}},1000);
+      },3000);
     });
-    pendingLoads+=dupes.length;
-    loadNext();
   }
   function markDone(id,rowCls){
     var row=document.getElementById('row-'+id);
@@ -336,7 +344,7 @@ function clientScript() { return `
     var isVip=tier==='..VIP';
     setStatus(id,isVip?'tag-vip':'tag-ok',(isVip?'⭐':'✅')+' Working...');
     document.getElementById('row-'+id).style.borderLeft=isVip?'4px solid #f59e0b':'4px solid #14b8a6';
-    markDone(id,isVip?'r-vip':'r-ok');removeDuplicates(fromEmail,id);
+    markDone(id,isVip?'r-vip':'r-ok');applyLabelToDuplicates(fromEmail,id,isVip?'r-vip':'r-ok',isVip?'⭐ VIP':'✅ OK',isVip?'tag-vip':'tag-ok');
     try{
       var r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName,tier})});
       var data=await r.json();
@@ -347,7 +355,7 @@ function clientScript() { return `
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doOkClean(id,fromEmail,fromName){
-    setStatus(id,'tag-working','⏳ OK & cleaning...');markDone(id,'r-ok');removeDuplicates(fromEmail,id);
+    setStatus(id,'tag-working','⏳ OK & cleaning...');markDone(id,'r-ok');applyLabelToDuplicates(fromEmail,id,'r-ok','✅ OK','tag-ok');
     try{
       var r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName})});
       var data=await r.json();cleaned+=data.cleaned||0;updateStats();
@@ -357,7 +365,7 @@ function clientScript() { return `
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doJunk(id,fromEmail,fromName){
-    setStatus(id,'tag-working','⏳ Blocking...');markDone(id,'junked');removeDuplicates(fromEmail,id);
+    setStatus(id,'tag-working','⏳ Blocking...');markDone(id,'junked');applyLabelToDuplicates(fromEmail,id,'junked','🗑 Junked','tag-junk');
     try{
       var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName})});
       var data=await r.json();junked+=data.moved||1;updateStats();
@@ -370,7 +378,7 @@ function clientScript() { return `
   async function doUnsub(id,fromEmail,fromName){
     unsubbed++;
     var row=document.getElementById('row-'+id);
-    setStatus(id,'tag-working','⏳ Unsubscribing...');markDone(id,'unsubbed');removeDuplicates(fromEmail,id);
+    setStatus(id,'tag-working','⏳ Unsubscribing...');markDone(id,'unsubbed');applyLabelToDuplicates(fromEmail,id,'unsubbed','🚫 Unsub','tag-unsub');
     try{
       var r=await fetch('/api/unsub',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({id,fromEmail,fromName,unsubUrl:row.dataset.unsubUrl,unsubPost:row.dataset.unsubPost})});
@@ -1355,7 +1363,7 @@ const TIMEZONES = [
   ["Australia/Sydney",    "Sydney"],
 ];
 
-export function settingsPage(settings, backupInfo = null, namedBackups = []) {
+export function settingsPage(settings, backupInfo = null, namedBackups = [], activityLog = []) {
   const locations = settings.locations || [];
   const timezone  = settings.timezone  || "America/Los_Angeles";
   const locationRows = locations.length
@@ -1559,6 +1567,46 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
           </div>
         </div>
       </div>` : ""}
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          Activity Log
+          <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Last ${activityLog.length} events (newest first)</span>
+        </div>
+        ${activityLog.length === 0 ? `<div class="empty">No activity recorded yet.</div>` : `
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:6px 14px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Time</th>
+            <th style="padding:6px 14px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Action</th>
+            <th style="padding:6px 14px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Sender / Rule</th>
+            <th style="padding:6px 14px;text-align:right;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Count</th>
+          </tr></thead>
+          <tbody>${activityLog.slice(0, 200).map(e => {
+            const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            const ts = e.ts ? new Date(e.ts).toLocaleString('en-US', { timeZone: settings.timezone || 'America/Los_Angeles', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+            const actionMap = { vip:'⭐ VIP', ok:'✅ OK', 'ok-clean':'✅ OK & Clean', junk:'🗑 Junk', unsub:'🚫 Unsub', archive:'📥 Archive', delete:'🗑 Delete', 'rule-applied':'⚡ Rule' };
+            const badge = e.type === 'rule'
+              ? `<span style="background:#ede9fe;color:#6d28d9;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⚡ Rule</span>`
+              : { vip:`<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⭐ VIP</span>`,
+                  ok:`<span style="background:#ccfbf1;color:#0f766e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK</span>`,
+                  'ok-clean':`<span style="background:#a7f3d0;color:#065f46;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK & Clean</span>`,
+                  junk:`<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Junk</span>`,
+                  unsub:`<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🚫 Unsub</span>`,
+                  archive:`<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">📥 Archive</span>`,
+                  delete:`<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Delete</span>`,
+                }[e.action] || `<span style="color:#94a3b8">${esc(e.action)}</span>`;
+            const senderCell = e.type === 'rule'
+              ? `<span style="font-weight:600">${esc(e.ruleName)}</span><span style="color:#94a3b8;margin-left:6px">→ ${esc(e.label)}</span>`
+              : e.sender ? `${esc(e.senderName || e.sender)}<span style="color:#94a3b8;font-size:.76rem;margin-left:4px">&lt;${esc(e.sender)}&gt;</span>` : `<span style="color:#94a3b8">${esc(e.msgId||'—')}</span>`;
+            const count = e.count != null ? e.count : '—';
+            return `<tr style="border-bottom:1px solid #f8fafc">
+              <td style="padding:6px 14px;white-space:nowrap;color:#64748b">${ts}</td>
+              <td style="padding:6px 14px">${badge}</td>
+              <td style="padding:6px 14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${senderCell}</td>
+              <td style="padding:6px 14px;text-align:right;color:#64748b">${count}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`}
+      </div>
           </div>
         </div>
       </div>
