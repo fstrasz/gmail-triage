@@ -256,7 +256,9 @@ export function startDailySummaryScheduler(getGmailClient) {
         console.error(`[scheduler] daily summary failed: ${e.message}`);
       }
     }
-    setTimeout(runSummary, msUntilNextSummary());
+    const ms2 = msUntilNextSummary();
+    console.log(`[scheduler] next daily summary at ${fmtTime(new Date(Date.now() + ms2))} (in ${Math.round(ms2 / 60000)} min)`);
+    setTimeout(runSummary, ms2);
   }
 
   const ms = msUntilNextSummary();
