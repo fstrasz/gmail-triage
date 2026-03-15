@@ -350,6 +350,44 @@ export async function scanAndLabelTier(gmail, list, tierName) {
   return results.filter(Boolean);
 }
 
+// ─── Apply custom label rules ──────────────────────────────────────────────────
+export async function scanAndApplyRules(gmail, rules) {
+  const results = [];
+  for (const rule of rules) {
+    if (!rule.senders?.length && !rule.subjects?.length) continue;
+    const fromPart = rule.senders?.length
+      ? '(' + rule.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+      : '';
+    const subjectPart = rule.subjects?.length
+      ? '(' + rule.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+      : '';
+    const labelQ = rule.label.includes(' ') ? `"${rule.label}"` : rule.label;
+    const q = [fromPart, subjectPart].filter(Boolean).join(' ')
+      + ` in:inbox -label:${labelQ} -in:sent -in:trash`;
+    const ids = [];
+    let pageToken;
+    do {
+      const p = { userId: 'me', q, maxResults: 500 };
+      if (pageToken) p.pageToken = pageToken;
+      const r = await gmail.users.messages.list(p);
+      if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
+      pageToken = r.data.nextPageToken;
+    } while (pageToken);
+    if (!ids.length) continue;
+    const labelId = await ensureLabel(gmail, rule.label);
+    const removeLabels = rule.skipInbox ? ['INBOX', 'UNREAD'] : [];
+    for (let i = 0; i < ids.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: 'me',
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: removeLabels },
+      });
+    }
+    results.push({ email: rule.name, reason: `rule:${rule.label}`,
+                   moved: ids.length, labelName: rule.label, subjects: [] });
+  }
+  return results;
+}
+
 // ─── OK + DelPend conflict detection & resolution ──────────────────────────────
 export async function getKeptDelPendConflicts(gmail) {
   const ids = []; let pageToken = null;

@@ -1,16 +1,17 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage } from "./lib/pages.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, reviewPage, settingsPage, rulesPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
+import { loadRules, addRule, deleteRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -45,12 +46,13 @@ app.get("/triage", async (req, res) => {
     const scheduledResults = loadScanLog()
       .filter(e => e.runAt && (!lastTriageAt || new Date(e.runAt) > new Date(lastTriageAt)));
     setLastTriageAt();
-    const [scanClean, scanVip, scanOk] = await Promise.all([
+    const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
       scanAndLabelTier(gmail, oklist, "..OK"),
+      scanAndApplyRules(gmail, loadRules()),
     ]);
-    const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk];
+    const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
     const emails = await fetchEmails(gmail, 25);
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
@@ -475,11 +477,36 @@ app.post("/settings/daily-summary/test", async (req, res) => {
 });
 app.post("/settings/run-scan", async (req, res) => {
   try {
-    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved } = await runScheduledScan(
-      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier
+    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved } = await runScheduledScan(
+      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier,
+      loadRules, scanAndApplyRules
     );
-    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, timeLabel });
+    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved: rulesMoved || 0, timeLabel });
   } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+
+// ─── Rules ─────────────────────────────────────────────────────────────────────
+app.get("/rules", (req, res) => {
+  try {
+    const { body, script } = rulesPage(loadRules());
+    res.send(shell("Rules", body, script));
+  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+});
+app.post("/rules/add", (req, res) => {
+  const { name, senders, subjects, label, skipInbox } = req.body;
+  if (!label?.trim()) return res.redirect("/rules");
+  addRule({
+    name: name?.trim() || '',
+    senders: (senders || '').split('\n').map(s => s.trim()).filter(Boolean),
+    subjects: (subjects || '').split('\n').map(s => s.trim()).filter(Boolean),
+    label: label.trim(),
+    skipInbox: skipInbox === 'on',
+  });
+  res.redirect("/rules");
+});
+app.post("/rules/delete", (req, res) => {
+  deleteRule(req.body.id);
+  res.redirect("/rules");
 });
 
 // ─── Debug / Reset ─────────────────────────────────────────────────────────────
@@ -514,6 +541,6 @@ app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
 
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);
-  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier);
+  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier, loadRules, scanAndApplyRules);
   startDailySummaryScheduler(getGmailClient);
 });

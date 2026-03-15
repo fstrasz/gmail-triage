@@ -72,15 +72,17 @@ function fmtDate(date) {
 
 // ─── Scheduled scan ────────────────────────────────────────────────────────────
 export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
-                                        scanAndCleanBlocklist, scanAndLabelTier) {
+                                        scanAndCleanBlocklist, scanAndLabelTier,
+                                        loadRules, scanAndApplyRules) {
   const timeLabel = fmtTime(new Date());
   const gmail = await getGmailClient();
-  const [scanClean, scanVip, scanOk] = await Promise.all([
+  const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
     scanAndCleanBlocklist(gmail, loadBlocklist()),
     scanAndLabelTier(gmail, loadViplist(), "..VIP"),
     scanAndLabelTier(gmail, loadOklist(), "..OK"),
+    scanAndApplyRules ? scanAndApplyRules(gmail, (loadRules ? loadRules() : [])) : Promise.resolve([]),
   ]);
-  const results = [...scanClean, ...scanVip, ...scanOk];
+  const results = [...scanClean, ...scanVip, ...scanOk, ...scanRules];
   if (results.length) {
     appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
   }
@@ -88,8 +90,9 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
   const blocklistMoved = sumMoved(scanClean);
   const vipMoved = sumMoved(scanVip);
   const okMoved = sumMoved(scanOk);
-  const totalMoved = blocklistMoved + vipMoved + okMoved;
-  console.log(`[scheduler] ${timeLabel}: ${totalMoved} emails labeled (blocklist:${blocklistMoved} vip:${vipMoved} ok:${okMoved})`);
+  const rulesMoved = sumMoved(scanRules);
+  const totalMoved = blocklistMoved + vipMoved + okMoved + rulesMoved;
+  console.log(`[scheduler] ${timeLabel}: ${totalMoved} emails labeled (blocklist:${blocklistMoved} vip:${vipMoved} ok:${okMoved} rules:${rulesMoved})`);
 
   // Debug mode: send summary email after each scan, auto-disable after 12h
   const sd = loadSettings();
@@ -103,16 +106,19 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
     }
   }
 
-  return { results, timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved };
+  return { results, timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved };
 }
 
 export function startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist,
-                                scanAndCleanBlocklist, scanAndLabelTier) {
+                                scanAndCleanBlocklist, scanAndLabelTier,
+                                loadRules, scanAndApplyRules) {
   async function runScan() {
     const s = loadSettings();
     if (s.schedulerEnabled) {
       try {
-        await runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier);
+        await runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
+                               scanAndCleanBlocklist, scanAndLabelTier,
+                               loadRules, scanAndApplyRules);
       } catch(e) {
         console.error(`[scheduler] scan failed: ${e.message}`);
       }

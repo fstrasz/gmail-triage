@@ -3,6 +3,7 @@ import { extractEmail, extractName } from "./gmail.js";
 import { loadStats } from "./stats.js";
 import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
+import { loadRules } from "./rules.js";
 
 const APP_VERSION = "v0.9.1";
 
@@ -80,6 +81,7 @@ function sidebar({ active = '' } = {}) {
       ${item('/review','🤖','Review',null,active==='review')}
       <div class="sb-section">Label Lists</div>
       ${item('/lists','🏷','All Lists',total||'',active==='lists')}
+      ${item('/rules','⚡','Rules',loadRules().length||'',active==='rules')}
       <div class="sb-divider"></div>
       ${item('/settings','⚙️','Settings',null,active==='settings')}
     </div>
@@ -1662,5 +1664,99 @@ export function settingsPage(settings, backupInfo = null, namedBackups = []) {
     var _rm = document.getElementById('restore-modal');
     if (_rm) _rm.addEventListener('click', function(e) { if (e.target === this) closeRestoreModal(); });`;
 
+  return { body, script };
+}
+
+// ─── Rules page ────────────────────────────────────────────────────────────────
+export function rulesPage(rules) {
+  const nav = sidebar({ active: 'rules' });
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const ruleCards = rules.length
+    ? rules.map(r => {
+        const senderLines = (r.senders || []).map(s => `<div class="rule-chip">${esc(s)}</div>`).join('');
+        const subjectLines = (r.subjects || []).map(s => `<div class="rule-chip rule-chip-subject">${esc(s)}</div>`).join('');
+        const skipBadge = r.skipInbox ? `<span class="badge-skip">skip inbox</span>` : '';
+        return `<div class="card" style="margin-bottom:12px">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600;color:#1e293b">${esc(r.name || r.label)}</span>
+              <span class="badge-label">${esc(r.label)}</span>
+              ${skipBadge}
+            </div>
+            <form method="POST" action="/rules/delete" style="margin:0">
+              <input type="hidden" name="id" value="${esc(r.id)}"/>
+              <button class="btn btn-danger" type="submit" style="padding:4px 10px;font-size:.8rem">Delete</button>
+            </form>
+          </div>
+          <div style="padding:10px 18px 12px">
+            ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ''}
+            ${subjectLines ? `<div><span class="rule-section-label">Subject keywords</span><div class="rule-chips">${subjectLines}</div></div>` : ''}
+            ${!senderLines && !subjectLines ? `<div style="color:#94a3b8;font-size:.85rem;font-style:italic">No conditions — rule will not run</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="empty" style="margin-bottom:16px">No rules yet. Add one below.</div>`;
+
+  const addForm = `<div class="card" style="margin-bottom:12px">
+    <div class="card-header" style="cursor:pointer;user-select:none" onclick="var f=document.getElementById('add-rule-form');f.style.display=f.style.display==='none'?'block':'none';this.querySelector('.add-rule-toggle').textContent=f.style.display==='none'?'▶  Add Rule':'▼  Add Rule'">
+      <span class="add-rule-toggle">▶  Add Rule</span>
+    </div>
+    <div id="add-rule-form" style="display:none;padding:16px 18px">
+      <form method="POST" action="/rules/add">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <label class="form-label">Name <span style="color:#94a3b8;font-size:.78rem">(description, optional)</span></label>
+            <input class="form-input" type="text" name="name" placeholder="e.g. Food newsletters"/>
+          </div>
+          <div>
+            <label class="form-label">Label <span style="color:#94a3b8;font-size:.78rem">(required — creates if needed)</span></label>
+            <input class="form-input" type="text" name="label" placeholder="e.g. P/Food Stuff" required/>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <label class="form-label">Senders <span style="color:#94a3b8;font-size:.78rem">(one per line, @domain.com supported)</span></label>
+            <textarea class="form-input" name="senders" rows="4" placeholder="newsletter@example.com&#10;@foodnetwork.com"></textarea>
+          </div>
+          <div>
+            <label class="form-label">Subject keywords <span style="color:#94a3b8;font-size:.78rem">(one per line, optional)</span></label>
+            <textarea class="form-input" name="subjects" rows="4" placeholder="Weekly Digest&#10;Large Purchase Approved"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:#374151;cursor:pointer">
+            <input type="checkbox" name="skipInbox"/> Skip Inbox (archive to label)
+          </label>
+          <button class="btn btn-primary" type="submit">Save Rule</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+
+  const body = `<div class="app-layout">
+    ${nav}
+    <div class="main-content">
+      <div class="main-topbar"><span>Rules</span></div>
+      <div class="main-scroll" style="padding:20px 24px;max-width:860px">
+        <p style="font-size:.85rem;color:#64748b;margin:0 0 16px">Rules apply custom Gmail labels based on sender and/or subject. They run during triage and scheduled scans.</p>
+        ${ruleCards}
+        ${addForm}
+      </div>
+    </div>
+  </div>
+  <style>
+    .badge-label{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#e0e7ff;color:#4f46e5}
+    .badge-skip{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#fef3c7;color:#92400e}
+    .rule-section-label{display:block;font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+    .rule-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .rule-chip{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.8rem;background:#f1f5f9;color:#334155;font-family:monospace}
+    .rule-chip-subject{background:#fef9c3;color:#713f12}
+    .form-label{display:block;font-size:.82rem;font-weight:500;color:#374151;margin-bottom:4px}
+    .form-input{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.85rem;font-family:inherit}
+    .form-input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+  </style>`;
+
+  const script = ``;
   return { body, script };
 }

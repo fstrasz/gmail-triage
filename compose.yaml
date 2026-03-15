@@ -24,6 +24,7 @@ services:
       - ./app/lib/review.js:/app/lib/review.js
       - ./app/lib/settings.js:/app/lib/settings.js
       - ./app/lib/scheduler.js:/app/lib/scheduler.js
+      - ./app/lib/rules.js:/app/lib/rules.js
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json
@@ -38,6 +39,7 @@ services:
       - ./config/review.json:/app/review.json
       - ./config/settings.json:/app/settings.json
       - ./config/scan-log.json:/app/scan-log.json
+      - ./config/rules.json:/app/rules.json
 
     stdin_open: true
     tty: true
