@@ -19,9 +19,17 @@ export function addRule({ name, senders, subjects, label, skipInbox }) {
     subjects: subjects || [],
     label,
     skipInbox: !!skipInbox,
+    enabled: true,
     date: new Date().toISOString(),
   });
   saveRules(rules);
+}
+export function toggleRule(id) {
+  const rules = loadRules();
+  const idx = rules.findIndex(r => r.id === id);
+  if (idx >= 0) rules[idx].enabled = rules[idx].enabled === false ? true : false;
+  saveRules(rules);
+  return idx >= 0 ? rules[idx].enabled : null;
 }
 export function updateRule(id, updates) {
   const rules = loadRules();

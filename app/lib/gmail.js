@@ -354,6 +354,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
 export async function scanAndApplyRules(gmail, rules) {
   const results = [];
   for (const rule of rules) {
+    if (rule.enabled === false) continue;
     if (!rule.senders?.length && !rule.subjects?.length) continue;
     const fromPart = rule.senders?.length
       ? '(' + rule.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'

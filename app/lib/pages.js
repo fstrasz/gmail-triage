@@ -1674,20 +1674,31 @@ export function rulesPage(rules) {
 
   const ruleCards = rules.length
     ? rules.map(r => {
+        const enabled = r.enabled !== false;
         const senderLines = (r.senders || []).map(s => `<div class="rule-chip">${esc(s)}</div>`).join('');
         const subjectLines = (r.subjects || []).map(s => `<div class="rule-chip rule-chip-subject">${esc(s)}</div>`).join('');
         const skipBadge = r.skipInbox ? `<span class="badge-skip">skip inbox</span>` : '';
-        return `<div class="card" style="margin-bottom:12px">
+        const enabledBadge = enabled
+          ? `<span class="badge-enabled">active</span>`
+          : `<span class="badge-disabled">disabled</span>`;
+        return `<div class="card" style="margin-bottom:12px;${enabled ? '' : 'opacity:.6'}">
           <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <span style="font-weight:600;color:#1e293b">${esc(r.name || r.label)}</span>
               <span class="badge-label">${esc(r.label)}</span>
               ${skipBadge}
+              ${enabledBadge}
             </div>
-            <form method="POST" action="/rules/delete" style="margin:0">
-              <input type="hidden" name="id" value="${esc(r.id)}"/>
-              <button class="btn btn-danger" type="submit" style="padding:4px 10px;font-size:.8rem">Delete</button>
-            </form>
+            <div style="display:flex;gap:6px">
+              <form method="POST" action="/rules/toggle" style="margin:0">
+                <input type="hidden" name="id" value="${esc(r.id)}"/>
+                <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;background:${enabled ? '#f1f5f9' : '#dcfce7'};color:${enabled ? '#475569' : '#166534'}">${enabled ? 'Disable' : 'Enable'}</button>
+              </form>
+              <form method="POST" action="/rules/delete" style="margin:0">
+                <input type="hidden" name="id" value="${esc(r.id)}"/>
+                <button class="btn btn-danger" type="submit" style="padding:4px 10px;font-size:.8rem">Delete</button>
+              </form>
+            </div>
           </div>
           <div style="padding:10px 18px 12px">
             ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ''}
@@ -1748,6 +1759,8 @@ export function rulesPage(rules) {
   <style>
     .badge-label{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#e0e7ff;color:#4f46e5}
     .badge-skip{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#fef3c7;color:#92400e}
+    .badge-enabled{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#dcfce7;color:#166534}
+    .badge-disabled{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600;background:#f1f5f9;color:#94a3b8}
     .rule-section-label{display:block;font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
     .rule-chips{display:flex;flex-wrap:wrap;gap:6px}
     .rule-chip{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.8rem;background:#f1f5f9;color:#334155;font-family:monospace}

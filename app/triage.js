@@ -11,7 +11,7 @@ import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
-import { loadRules, addRule, deleteRule } from "./lib/rules.js";
+import { loadRules, addRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -506,6 +506,10 @@ app.post("/rules/add", (req, res) => {
 });
 app.post("/rules/delete", (req, res) => {
   deleteRule(req.body.id);
+  res.redirect("/rules");
+});
+app.post("/rules/toggle", (req, res) => {
+  toggleRule(req.body.id);
   res.redirect("/rules");
 });
 
