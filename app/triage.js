@@ -11,7 +11,7 @@ import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageAt, setListsViewMode } from "./lib/settings.js";
-import { loadRules, addRule, deleteRule, toggleRule } from "./lib/rules.js";
+import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary } from "./lib/scheduler.js";
 
 const app  = express();
@@ -510,6 +510,18 @@ app.post("/rules/delete", (req, res) => {
 });
 app.post("/rules/toggle", (req, res) => {
   toggleRule(req.body.id);
+  res.redirect("/rules");
+});
+app.post("/rules/edit", (req, res) => {
+  const { id, name, senders, subjects, label, skipInbox } = req.body;
+  if (!id || !label?.trim()) return res.redirect("/rules");
+  updateRule(id, {
+    name: name?.trim() || '',
+    senders: (senders || '').split('\n').map(s => s.trim()).filter(Boolean),
+    subjects: (subjects || '').split('\n').map(s => s.trim()).filter(Boolean),
+    label: label.trim(),
+    skipInbox: skipInbox === 'on',
+  });
   res.redirect("/rules");
 });
 

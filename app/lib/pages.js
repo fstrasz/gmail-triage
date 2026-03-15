@@ -1681,29 +1681,67 @@ export function rulesPage(rules) {
         const enabledBadge = enabled
           ? `<span class="badge-enabled">active</span>`
           : `<span class="badge-disabled">disabled</span>`;
+        const rid = esc(r.id);
+        const sendersVal = esc((r.senders || []).join('\n'));
+        const subjectsVal = esc((r.subjects || []).join('\n'));
         return `<div class="card" style="margin-bottom:12px;${enabled ? '' : 'opacity:.6'}">
-          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span style="font-weight:600;color:#1e293b">${esc(r.name || r.label)}</span>
-              <span class="badge-label">${esc(r.label)}</span>
-              ${skipBadge}
-              ${enabledBadge}
+          <div id="view-${rid}">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-weight:600;color:#1e293b">${esc(r.name || r.label)}</span>
+                <span class="badge-label">${esc(r.label)}</span>
+                ${skipBadge}
+                ${enabledBadge}
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn" type="button" onclick="ruleEditOpen('${rid}')" style="padding:4px 10px;font-size:.8rem;background:#f1f5f9;color:#475569">Edit</button>
+                <form method="POST" action="/rules/toggle" style="margin:0">
+                  <input type="hidden" name="id" value="${rid}"/>
+                  <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;background:${enabled ? '#f1f5f9' : '#dcfce7'};color:${enabled ? '#475569' : '#166534'}">${enabled ? 'Disable' : 'Enable'}</button>
+                </form>
+                <form method="POST" action="/rules/delete" style="margin:0">
+                  <input type="hidden" name="id" value="${rid}"/>
+                  <button class="btn btn-danger" type="submit" style="padding:4px 10px;font-size:.8rem">Delete</button>
+                </form>
+              </div>
             </div>
-            <div style="display:flex;gap:6px">
-              <form method="POST" action="/rules/toggle" style="margin:0">
-                <input type="hidden" name="id" value="${esc(r.id)}"/>
-                <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;background:${enabled ? '#f1f5f9' : '#dcfce7'};color:${enabled ? '#475569' : '#166534'}">${enabled ? 'Disable' : 'Enable'}</button>
-              </form>
-              <form method="POST" action="/rules/delete" style="margin:0">
-                <input type="hidden" name="id" value="${esc(r.id)}"/>
-                <button class="btn btn-danger" type="submit" style="padding:4px 10px;font-size:.8rem">Delete</button>
-              </form>
+            <div style="padding:10px 18px 12px">
+              ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ''}
+              ${subjectLines ? `<div><span class="rule-section-label">Subject keywords</span><div class="rule-chips">${subjectLines}</div></div>` : ''}
+              ${!senderLines && !subjectLines ? `<div style="color:#94a3b8;font-size:.85rem;font-style:italic">No conditions — rule will not run</div>` : ''}
             </div>
           </div>
-          <div style="padding:10px 18px 12px">
-            ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ''}
-            ${subjectLines ? `<div><span class="rule-section-label">Subject keywords</span><div class="rule-chips">${subjectLines}</div></div>` : ''}
-            ${!senderLines && !subjectLines ? `<div style="color:#94a3b8;font-size:.85rem;font-style:italic">No conditions — rule will not run</div>` : ''}
+          <div id="edit-${rid}" style="display:none;padding:16px 18px">
+            <form method="POST" action="/rules/edit">
+              <input type="hidden" name="id" value="${rid}"/>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div>
+                  <label class="form-label">Name</label>
+                  <input class="form-input" type="text" name="name" value="${esc(r.name || '')}"/>
+                </div>
+                <div>
+                  <label class="form-label">Label</label>
+                  <input class="form-input" type="text" name="label" value="${esc(r.label)}" required/>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div>
+                  <label class="form-label">Senders <span style="color:#94a3b8;font-size:.78rem">(one per line)</span></label>
+                  <textarea class="form-input" name="senders" rows="4">${sendersVal}</textarea>
+                </div>
+                <div>
+                  <label class="form-label">Subject keywords <span style="color:#94a3b8;font-size:.78rem">(one per line, optional)</span></label>
+                  <textarea class="form-input" name="subjects" rows="4">${subjectsVal}</textarea>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px">
+                <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:#374151;cursor:pointer">
+                  <input type="checkbox" name="skipInbox"${r.skipInbox ? ' checked' : ''}/> Skip Inbox
+                </label>
+                <button class="btn btn-primary" type="submit" style="padding:5px 14px">Save</button>
+                <button class="btn" type="button" onclick="ruleEditClose('${rid}')" style="padding:5px 12px;background:#f1f5f9;color:#475569">Cancel</button>
+              </div>
+            </form>
           </div>
         </div>`;
       }).join('')
@@ -1770,6 +1808,14 @@ export function rulesPage(rules) {
     .form-input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
   </style>`;
 
-  const script = ``;
+  const script = `
+    function ruleEditOpen(id) {
+      document.getElementById('view-' + id).style.display = 'none';
+      document.getElementById('edit-' + id).style.display = 'block';
+    }
+    function ruleEditClose(id) {
+      document.getElementById('edit-' + id).style.display = 'none';
+      document.getElementById('view-' + id).style.display = 'block';
+    }`;
   return { body, script };
 }
