@@ -3,7 +3,7 @@ import path from "path";
 import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
 import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail } from "./eventSearch.js";
-import { upsertFoundEvents } from "./foundEvents.js";
+import { upsertFoundEvents, loadFoundEvents } from "./foundEvents.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -49,19 +49,16 @@ function msUntilNextScan() {
   const startMinute = s.schedulerStartMinute ?? 0;
   const intervalMin = Math.round((s.schedulerIntervalHours ?? 2) * 60);
 
-  // Build schedule as minutes-since-midnight
-  const schedule = [];
-  for (let m = startHour * 60 + startMinute; m < 24 * 60; m += intervalMin) schedule.push(m);
-
-  const parts      = tzParts(new Date());
+  const parts       = tzParts(new Date());
   const curTotalMin = parseInt(parts.hour) * 60 + parseInt(parts.minute);
+  const startMin    = startHour * 60 + startMinute;
 
-  let nextTotalMin = schedule.find(m => m > curTotalMin);
-  let addDays = 0;
-  if (nextTotalMin === undefined) { nextTotalMin = schedule[0]; addDays = 1; }
-
-  const minUntil = addDays * 24 * 60 + nextTotalMin - curTotalMin;
-  return Math.max(minUntil * 60 * 1000, 60 * 1000);
+  // Find the next slot in the infinite recurring cycle (startMin, startMin+i, startMin+2i, ...)
+  // regardless of where curTotalMin falls — before startMin, mid-day, or past midnight.
+  // Formula: next = startMin + ceil((curTotalMin - startMin + 1) / intervalMin) * intervalMin
+  const n = Math.floor((curTotalMin - startMin) / intervalMin) + 1;
+  const next = startMin + n * intervalMin;
+  return Math.max((next - curTotalMin) * 60 * 1000, 60 * 1000);
 }
 
 function fmtTime(date) {
@@ -160,15 +157,18 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
   if (!log.length) {
     bodyHtml = `<p style="font-family:sans-serif;color:#374151">No emails were auto-cleaned in the last 24 hours.</p>`;
   } else {
-    // Group by runAt time
+    // Group by ISO minute (date+time) so midnight entries stay separate and sort correctly
     const groups = {};
     for (const e of log) {
-      const key = fmtTime(new Date(e.runAt));
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(e);
+      const d = new Date(e.runAt);
+      const key = d.toISOString().slice(0, 16); // "2026-03-15T22:00"
+      if (!groups[key]) groups[key] = { label: fmtTime(d), entries: [] };
+      groups[key].entries.push(e);
     }
     const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    const rows = Object.entries(groups).reverse().map(([time, entries]) => {
+    const rows = Object.entries(groups)
+      .sort(([a], [b]) => b.localeCompare(a))  // ISO desc = newest first
+      .map(([, { label: timeLabel, entries }]) => {
       const entryRows = entries.map(e => {
         const label = e.labelName || ".DelPend";
         const searchUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:${e.email} label:${label}`)}`;
@@ -179,7 +179,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
               <td style="padding:4px 12px;font-size:13px;color:#6b7280">${esc(e.reason.replace(/^⏰[^-]*-\s*/,""))}</td>
               <td style="padding:4px 12px;font-size:13px;text-align:right;color:#374151">${e.moved} labeled</td></tr>`;
       }).join("");
-      return `<tr><td colspan="3" style="padding:10px 12px 4px;font-size:12px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">${time}</td></tr>${entryRows}`;
+      return `<tr><td colspan="3" style="padding:10px 12px 4px;font-size:12px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">${timeLabel}</td></tr>${entryRows}`;
     }).join("");
 
     bodyHtml = `
@@ -272,6 +272,17 @@ function _scheduleSummary() {
         await sendDailySummary(gmail);
       } catch(e) {
         console.error(`[scheduler] daily summary failed: ${e.message}`);
+      }
+      // Also send current found events daily if there are any non-ignored events
+      try {
+        const activeEvents = loadFoundEvents().filter(e => !e.ignored);
+        if (activeEvents.length) {
+          const gmail = await _summaryGmailGetter();
+          await sendEventsEmail(gmail, activeEvents, loadSettings());
+          console.log(`[scheduler] daily events email sent (${activeEvents.length} events)`);
+        }
+      } catch(e) {
+        console.error(`[scheduler] daily events email failed: ${e.message}`);
       }
     }
     const ms2 = msUntilNextSummary();

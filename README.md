@@ -26,9 +26,9 @@
 
 ### Inbox Triage
 
-- **Triage queue** — Fetches up to 25 unread emails and presents them one at a time with sender, subject, and action buttons: VIP, OK, OK & Clean, Junk, Unsubscribe, Archive, Delete, and Review. As emails are actioned, new ones load automatically to keep the queue topped up.
+- **Triage queue** — Fetches up to 25 unread emails and presents them one at a time with sender, subject, and action buttons: VIP, OK, OK & Clean, Junk, Unsubscribe, Archive, Delete, and Review. As emails are actioned, new ones load automatically to keep the queue topped up. The first email in the queue auto-previews on load.
 
-- **Tier labels** — Senders are marked `..VIP` or `..OK` (the `..` prefix sorts these labels to the top of Gmail's sidebar). On each triage load, all inbox emails from known VIP/OK senders are auto-labeled. Unread VIP/OK emails still appear in the triage queue; already-read ones are skipped.
+- **Tier labels** — Senders are marked `..VIP` or `..OK` (the `..` prefix sorts these labels to the top of Gmail's sidebar). On each triage load, all inbox emails from known VIP/OK senders are auto-labeled. Unread VIP/OK emails still appear in the triage queue; already-read ones are skipped. Label changes propagate in real time to all cards in the current triage session via an activity log.
 
 - **Blocklist** — Block by email address + display name, or entire domain (`@example.com`). On triage load, all matching inbox emails are labeled `.DelPend` and removed. Blocked senders are also filtered out of the triage queue before it renders.
 
@@ -38,15 +38,45 @@
 
 ---
 
+### Labeled Email Browse Pages
+
+- **Per-label browse pages** — Dedicated pages for VIP (`/labeled/vip`), OK (`/labeled/ok`), and Del. Pending (`/labeled/delpend`) emails. Each renders as triage-style cards with a color-coded left border (gold for VIP, green for OK, red for Del. Pending) and an inline preview panel.
+
+- **Auto-preview** — The first email card auto-previews on page load. Clicking any card opens its full content in the preview panel without leaving the page.
+
+---
+
 ### Automated Cleaning
 
-- **Auto-clean scheduler** — Runs blocklist + VIP/OK scans on a configurable timer (start time + interval) while the app is running. Every scheduled run is written to `scan-log.json` with sender, label applied, count, and timestamp.
+- **Auto-clean scheduler** — Runs blocklist + VIP/OK scans on a configurable timer (start time + interval, down to 30-minute increments) while the app is running. Every scheduled run is written to `scan-log.json` with sender, label applied, count, subjects, and the email received timestamp for accurate sorting.
 
-- **Daily email summary** — Sends a digest of the previous 24 hours of auto-clean activity to your configured address. Groups results by scan run (most recent first), shows each sender moved, label applied, and sample subjects. Also triggerable on demand from Settings.
+- **Daily email summary** — Sends a digest of auto-clean activity to your configured address on a configurable schedule (time of day + interval in hours, days, or weeks). Groups results by scan run (most recent first), shows each sender moved, label applied, and sample subjects. Also triggerable on demand from Settings.
 
 - **Debug send mode** — A checkbox in Settings sends a test summary after every auto-clean scan. Auto-disables after 12 hours. The enabled timestamp is shown and updated live in the browser without polling; a client-side `setTimeout` unchecks the box at the exact expiry moment.
 
-- **Manual scan** — "Run Auto-Clean Now" button in Settings triggers an immediate scan and writes results to the scan log so they appear in the next summary email.
+- **Manual scan** — "Run Auto-Clean Now" button in Settings triggers an immediate scan and writes results to the scan log.
+
+---
+
+### Events of Interest
+
+- **Claude web search** — Provide a list of interests (e.g., "wine festivals", "trap shooting") and locations. Claude uses its web search capability to find upcoming real-world events over a configurable lookahead window, with venue, date, rating, price estimate, and a direct link. Results are grouped by location and emailed on a configurable schedule or triggered on demand.
+
+- **Inbox event scan** — In parallel with web search, Claude scans the last 3 days of actual inbox emails looking for event mentions matching your interests. De-duplicates against previously seen email IDs (reset when interests change). Surfaces anything new alongside the web search results.
+
+- **Events page** (`/events`) — Displays all found events sorted by date, grouped by location. Includes a Send Email button to re-deliver the latest results.
+
+- **Configurable interests and schedule** — Add, edit, or remove interest topics from the Settings page. Set a search interval (daily, weekly, etc.) and recipient email(s). Comma, semicolon, or space-separated recipients are all accepted.
+
+---
+
+### Custom Label Rules
+
+- **Rules engine** — Create rules that automatically apply a Gmail label when a sender's name or email matches a pattern. Rules are evaluated on every triage load and auto-clean scan.
+
+- **Enable/disable toggle** — Each rule can be toggled on or off individually without deleting it.
+
+- **Inline edit** — Edit a rule's pattern or label directly on the Rules page without navigating away.
 
 ---
 
@@ -58,7 +88,7 @@
 
 - **Compact view** — A denser single-line layout: badge, Name, email, date, remove button. Filter chips and search work identically in both modes. Switch between Table and Compact in Settings under Display.
 
-- **Blocklist backup & restore** — "Create Backup" on the Lists page saves a numbered snapshot to `blocklist.backups.json`. Resetting the blocklist auto-saves a pre-reset backup to `blocklist.backup.json`. Both are managed in Settings with options to replace or merge into the current list.
+- **Blocklist backup & restore** — "Create Backup" on the Lists page saves a numbered snapshot to `blocklist.backups.json`. Resetting the blocklist auto-saves a pre-reset backup to `blocklist.backup.json`. A backup is also saved automatically at the start of every scheduled scan. Both are managed in Settings with options to replace or merge into the current list.
 
 - **Danger zone reset** — Resetting the blocklist requires typing `RESET` in a confirmation modal. A backup is always saved before the wipe.
 
@@ -76,11 +106,11 @@
 
 ### UI and Settings
 
-- **Persistent sidebar** — A Gmail-style sidebar is present on every page (Home, Triage, Stats, Review, Lists, Settings, Sender detail). Shows navigation with sender counts and total emails labeled per tier.
+- **Persistent sidebar** — A Gmail-style sidebar is present on every page (Home, Triage, Stats, Review, Lists, Events, Rules, Settings, Sender detail). Shows navigation with sender counts and total emails labeled per tier.
 
 - **Stats dashboard** (`/stats`) — Per-action totals as large number cards, a 30-day stacked bar chart, an inbox size trend line, and recently-blocked senders.
 
-- **Settings page** (`/settings`) — Locations of interest for Claude, timezone, auto-clean schedule, daily summary email configuration, display preferences (Table vs Compact for Lists), and blocklist backup management.
+- **Settings page** (`/settings`) — Locations of interest for Claude, timezone, auto-clean schedule, daily summary email configuration and schedule, events search interests and schedule, display preferences (Table vs Compact for Lists), and blocklist backup management.
 
 ---
 
@@ -91,9 +121,9 @@
 | Runtime | Node.js 20+, ES Modules |
 | Web framework | Express 4.x |
 | Email | Gmail API (OAuth2) |
-| AI | Anthropic Claude API |
+| AI | Anthropic Claude API (`claude-sonnet-4-6`) |
 | Calendar | Google Calendar API |
-| Container | Docker / Docker Compose |
+| Container | Docker / Docker Compose (`node:20-alpine`) |
 | Storage | JSON files in `config/` — no database |
 
 ---
@@ -186,6 +216,10 @@ gmail-triage/
 │       ├── unsub.js       # Auto-unsubscribe logic
 │       ├── keepClean.js   # OK & Clean action
 │       ├── keptlist.js    # Kept senders list
+│       ├── rules.js       # Custom label rules engine
+│       ├── activityLog.js # Real-time label propagation log
+│       ├── eventSearch.js # Claude web search + inbox scan for events
+│       ├── foundEvents.js # Found events persistence
 │       ├── claude.js      # Anthropic Claude API integration
 │       ├── calendar.js    # Google Calendar API integration
 │       └── review.js      # Review queue persistence
@@ -197,8 +231,13 @@ gmail-triage/
 │   ├── blocklist.json           # Blocked senders
 │   ├── viplist.json             # VIP senders
 │   ├── oklist.json              # OK senders
+│   ├── keptlist.json            # Kept senders
+│   ├── rules.json               # Custom label rules
 │   ├── stats.json               # Running stats
 │   ├── scan-log.json            # Last 48h of auto-clean results
+│   ├── activity-log.json        # Real-time label activity log
+│   ├── review.json              # Review queue
+│   ├── found-events.json        # Events of Interest results
 │   ├── blocklist.backup.json    # Pre-reset auto backup
 │   └── blocklist.backups.json   # Named numbered backups
 ├── scripts/
@@ -206,7 +245,7 @@ gmail-triage/
 │   └── cleanup-worktrees.ps1
 ├── Dockerfile
 ├── compose.yaml
-└── deploy.ps1             # Sync to NAS via robocopy (optional)
+└── deploy.ps1             # Sync to NAS via robocopy; auto-bumps version
 ```
 
 ---
@@ -221,18 +260,27 @@ All settings persist to `config/settings.json` and are managed at `/settings`:
 | `timezone` | `America/Los_Angeles` | Used for Calendar events and scheduler display |
 | `schedulerEnabled` | `true` | Enable/disable auto-clean timer |
 | `schedulerStartHour` | `10` | Hour to start the first scan each day |
-| `schedulerIntervalHours` | `2` | Hours between scans |
+| `schedulerStartMinute` | `0` | Minute offset for scan start time |
+| `schedulerIntervalHours` | `2` | Hours between scans (supports decimals, e.g. `0.5` for 30 min) |
 | `dailySummaryEnabled` | `false` | Enable daily summary email |
 | `dailySummaryEmail` | `""` | Recipient address (blank = your Gmail account) |
+| `dailySummaryHour` | `6` | Hour to send the summary |
+| `dailySummaryMinute` | `0` | Minute offset for summary send time |
+| `dailySummaryIntervalUnit` | `"days"` | Summary interval unit: `"hours"`, `"days"`, or `"weeks"` |
+| `dailySummaryIntervalValue` | `1` | How many of the above units between sends |
 | `listsViewMode` | `"table"` | Lists page layout: `"table"` or `"compact"` |
+| `eventInterests` | `[]` | Topics for Claude event search (e.g. "wine festivals") |
+| `eventsSearchEnabled` | `false` | Enable scheduled events search |
+| `eventsSearchEmail` | `null` | Recipient(s) for events email (comma/semicolon/space separated) |
+| `eventsSearchIntervalDays` | `7` | Days between event search runs |
 
 ---
 
 ## Deployment (optional)
 
-`deploy.ps1` syncs the app to a mapped network drive via robocopy. Edit the destination path in the script to match your setup. Config files are not overwritten by the sync.
+`deploy.ps1` syncs the app to a mapped network drive via robocopy and automatically bumps the patch version in `app/lib/pages.js` before each sync. Edit the destination path in the script to match your setup. Config files are not overwritten by the sync.
 
 ```powershell
-.\deploy.ps1          # deploy
-.\deploy.ps1 -WhatIf  # dry run
+.\deploy.ps1          # deploy (bumps version, syncs files)
+.\deploy.ps1 -WhatIf  # dry run (shows what would change, no files written)
 ```

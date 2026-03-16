@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v0.9.1";
+const APP_VERSION = "v1.0.0";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -221,13 +221,62 @@ function clientScript() { return `
     }
   });
 
+  var scanEntries=[];
   function toggleScan(){scanOpen=!scanOpen;document.getElementById('scan-body').style.display=scanOpen?'':'none';document.getElementById('scan-chevron').textContent=scanOpen?'▲':'▼';}
-  function addScanRow(email,reason,moved){
+  function toggleScanGroup(id){
+    var el=document.getElementById(id),chev=document.getElementById('chev-'+id);if(!el)return;
+    var open=el.style.display!=='none';el.style.display=open?'none':'';
+    if(chev)chev.textContent=open?'▶':'▼';
+  }
+  function addScanRow(email,reason,moved,ts,subjects){
     document.getElementById('scan-card').style.display='';
     autoCleaned+=moved;document.getElementById('scan-total').textContent=autoCleaned;
-    var row=document.createElement('div');row.className='scan-row';
-    row.innerHTML='<span>'+email+' <span style="color:#94a3b8;font-size:.75rem">('+reason+')</span></span><span class="scan-badge">'+moved+' labeled</span>';
-    document.getElementById('scan-rows').appendChild(row);updateStats();
+    scanEntries.push({email:email,reason:reason,moved:moved,ts:ts||Date.now(),subjects:subjects||[]});
+    renderScanRows();updateStats();
+  }
+  function renderScanRows(){
+    var groups={};
+    scanEntries.forEach(function(e){if(!groups[e.email])groups[e.email]=[];groups[e.email].push(e);});
+    // Sort groups by most recent ts descending
+    var emails=Object.keys(groups).sort(function(a,b){
+      var maxA=Math.max.apply(null,groups[a].map(function(e){return e.ts||0;}));
+      var maxB=Math.max.apply(null,groups[b].map(function(e){return e.ts||0;}));
+      return maxB-maxA;
+    });
+    var html='';
+    function subjHtml(subjects){
+      if(!subjects||!subjects.length)return '';
+      return '<div style="font-size:.75rem;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+        +subjects.slice(0,3).map(function(s){return s.replace(/</g,'&lt;');}).join(' &middot; ')+'</div>';
+    }
+    emails.forEach(function(email){
+      var entries=groups[email].slice().sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+      var total=entries.reduce(function(s,e){return s+e.moved;},0);
+      var sid='sg_'+email.replace(/[^a-z0-9]/gi,'_');
+      var allSubj=[];entries.forEach(function(e){if(e.subjects)allSubj=allSubj.concat(e.subjects);});
+      if(entries.length===1){
+        html+='<div class="scan-row" style="flex-direction:column;align-items:flex-start;gap:2px">'
+          +'<div style="display:flex;justify-content:space-between;width:100%"><span>'+email
+          +' <span style="color:#94a3b8;font-size:.75rem">('+entries[0].reason+')</span></span>'
+          +'<span class="scan-badge">'+total+' labeled</span></div>'
+          +subjHtml(entries[0].subjects)+'</div>';
+      } else {
+        html+='<div class="scan-row" style="cursor:pointer" onclick="toggleScanGroup(\\''+sid+'\\');">'
+          +'<span>'+email+' <span style="color:#94a3b8;font-size:.75rem">('+entries.length+' runs)</span></span>'
+          +'<span style="display:flex;align-items:center;gap:8px"><span class="scan-badge">'+total+' labeled</span>'
+          +'<span id="chev-'+sid+'" style="font-size:.7rem;color:#94a3b8">▶</span></span></div>'
+          +'<div id="'+sid+'" style="display:none">';
+        entries.forEach(function(e){
+          html+='<div class="scan-row" style="padding-left:28px;background:#f8fafc;flex-direction:column;align-items:flex-start;gap:2px">'
+            +'<div style="display:flex;justify-content:space-between;width:100%">'
+            +'<span style="color:#64748b;font-size:.82rem">('+e.reason+')</span>'
+            +'<span class="scan-badge">'+e.moved+' labeled</span></div>'
+            +subjHtml(e.subjects)+'</div>';
+        });
+        html+='</div>';
+      }
+    });
+    document.getElementById('scan-rows').innerHTML=html;
   }
   function updateStats(){
     document.getElementById('stat-total').textContent=actioned+autoCleaned;
@@ -240,7 +289,7 @@ function clientScript() { return `
     document.getElementById('junk-count').textContent=junked+' junked';
   }
   function updateBlCount(d){blCount+=d;var el=document.getElementById('sb-block-count');if(el)el.textContent=blCount;}
-  scanResults.forEach(function(r){addScanRow(r.email,r.reason,r.moved);});
+  scanResults.forEach(function(r){addScanRow(r.email,r.reason,r.moved,r.latestEmailDate||(r.runAt?new Date(r.runAt).getTime():r.ts),r.subjects);});
 
   // Auto-preview first email on load
   (function(){
@@ -279,7 +328,7 @@ function clientScript() { return `
       seenSenders.forEach(function(s){seen.push(s);});seenIds.forEach(function(i){ids.push(i);});
       var r=await fetch('/api/next?seen='+encodeURIComponent(seen.join(','))+'&seenIds='+encodeURIComponent(ids.join(',')));
       var data=await r.json();
-      if(data.autoCleanedEntries)data.autoCleanedEntries.forEach(function(e){addScanRow(e.email,e.reason,e.moved);});
+      if(data.autoCleanedEntries)data.autoCleanedEntries.forEach(function(e){addScanRow(e.email,e.reason,e.moved,e.latestEmailDate||e.ts,e.subjects);});
       if(data.html){
         if(data.senderKey)seenSenders.add(data.senderKey);
         if(data.msgId)seenIds.add(data.msgId);
@@ -518,20 +567,21 @@ export function statsPage(stats, blocklist) {
 }
 
 // ─── Sender detail page ────────────────────────────────────────────────────────
-function senderEmailCard(e) {
+function senderEmailCard(e, border) {
   const dateStr = e.date ? new Date(e.date).toLocaleDateString() : "";
   const subj = (e.subject || "(no subject)").replace(/</g, "&lt;");
+  const borderStyle = border ? `border-left:4px solid ${border}` : "";
   return `
-    <div class="email-row" id="row-${e.id}">
-      <div class="email-header" style="align-items:center">
-        <input type="checkbox" class="sel-check" data-id="${e.id}" style="margin-right:10px;cursor:pointer;width:16px;height:16px;flex-shrink:0"/>
-        <div class="email-meta">
-          <div class="email-subject" style="${e.isRead ? "color:#64748b" : "font-weight:700;color:#1e293b"}">${subj}</div>
+    <div class="triage-row" id="row-${e.id}" style="${borderStyle}">
+      <div class="triage-header" onclick="openPreview('${e.id}')">
+        <input type="checkbox" class="sel-check" data-id="${e.id}" onclick="event.stopPropagation()" style="margin-right:10px;cursor:pointer;width:16px;height:16px;flex-shrink:0"/>
+        <div class="triage-meta">
+          <div class="triage-subj" style="${e.isRead ? "color:#94a3b8" : "font-weight:600;color:#1e293b"}">${subj}</div>
         </div>
-        <div class="email-date">${dateStr}</div>
+        <div class="triage-date">${dateStr}</div>
         <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
       </div>
-      <div class="email-actions" id="actions-${e.id}">
+      <div class="triage-actions" id="actions-${e.id}">
         <button class="btn btn-danger" onclick="doDelete('${e.id}')">🗑 Delete</button>
         <button class="btn btn-expand" onclick="openPreview('${e.id}')">▼ Preview</button>
       </div>
@@ -540,8 +590,17 @@ function senderEmailCard(e) {
 
 export function senderPage(emails, fromEmail, fromName) {
   const displayName = fromName || fromEmail;
+  const isVip = loadViplist().some(v => v.email === fromEmail.toLowerCase());
+  const isOk  = !isVip && loadOklist().some(o => o.email === fromEmail.toLowerCase());
+  const border = isVip ? '#f59e0b' : isOk ? '#14b8a6' : null;
+  const tierBadge = isVip
+    ? `<span style="background:#fef3c7;color:#92400e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px">⭐ VIP</span>`
+    : isOk
+    ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px">✅ OK</span>`
+    : "";
+  const firstId = emails.length ? emails[0].id : null;
   const rows = emails.length
-    ? emails.map(senderEmailCard).join("")
+    ? emails.map(e => senderEmailCard(e, border)).join("")
     : `<div class="empty">No emails found from this sender.</div>`;
 
   const nav = sidebar({ active: '' });
@@ -550,27 +609,27 @@ export function senderPage(emails, fromEmail, fromName) {
       ${nav}
       <div class="main-content">
         <div class="main-topbar">
-          <span style="font-weight:600;font-size:.92rem">👤 ${displayName.replace(/</g,"&lt;")} <span style="font-weight:400;color:#94a3b8;font-size:.8rem">&lt;${fromEmail}&gt;</span></span>
+          <span style="font-weight:600;font-size:.92rem">👤 ${displayName.replace(/</g,"&lt;")}${tierBadge} <span style="font-weight:400;color:#94a3b8;font-size:.8rem">&lt;${fromEmail}&gt;</span></span>
           <a href="javascript:history.back()" class="btn-nav">← Back</a>
         </div>
         <div style="flex:1;min-height:0;display:flex;overflow:hidden">
-          <div class="email-panel" id="email-panel">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:4px 0">
-          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;color:#475569">
-            <input type="checkbox" id="select-all" style="width:16px;height:16px;cursor:pointer"/> Select all
-          </label>
-          <button class="btn btn-danger" id="trash-sel-btn" onclick="doDeleteSelected()" style="display:none">🗑 Trash Selected</button>
-          <span style="font-size:.8rem;color:#94a3b8;margin-left:auto">${emails.length} email${emails.length !== 1 ? "s" : ""}</span>
-        </div>
-        <div id="email-list">${rows}</div>
-      </div>
-      <div class="preview-panel" id="preview-panel">
-        <div class="preview-header">
-          <span>Preview</span>
-          <button class="preview-close" onclick="closePreview()">✕</button>
-        </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
-      </div>
+          <div class="main-scroll" id="email-panel" style="flex:1;overflow-y:auto;padding:16px;min-width:0">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:4px 0">
+              <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;color:#475569">
+                <input type="checkbox" id="select-all" style="width:16px;height:16px;cursor:pointer"/> Select all
+              </label>
+              <button class="btn btn-danger" id="trash-sel-btn" onclick="doDeleteSelected()" style="display:none">🗑 Trash Selected</button>
+              <span style="font-size:.8rem;color:#94a3b8;margin-left:auto">${emails.length} email${emails.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div id="email-list">${rows}</div>
+          </div>
+          <div class="preview-panel" id="preview-panel">
+            <div class="preview-header">
+              <span>Preview</span>
+              <button class="preview-close" onclick="closePreview()">✕</button>
+            </div>
+            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
+          </div>
         </div>
       </div>
     </div>
@@ -594,11 +653,14 @@ export function senderPage(emails, fromEmail, fromName) {
       if(activePreviewId===id&&previewPanel.classList.contains('open')){closePreview();return;}
       activePreviewId=id;previewIframe.src='/api/preview/'+id;
       previewPanel.classList.add('open');applyWidths();
+      document.querySelectorAll('.triage-row').forEach(function(r){r.classList.remove('preview-active');});
+      var row=document.getElementById('row-'+id);if(row)row.classList.add('preview-active');
       document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
       var btn=document.querySelector('#row-'+id+' .btn-expand');if(btn)btn.textContent='▲ Close';
     }
     function closePreview(){
       previewPanel.classList.remove('open');applyWidths();previewIframe.src='';
+      document.querySelectorAll('.triage-row').forEach(function(r){r.classList.remove('preview-active');});
       document.querySelectorAll('.btn-expand').forEach(function(b){b.textContent='▼ Preview';});
       activePreviewId=null;
     }
@@ -622,7 +684,7 @@ export function senderPage(emails, fromEmail, fromName) {
     }
     function advancePreviewFrom(id){
       if(activePreviewId!==id)return;
-      var all=Array.from(document.querySelectorAll('.email-row'));
+      var all=Array.from(document.querySelectorAll('.triage-row'));
       var idx=all.findIndex(function(r){return r.id==='row-'+id;});
       var next=null;
       for(var i=idx+1;i<all.length;i++){if(!all[i].classList.contains('faded')){next=all[i];break;}}
@@ -665,13 +727,14 @@ export function senderPage(emails, fromEmail, fromName) {
           var c=document.querySelector('.sel-check[data-id="'+id+'"]');if(c)c.checked=false;
         });
         if(previewDeleted){
-          var remaining=Array.from(document.querySelectorAll('.email-row:not(.faded)'));
+          var remaining=Array.from(document.querySelectorAll('.triage-row:not(.faded)'));
           if(remaining.length)openPreview(remaining[0].id.replace('row-',''));else closePreview();
         }
         document.getElementById('select-all').checked=false;
         updateTrashBtn();
       }catch(e){alert('Error: '+e.message);}
     }
+    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ''}
   `;
 
   return { body, script };

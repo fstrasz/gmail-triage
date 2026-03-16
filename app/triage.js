@@ -55,7 +55,6 @@ app.get("/triage", async (req, res) => {
     const { lastTriageAt } = loadSettings();
     const scheduledResults = loadScanLog()
       .filter(e => e.runAt && (!lastTriageAt || new Date(e.runAt) > new Date(lastTriageAt)));
-    setLastTriageAt();
     const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
@@ -69,6 +68,7 @@ app.get("/triage", async (req, res) => {
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
     const { body, script } = triagePage(filtered, blocklist, savedStats, scanResults);
     res.send(shell("Triage", body, script));
+    setLastTriageAt(); // stamp after response is sent
   } catch(e) {
     res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
   }
@@ -152,7 +152,7 @@ app.get("/api/next", async (req, res) => {
         const fromRaw=g("From"),fromEmail=extractEmail(fromRaw),fromName=extractName(fromRaw);
         const senderKey=fromName+"<"+fromEmail+">";
         if(isBlocked(fromEmail,fromName)){
-          try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1}); autoCleaned++; }catch(e){console.error("auto-clean failed:",e.message);}
+          try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1,latestEmailDate:new Date(g("Date")).getTime()||Date.now(),subjects:[g("Subject")||"(no subject)"],ts:Date.now()}); autoCleaned++; }catch(e){console.error("auto-clean failed:",e.message);}
           continue;
         }
         if(seenSenders.has(senderKey))continue;

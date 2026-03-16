@@ -18,6 +18,24 @@ if ($WhatIf) {
 }
 Write-Host ""
 
+# -- Bump patch version in pages.js (skip on WhatIf) --------------------------
+$pagesFile = "$Source\app\lib\pages.js"
+$pagesContent = Get-Content $pagesFile -Raw
+if ($pagesContent -match 'APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
+    $major = $Matches[1]; $minor = $Matches[2]; $patch = [int]$Matches[3]
+    $newVersion = "v$major.$minor.$($patch + 1)"
+    if (-not $WhatIf) {
+        $pagesContent = $pagesContent -replace 'APP_VERSION = "v\d+\.\d+\.\d+"', "APP_VERSION = `"$newVersion`""
+        Set-Content $pagesFile $pagesContent -NoNewline
+        Write-Host "  Version: bumped to $newVersion" -ForegroundColor Cyan
+    } else {
+        Write-Host "  Version: would bump to $newVersion (dry run)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  Version: could not parse APP_VERSION in pages.js -- skipping bump" -ForegroundColor Yellow
+}
+Write-Host ""
+
 if (-not (Test-Path $Dest)) {
     Write-Host "ERROR: Destination not reachable: $Dest" -ForegroundColor Red
     Write-Host "Make sure Y: is mapped and the network share is online." -ForegroundColor Yellow
