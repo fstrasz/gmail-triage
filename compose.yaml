@@ -24,6 +24,11 @@ services:
       - ./app/lib/review.js:/app/lib/review.js
       - ./app/lib/settings.js:/app/lib/settings.js
       - ./app/lib/scheduler.js:/app/lib/scheduler.js
+      - ./app/lib/rules.js:/app/lib/rules.js
+      - ./app/lib/activityLog.js:/app/lib/activityLog.js
+      - ./app/lib/foundEvents.js:/app/lib/foundEvents.js
+      - ./app/lib/eventSearch.js:/app/lib/eventSearch.js
+      - ./config/activity-log.json:/app/activity-log.json
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json
