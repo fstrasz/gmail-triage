@@ -26,14 +26,17 @@ services:
       - ./app/lib/scheduler.js:/app/lib/scheduler.js
       - ./app/lib/rules.js:/app/lib/rules.js
       - ./app/lib/activityLog.js:/app/lib/activityLog.js
-      - ./app/lib/foundEvents.js:/app/lib/foundEvents.js
       - ./app/lib/eventSearch.js:/app/lib/eventSearch.js
+      - ./app/lib/foundEvents.js:/app/lib/foundEvents.js
       - ./config/activity-log.json:/app/activity-log.json
+      - ./config/found-events.json:/app/found-events.json
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json
       - ./config/token.json:/app/token.json
       - ./config/blocklist.json:/app/blocklist.json
+      - ./config/blocklist.backup.json:/app/blocklist.backup.json
+      - ./config/blocklist.backups.json:/app/blocklist.backups.json
       - ./config/stats.json:/app/stats.json
       - ./config/keptlist.json:/app/keptlist.json
       - ./config/viplist.json:/app/viplist.json
@@ -41,5 +44,8 @@ services:
       - ./config/review.json:/app/review.json
       - ./config/settings.json:/app/settings.json
       - ./config/scan-log.json:/app/scan-log.json
+      - ./config/rules.json:/app/rules.json
 
+    stdin_open: true
+    tty: true
     restart: unless-stopped

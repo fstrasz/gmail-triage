@@ -1,35 +1,46 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
-import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend, getKeptDelPendConflicts, removeDelPendFromSender, removeOkLabelFromSender } from "./lib/gmail.js";
+import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
-import { shell, emailCard } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, senderPage, reviewPage, settingsPage } from "./lib/pages.js";
+import { shell, triageEmailRow } from "./lib/html.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setLastTriageRead } from "./lib/settings.js";
-import { startScheduler, startDailySummaryScheduler, runScheduledScan, loadScanLog, clearScanLog, sendDailySummary } from "./lib/scheduler.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings } from "./lib/settings.js";
+import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
+import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
+import { sendEventsEmail } from "./lib/eventSearch.js";
+import { appendLog, loadLog } from "./lib/activityLog.js";
+import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink } from "./lib/foundEvents.js";
 
 const app  = express();
 const PORT = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
+function getListConflicts(viplist, oklist, blocklist) {
+  const byEmail = {};
+  for (const e of viplist)   { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("VIP"); }
+  for (const e of oklist)    { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("OK"); }
+  for (const e of blocklist) { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name||null, lists: [] }).lists.push("Block"); }
+  return Object.values(byEmail).filter(e => e.lists.length > 1);
+}
+
 // ─── Home ──────────────────────────────────────────────────────────────────────
 app.get("/", async (req, res) => {
   let delPendSummary = null;
-  let keptDelPendConflicts = [];
   try {
     const gmail = await getGmailClient();
-    [delPendSummary, keptDelPendConflicts] = await Promise.all([
-      getDelPendSummary(gmail),
-      getKeptDelPendConflicts(gmail),
-    ]);
+    delPendSummary = await getDelPendSummary(gmail);
   } catch(e) { /* show home page without Gmail sections if Gmail fails */ }
-  res.send(shell("Gmail Triage", homePage(loadBlocklist(), loadViplist(), loadOklist(), delPendSummary, keptDelPendConflicts)));
+  const bl = loadBlocklist(), vip = loadViplist(), ok = loadOklist();
+  const listConflicts = getListConflicts(vip, ok, bl);
+  res.send(shell("Gmail Triage", homePage(bl, vip, ok, delPendSummary, listConflicts)));
 });
 
 // ─── Triage ────────────────────────────────────────────────────────────────────
@@ -41,21 +52,23 @@ app.get("/triage", async (req, res) => {
     const viplist  = loadViplist();
     const oklist   = loadOklist();
 
-    const lastRead = loadSettings().lastTriageRead;
+    const { lastTriageAt } = loadSettings();
     const scheduledResults = loadScanLog()
-      .filter(e => !lastRead || !e.runAt || new Date(e.runAt) > new Date(lastRead));
-    setLastTriageRead();
-    const [scanClean, scanVip, scanOk] = await Promise.all([
+      .filter(e => e.runAt && (!lastTriageAt || new Date(e.runAt) > new Date(lastTriageAt)));
+    const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
       scanAndCleanBlocklist(gmail, blocklist),
       scanAndLabelTier(gmail, viplist, "..VIP"),
       scanAndLabelTier(gmail, oklist, "..OK"),
+      scanAndApplyRules(gmail, loadRules()),
     ]);
-    const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk];
+    const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
+    for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
     const emails = await fetchEmails(gmail, 25);
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
     const { body, script } = triagePage(filtered, blocklist, savedStats, scanResults);
     res.send(shell("Triage", body, script));
+    setLastTriageAt(); // stamp after response is sent
   } catch(e) {
     res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
   }
@@ -92,6 +105,30 @@ app.post("/oklist/add",    (req, res) => { const {email,name}=req.body; if(email
 app.post("/oklist/bulk",   (req, res) => { (req.body.emails||"").split("\n").map(l=>l.trim()).filter(Boolean).forEach(l=>addToOklist(l.toLowerCase())); res.redirect("/oklist"); });
 app.post("/oklist/remove", (req, res) => { removeFromOklist(req.body.email, req.body.name||null); res.redirect("/oklist"); });
 
+// ─── Unified Lists page ────────────────────────────────────────────────────────
+app.get("/lists", (req, res) => {
+  try {
+    const { body, script } = listsPage(loadBlocklist(), loadViplist(), loadOklist(), loadBlocklistBackup(), loadNamedBackups(), loadSettings().listsViewMode);
+    res.send(shell("Label Lists", body, script));
+  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+});
+app.post("/lists/remove", (req, res) => {
+  const { email, name, listType } = req.body;
+  if (listType === 'block') removeFromBlocklist(email, name);
+  else if (listType === 'vip') removeFromViplist(email, name || null);
+  else if (listType === 'ok') removeFromOklist(email, name || null);
+  res.redirect("/lists");
+});
+app.post("/lists/reset-blocklist", (req, res) => {
+  backupBlocklist();
+  resetBlocklist();
+  res.redirect("/lists");
+});
+app.post("/lists/backup", (req, res) => {
+  try { const n = createNamedBackup(); res.json({ ok: true, n }); }
+  catch(e) { res.json({ ok: false, error: e.message }); }
+});
+
 // ─── API: Next ─────────────────────────────────────────────────────────────────
 app.get("/api/next", async (req, res) => {
   const seenSenders = new Set((req.query.seen||"").split(",").filter(Boolean));
@@ -115,7 +152,7 @@ app.get("/api/next", async (req, res) => {
         const fromRaw=g("From"),fromEmail=extractEmail(fromRaw),fromName=extractName(fromRaw);
         const senderKey=fromName+"<"+fromEmail+">";
         if(isBlocked(fromEmail,fromName)){
-          try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1}); autoCleaned++; }catch(e){console.error("auto-clean failed:",e.message);}
+          try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1,latestEmailDate:new Date(g("Date")).getTime()||Date.now(),subjects:[g("Subject")||"(no subject)"],ts:Date.now()}); autoCleaned++; }catch(e){console.error("auto-clean failed:",e.message);}
           continue;
         }
         if(seenSenders.has(senderKey))continue;
@@ -123,7 +160,7 @@ app.get("/api/next", async (req, res) => {
         const tier=lbls.includes(vipId)?"..VIP":lbls.includes(okId)?"..OK":null;
         // VIP/OK emails that are already read need no action — skip them
         if(tier&&!lbls.includes("UNREAD"))continue;
-        return res.json({html:emailCard({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
+        return res.json({html:triageEmailRow({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
       }
     } while(pageToken);
     return res.json({html:null,autoCleaned,autoCleanedEntries});
@@ -151,6 +188,7 @@ app.post("/api/tier", async (req, res) => {
       labeled=(r.data.messages||[]).length;
     }
     if(id) await gmail.users.messages.modify({userId:"me",id,requestBody:{removeLabelIds:["UNREAD"]}});
+    appendLog({ type:"triage", action:isVip?"vip":"ok", sender:fromEmail, senderName:fromName||null, count:labeled });
     res.json({ok:true,labeled,tier});
   }catch(e){res.status(500).json({ok:false,error:e.message,labeled:0});}
 });
@@ -163,6 +201,7 @@ app.post("/api/ok-clean", async (req, res) => {
     const { cleaned } = await keepAndClean(gmail, id, fromEmail, fromName || null);
     addToOklist(fromEmail, fromName || null);
     addToStats({cleaned});
+    appendLog({ type:"triage", action:"ok-clean", sender:fromEmail, senderName:fromName||null, count:cleaned });
     res.json({ok:true,cleaned});
   }catch(e){res.status(500).json({ok:false,error:e.message,cleaned:0});}
 });
@@ -175,6 +214,7 @@ app.post("/api/junk", async (req, res) => {
     addToBlocklist(fromEmail,"junk",fromName||null);
     const moved=await blockSender(gmail,fromEmail,fromName||null);
     addToStats({junked:moved});
+    appendLog({ type:"triage", action:"junk", sender:fromEmail, senderName:fromName||null, count:moved });
     res.json({ok:true,moved});
   }catch(e){res.status(500).json({ok:false,error:e.message,moved:0});}
 });
@@ -188,6 +228,7 @@ app.post("/api/unsub", async (req, res) => {
     addToBlocklist(fromEmail, "unsub", fromName || null);
     const moved = await blockSender(gmail, fromEmail, fromName || null);
     addToStats({junked: moved, unsubbed: 1});
+    appendLog({ type:"triage", action:"unsub", sender:fromEmail, senderName:fromName||null, count:moved, unsubResult:result });
     res.json({ok: true, moved, unsubResult: result, unsubLabel: unsubLabel(result), openTab, openTabUrl});
   } catch(e) {
     res.status(500).json({ok: false, error: e.message, moved: 0});
@@ -200,6 +241,7 @@ app.post("/api/delete", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await trashMessage(gmail, id);
+    appendLog({ type:"triage", action:"delete", msgId:id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -210,6 +252,7 @@ app.post("/api/archive", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await archiveMessage(gmail, id);
+    appendLog({ type:"triage", action:"archive", msgId:id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -225,6 +268,22 @@ app.get("/sender", async (req, res) => {
     res.send(shell(name || email, body, script));
   } catch(e) {
     res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
+  }
+});
+
+// ─── Labeled emails browse ─────────────────────────────────────────────────────
+app.get("/labeled", async (req, res) => {
+  const { label } = req.query;
+  const allowed = ["..VIP", "..OK", ".DelPend"];
+  if (!allowed.includes(label)) return res.redirect("/");
+  try {
+    const gmail = await getGmailClient();
+    const emails = await fetchLabeledEmails(gmail, label);
+    const { body, script } = labeledPage(label, emails);
+    const titles = { "..VIP": "VIP Emails", "..OK": "OK Emails", ".DelPend": "Del. Pending" };
+    res.send(shell(titles[label], body, script));
+  } catch(e) {
+    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`));
   }
 });
 
@@ -261,23 +320,13 @@ app.post("/api/delpend/trash-sender", async (req, res) => {
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
 
-// ─── API: OK/DelPend conflict resolution ─────────────────────────────────────
-app.post("/api/conflict/remove-delpend", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const gmail = await getGmailClient();
-    await removeDelPendFromSender(gmail, email);
-    res.redirect("/");
-  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
-});
-app.post("/api/conflict/remove-ok", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const gmail = await getGmailClient();
-    await removeOkLabelFromSender(gmail, email);
-    removeFromOklist(email);          // also remove from oklist.json
-    res.redirect("/");
-  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+// ─── API: List-overlap conflict resolution ────────────────────────────────────
+app.post("/api/conflict/remove-from-list", (req, res) => {
+  const { email, list } = req.body;
+  if (list === "VIP")   removeFromViplist(email);
+  else if (list === "OK")    removeFromOklist(email);
+  else if (list === "Block") removeFromBlocklist(email);
+  res.redirect("/");
 });
 
 // ─── API: Preview ──────────────────────────────────────────────────────────────
@@ -401,7 +450,7 @@ app.post("/api/review/dismiss", async (req, res) => {
 // ─── Settings ──────────────────────────────────────────────────────────────────
 app.get("/settings", (req, res) => {
   try {
-    const { body, script } = settingsPage(loadSettings());
+    const { body, script } = settingsPage(loadSettings(), loadBlocklistBackup(), loadNamedBackups(), loadLog());
     res.send(shell("Settings", body, script));
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
@@ -432,6 +481,22 @@ app.post("/settings/daily-summary", (req, res) => {
   setDailySummary(enabled === "on", email);
   res.redirect("/settings");
 });
+app.post("/settings/daily-summary-schedule", (req, res) => {
+  const { hour, minute, intervalValue, intervalUnit } = req.body;
+  setDailySummarySchedule(hour, minute, intervalUnit, intervalValue);
+  restartDailySummaryScheduler();
+  res.redirect("/settings");
+});
+app.post("/settings/daily-summary/debug", (req, res) => {
+  const { enabled } = req.body;
+  setDailySummaryDebug(!!enabled);
+  const s = loadSettings();
+  res.json({ ok: true, enabledAt: s.dailySummaryDebugEnabledAt || null });
+});
+app.post("/settings/lists-view-mode", (req, res) => {
+  setListsViewMode(req.body.mode);
+  res.redirect("/settings");
+});
 app.post("/settings/daily-summary/test", async (req, res) => {
   try {
     const gmail = await getGmailClient();
@@ -439,17 +504,54 @@ app.post("/settings/daily-summary/test", async (req, res) => {
     res.json({ ok: true, sent });
   } catch(e) { res.json({ ok: false, error: e.message }); }
 });
-app.post("/settings/daily-summary-debug", (req, res) => {
-  setDailySummaryDebug(req.body.enabled === "on");
-  res.redirect("/settings");
-});
 app.post("/settings/run-scan", async (req, res) => {
   try {
-    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved } = await runScheduledScan(
-      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier
+    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved } = await runScheduledScan(
+      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier,
+      loadRules, scanAndApplyRules
     );
-    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, timeLabel });
+    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved: rulesMoved || 0, timeLabel });
   } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+
+// ─── Rules ─────────────────────────────────────────────────────────────────────
+app.get("/rules", (req, res) => {
+  try {
+    const { body, script } = rulesPage(loadRules());
+    res.send(shell("Rules", body, script));
+  } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
+});
+app.post("/rules/add", (req, res) => {
+  const { name, senders, subjects, label, skipInbox } = req.body;
+  if (!label?.trim()) return res.redirect("/rules");
+  addRule({
+    name: name?.trim() || '',
+    senders: (senders || '').split('\n').map(s => s.trim()).filter(Boolean),
+    subjects: (subjects || '').split('\n').map(s => s.trim()).filter(Boolean),
+    label: label.trim(),
+    skipInbox: skipInbox === 'on',
+  });
+  res.redirect("/rules");
+});
+app.post("/rules/delete", (req, res) => {
+  deleteRule(req.body.id);
+  res.redirect("/rules");
+});
+app.post("/rules/toggle", (req, res) => {
+  toggleRule(req.body.id);
+  res.redirect("/rules");
+});
+app.post("/rules/edit", (req, res) => {
+  const { id, name, senders, subjects, label, skipInbox } = req.body;
+  if (!id || !label?.trim()) return res.redirect("/rules");
+  updateRule(id, {
+    name: name?.trim() || '',
+    senders: (senders || '').split('\n').map(s => s.trim()).filter(Boolean),
+    subjects: (subjects || '').split('\n').map(s => s.trim()).filter(Boolean),
+    label: label.trim(),
+    skipInbox: skipInbox === 'on',
+  });
+  res.redirect("/rules");
 });
 
 // ─── Debug / Reset ─────────────────────────────────────────────────────────────
@@ -468,10 +570,75 @@ app.get("/debug", async (req, res) => {
   res.send("<pre style='font-family:monospace;padding:24px;line-height:1.6'>"+out.join("\n")+"</pre>");
 });
 
-app.get("/reset", (req, res) => { resetBlocklist(); resetStats(); res.redirect("/"); });
+app.post("/settings/restore-blocklist-backup", (req, res) => {
+  try { restoreBlocklistBackup(req.body.merge === 'true'); res.redirect("/settings"); }
+  catch(e) { res.redirect("/settings"); }
+});
+app.post("/settings/restore-named-backup", (req, res) => {
+  try { restoreNamedBackup(parseInt(req.body.n), req.body.merge === 'true'); res.redirect("/settings"); }
+  catch(e) { res.redirect("/settings"); }
+});
+app.post("/settings/delete-named-backup", (req, res) => {
+  try { deleteNamedBackup(parseInt(req.body.n)); } catch(e) {}
+  res.redirect("/settings");
+});
+app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
+
+// ─── Events ────────────────────────────────────────────────────────────────────
+app.get("/events", (req, res) => {
+  const { body, script } = eventsPage(loadFoundEvents(), loadSettings());
+  res.send(shell("Events", body, script));
+});
+app.post("/events/search", async (req, res) => {
+  try {
+    await runEventsSearchNow(getGmailClient);
+  } catch(e) { console.error("events search error:", e.message); }
+  const ref = req.headers.referer || '/events';
+  res.redirect(ref.includes('/settings') ? '/settings' : '/events');
+});
+app.post("/events/send-email", async (req, res) => {
+  try {
+    const gmail = await getGmailClient();
+    const active = loadFoundEvents().filter(e => !e.ignored);
+    await sendEventsEmail(gmail, active, loadSettings());
+  } catch(e) { console.error("events send-email error:", e.message); }
+  res.redirect("/events");
+});
+app.post("/events/ignore", (req, res) => {
+  ignoreFoundEvent(req.body.id);
+  res.redirect("/events");
+});
+app.post("/events/calendar", async (req, res) => {
+  const { id, title, date, time, location, description, url } = req.body;
+  try {
+    const calendar = await getCalendarClient();
+    const link = await createCalendarEvent(calendar, { title, date, time, location, description, url });
+    if (id) setEventCalendarLink(id, link);
+  } catch(e) { console.error("events calendar error:", e.message); }
+  res.redirect("/events");
+});
+
+// ─── Event interests settings ──────────────────────────────────────────────────
+app.post("/settings/event-interests/add", (req, res) => {
+  addEventInterest(req.body.topic || '');
+  res.redirect("/settings");
+});
+app.post("/settings/event-interests/remove", (req, res) => {
+  removeEventInterest(req.body.topic || '');
+  res.redirect("/settings");
+});
+app.post("/settings/event-interests/edit", (req, res) => {
+  if (req.body.old && req.body.new) updateEventInterest(req.body.old, req.body.new);
+  res.redirect("/settings");
+});
+app.post("/settings/events-search", (req, res) => {
+  setEventsSearchSettings(req.body.enabled === '1', req.body.intervalDays, req.body.email);
+  res.redirect("/settings");
+});
 
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);
-  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier);
+  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier, loadRules, scanAndApplyRules);
   startDailySummaryScheduler(getGmailClient);
+  startEventsSearchScheduler(getGmailClient);
 });

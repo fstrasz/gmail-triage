@@ -52,10 +52,62 @@ export function emailCard(e) {
     </div>`;
 }
 
+export function triageEmailRow(e) {
+  const fromEmail = extractEmail(e.from);
+  const fromName  = extractName(e.from);
+  const dateStr   = e.date ? (() => {
+    const d  = new Date(e.date);
+    const tz = loadSettings().timezone;
+    const time = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone: tz});
+    const date = d.toLocaleDateString('en-US', {timeZone: tz});
+    return `${time} ${date}`;
+  })() : "";
+  const subj     = (e.subject || "(no subject)").replace(/</g, "&lt;");
+  const safe = s => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const hasUnsub = !!e.listUnsubscribe;
+  const tier     = e.tier || null;
+
+  const tierBorder = tier === "..VIP" ? "border-left:4px solid #f59e0b"
+                   : tier === "..OK"  ? "border-left:4px solid #14b8a6" : "";
+  const tierBadge  = tier === "..VIP"
+    ? `<span style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">⭐ VIP</span>`
+    : tier === "..OK"
+    ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">✅ OK</span>`
+    : "";
+
+  const unsubStyle = hasUnsub ? "" : ' style="opacity:.6;border:2px dashed #f59e0b"';
+  const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header"';
+
+  return `
+    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+      <div class="triage-header" onclick="openPreview('${e.id}')">
+        <div class="triage-meta">
+          <div class="triage-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
+          <div class="triage-subj">${subj}</div>
+        </div>
+        <div class="triage-date">${dateStr}</div>
+        <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
+      </div>
+      <div class="triage-actions" id="actions-${e.id}">
+        <button class="btn btn-vip"        onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..VIP')">⭐ VIP</button>
+        <button class="btn btn-ok"         onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..OK')">✅ OK</button>
+        <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">✅ OK &amp; Clean</button>
+        <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
+        <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
+        <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
+        <button class="btn btn-archive"    onclick="doArchive('${e.id}')">📥 Archive</button>
+        <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
+        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
+        <button class="btn btn-expand"     onclick="openPreview('${e.id}')">▼ Preview</button>
+      </div>
+    </div>`;
+}
+
 export function shell(title, body, script = "") {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${title}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;overflow:hidden}
@@ -165,5 +217,53 @@ export function shell(title, body, script = "") {
     .review-item:hover{background:#f8fafc}
     .review-done{opacity:.55}
     .review-detail{flex:1}
+    /* ── Sidebar layout ─────────────────────────────────────── */
+    .app-layout{display:flex;height:100vh;overflow:hidden}
+    .sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;overflow-y:auto}
+    .sb-logo{padding:14px 16px;border-bottom:1px solid #e2e8f0}
+    .sb-nav{padding:6px 0;flex:1}
+    .sb-item{display:flex;align-items:center;gap:9px;padding:8px 16px;font-size:.84rem;color:#475569;text-decoration:none;border:none;background:none;width:100%;text-align:left;cursor:pointer;transition:background .12s}
+    .sb-item:hover{background:#f1f5f9;color:#1e293b}
+    .sb-active{background:#eef2ff;color:#4f46e5;font-weight:600}
+    .sb-active:hover{background:#eef2ff}
+    .sb-badge{background:#e2e8f0;color:#475569;font-size:.7rem;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:auto}
+    .sb-section{font-size:.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:10px 16px 3px}
+    .sb-divider{height:1px;background:#e2e8f0;margin:4px 8px}
+    .sb-stat-block{padding:10px 16px;border-top:1px solid #e2e8f0}
+    .sb-stat-row{display:flex;justify-content:space-between;align-items:center;font-size:.75rem;padding:2px 0;color:#64748b}
+    .sb-stat-val{font-weight:700;color:#1e293b}
+    .main-content{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#f1f5f9}
+    .main-topbar{background:#fff;border-bottom:1px solid #e2e8f0;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .main-scroll{flex:1;overflow-y:auto;padding:16px}
+    /* ── Triage rows (Variant B — actions always visible) ────── */
+    .triage-row{background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;overflow:hidden}
+    .triage-row.done{opacity:.35;pointer-events:none}
+    .triage-row.preview-active{background:#f0f9ff;border-color:#93c5fd}
+    .triage-row.junked{border-left:4px solid #ef4444!important}
+    .triage-row.unsubbed{border-left:4px solid #f59e0b!important}
+    .triage-row.r-kept{border-left:4px solid #22c55e!important}
+    .triage-row.r-vip{border-left:4px solid #f59e0b!important}
+    .triage-row.r-ok{border-left:4px solid #14b8a6!important}
+    .triage-row.r-archived{border-left:4px solid #6366f1!important}
+    .triage-header{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px}
+    .triage-meta{flex:1;min-width:0}
+    .triage-from{font-weight:600;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .triage-subj{font-size:.82rem;color:#475569;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .triage-date{font-size:.72rem;color:#94a3b8;white-space:nowrap;flex-shrink:0}
+    .triage-actions{display:flex;gap:5px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc}
+    /* ── Lists page ──────────────────────────────────────────── */
+    .list-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .list-chip{padding:5px 14px;border-radius:999px;font-size:.8rem;font-weight:600;cursor:pointer;border:1.5px solid #e2e8f0;background:#fff;color:#475569;transition:all .12s}
+    .list-chip:hover{border-color:#6366f1;color:#4f46e5}
+    .list-chip-active{background:#eef2ff;border-color:#6366f1;color:#4f46e5}
+    .list-search{flex:1;padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.85rem;min-width:180px;outline:none}
+    .list-search:focus{border-color:#6366f1}
+    .list-row{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid #f8fafc;font-size:.85rem}
+    .list-row:last-child{border-bottom:none}
+    .badge-block{background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700}
+    .badge-vip{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700}
+    .badge-ok{background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700}
+    /* preview panel inside app-layout */
+    .app-layout .preview-panel{flex:none;width:46%;min-width:340px}
   </style></head><body>${body}${script ? "<script>" + script + "<\/script>" : ""}</body></html>`;
 }

@@ -57,7 +57,8 @@ export async function labelSender(gmail, labelName, fromEmail, fromName = null, 
   const ids = [];
   let pageToken = null;
   do {
-    const params = { userId: "me", q: fromQuery(fromEmail), maxResults: 500 };
+    // in:inbox naturally excludes sent-only and trashed mail
+    const params = { userId: "me", q: "from:" + fromEmail + " in:inbox", maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) {
@@ -125,7 +126,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
   const results = await Promise.all(blocklist.map(async entry => {
     const base = entry.email.startsWith("@") ? "from:*" + entry.email : "from:" + entry.email;
     const q = base + " in:inbox -label:.DelPend -label:..OK -label:..VIP -in:sent -in:trash";
-    const ids = []; const subjects = [];
+    const ids = []; const subjects = []; const dates = [];
     let pageToken = null;
     do {
       const params = { userId: "me", q, maxResults: 500 };
@@ -143,6 +144,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
         }
         ids.push(full.data.id);
         subjects.push(full.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)");
+        dates.push(parseInt(full.data.internalDate || '0'));
       }
       pageToken = res.data.nextPageToken || null;
     } while (pageToken);
@@ -154,7 +156,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
       });
     }
-    return { email: entry.email, reason: entry.reason, moved: ids.length, labelName: ".DelPend", subjects: subjects.slice(0, 5) };
+    return { email: entry.email, reason: entry.reason, moved: ids.length, labelName: ".DelPend", subjects: subjects.slice(0, 5), latestEmailDate: dates.length ? Math.max(...dates) : null };
   }));
   return results.filter(Boolean);
 }
@@ -175,7 +177,6 @@ export async function fetchEmails(gmail, max = 25) {
   ));
 
   const emails = [];
-  const seenSenders = new Set();
   for (const d of details) {
     if (emails.length >= max) break;
     const h = d.data.payload.headers;
@@ -183,9 +184,6 @@ export async function fetchEmails(gmail, max = 25) {
     const fromRaw   = g("From");
     const fromEmail = extractEmail(fromRaw);
     const fromName  = extractName(fromRaw);
-    const senderKey = fromName + "<" + fromEmail + ">";
-    if (seenSenders.has(senderKey)) continue;
-    seenSenders.add(senderKey);
 
     const lbls  = d.data.labelIds || [];
     const vipId = labelCache["..VIP"] || "";
@@ -224,6 +222,30 @@ export async function fetchSenderEmails(gmail, fromEmail, maxResults = 100) {
   });
 }
 
+// ─── Fetch emails by label ─────────────────────────────────────────────────────
+export async function fetchLabeledEmails(gmail, labelName, maxResults = 200) {
+  const labelId = await ensureLabel(gmail, labelName);
+  let ids = [], pageToken;
+  do {
+    const p = { userId: "me", labelIds: [labelId], maxResults: 500 };
+    if (pageToken) p.pageToken = pageToken;
+    const r = await gmail.users.messages.list(p);
+    if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
+    pageToken = r.data.nextPageToken;
+  } while (pageToken && ids.length < maxResults);
+  ids = ids.slice(0, maxResults);
+  if (!ids.length) return [];
+  const details = await Promise.all(ids.map(id =>
+    gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] })
+  ));
+  return details.map(d => {
+    const h = d.data.payload.headers;
+    const g = n => h.find(x => x.name === n)?.value || "";
+    const lbls = d.data.labelIds || [];
+    return { id: d.data.id, subject: g("Subject"), from: g("From"), date: g("Date"), snippet: d.data.snippet, isRead: !lbls.includes("UNREAD") };
+  });
+}
+
 // ─── Trash a single message ────────────────────────────────────────────────────
 export async function trashMessage(gmail, id) {
   await gmail.users.messages.batchModify({
@@ -236,9 +258,10 @@ export async function trashMessage(gmail, id) {
 // Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
 // Returns exact counts for every sender in DelPend regardless of blocklist.
 export async function getDelPendSummary(gmail) {
+  const delPendId = await ensureLabel(gmail, ".DelPend");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: "label:.DelPend", maxResults: 500 };
+    const params = { userId: "me", labelIds: [delPendId], maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
@@ -310,7 +333,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const otherTier = tierName === "..VIP" ? "-label:..OK" : "-label:..VIP";
     const q = `${fromClause} in:inbox -label:${tierName} ${otherTier} -label:.DelPend -in:sent -in:trash`;
-    const ids = []; const subjects = [];
+    const ids = []; const subjects = []; const dates = [];
     let pageToken = null;
     do {
       const params = { userId: "me", q, maxResults: 500 };
@@ -322,6 +345,7 @@ export async function scanAndLabelTier(gmail, list, tierName) {
           const fh = d.data.payload.headers.find(h => h.name === "From")?.value || "";
           if (extractName(fh) !== entry.name) continue;
           subjects.push(d.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)");
+          dates.push(parseInt(d.data.internalDate || '0'));
         }
         ids.push(m.id);
       }
@@ -330,12 +354,13 @@ export async function scanAndLabelTier(gmail, list, tierName) {
 
     if (!ids.length) return null;
 
-    // For entries without name filter, fetch subjects for first 5 messages
+    // For entries without name filter, fetch subjects + dates for first 5 messages
     if (!entry.name && ids.length) {
       const fetched = await Promise.all(ids.slice(0, 5).map(id =>
         gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject"] })
       ));
       subjects.push(...fetched.map(d => d.data.payload?.headers?.find(h => h.name === "Subject")?.value || "(no subject)"));
+      dates.push(...fetched.map(d => parseInt(d.data.internalDate || '0')));
     }
 
     for (let i = 0; i < ids.length; i += 1000) {
@@ -344,9 +369,50 @@ export async function scanAndLabelTier(gmail, list, tierName) {
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId] },
       });
     }
-    return { email: entry.email, reason: `auto-${tierName}`, moved: ids.length, labelName: tierName, subjects: subjects.slice(0, 5) };
+    return { email: entry.email, reason: `auto-${tierName}`, moved: ids.length, labelName: tierName, subjects: subjects.slice(0, 5), latestEmailDate: dates.length ? Math.max(...dates) : null };
   }));
   return results.filter(Boolean);
+}
+
+// ─── Apply custom label rules ──────────────────────────────────────────────────
+export async function scanAndApplyRules(gmail, rules) {
+  const results = [];
+  for (const rule of rules) {
+    if (rule.enabled === false) continue;
+    if (!rule.senders?.length && !rule.subjects?.length) continue;
+    const fromPart = rule.senders?.length
+      ? '(' + rule.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+      : '';
+    const subjectPart = rule.subjects?.length
+      ? '(' + rule.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+      : '';
+    const labelQ = rule.label.includes(' ') ? `"${rule.label}"` : rule.label;
+    const q = [fromPart, subjectPart].filter(Boolean).join(' ')
+      + ` in:inbox -label:${labelQ} -in:sent -in:trash`;
+    const ids = [];
+    let pageToken;
+    do {
+      const p = { userId: 'me', q, maxResults: 500 };
+      if (pageToken) p.pageToken = pageToken;
+      const r = await gmail.users.messages.list(p);
+      if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
+      pageToken = r.data.nextPageToken;
+    } while (pageToken);
+    if (!ids.length) continue;
+    const labelId = await ensureLabel(gmail, rule.label);
+    const firstMsg = await gmail.users.messages.get({ userId: 'me', id: ids[0], format: 'minimal' });
+    const latestEmailDate = parseInt(firstMsg.data.internalDate || '0') || null;
+    const removeLabels = rule.skipInbox ? ['INBOX', 'UNREAD'] : [];
+    for (let i = 0; i < ids.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: 'me',
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: removeLabels },
+      });
+    }
+    results.push({ email: rule.name, reason: `rule:${rule.label}`,
+                   moved: ids.length, labelName: rule.label, subjects: [], latestEmailDate });
+  }
+  return results;
 }
 
 // ─── OK + DelPend conflict detection & resolution ──────────────────────────────

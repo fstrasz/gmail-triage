@@ -11,9 +11,21 @@ const DEFAULTS = {
   schedulerIntervalHours: 2,
   dailySummaryEnabled: false,
   dailySummaryEmail: "",
+  dailySummaryHour: 6,
+  dailySummaryMinute: 0,
+  dailySummaryIntervalUnit: "days",
+  dailySummaryIntervalValue: 1,
+  dailySummaryLastSentAt: null,
   dailySummaryDebug: false,
   dailySummaryDebugEnabledAt: null,
-  lastTriageRead: null,
+  lastTriageAt: null,
+  listsViewMode: "table",
+  eventInterests: [],
+  eventsSearchEnabled: false,
+  eventsSearchEmail: null,
+  eventsSearchIntervalDays: 7,
+  eventsSearchLastRunAt: null,
+  scannedEmailIds: [],
 };
 
 export function loadSettings() {
@@ -52,9 +64,72 @@ export function setDailySummary(enabled, email) {
   s.dailySummaryEmail = (email || "").trim();
   saveSettings(s);
 }
-export function setLastTriageRead() {
+export function setLastTriageAt() {
   const s = loadSettings();
-  s.lastTriageRead = new Date().toISOString();
+  s.lastTriageAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function setListsViewMode(mode) {
+  const s = loadSettings();
+  s.listsViewMode = mode === "compact" ? "compact" : "table";
+  saveSettings(s);
+}
+export function setDailySummarySchedule(hour, minute, intervalUnit, intervalValue) {
+  const s = loadSettings();
+  s.dailySummaryHour = Math.min(23, Math.max(0, parseInt(hour) || 6));
+  s.dailySummaryMinute = Math.min(59, Math.max(0, parseInt(minute) || 0));
+  s.dailySummaryIntervalUnit = ["hours", "days", "weeks"].includes(intervalUnit) ? intervalUnit : "days";
+  s.dailySummaryIntervalValue = Math.max(1, parseFloat(intervalValue) || 1);
+  s.dailySummaryLastSentAt = null;
+  saveSettings(s);
+}
+export function setDailySummaryLastSentAt() {
+  const s = loadSettings();
+  s.dailySummaryLastSentAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function addScannedEmailIds(ids) {
+  const s = loadSettings();
+  const set = new Set(s.scannedEmailIds || []);
+  for (const id of ids) set.add(id);
+  s.scannedEmailIds = [...set].slice(-2000); // cap to prevent unbounded growth
+  saveSettings(s);
+}
+export function clearScannedEmailIds() {
+  const s = loadSettings();
+  s.scannedEmailIds = [];
+  saveSettings(s);
+}
+export function addEventInterest(topic) {
+  const s = loadSettings();
+  const t = topic.trim();
+  if (t && !s.eventInterests.includes(t)) {
+    s.eventInterests.push(t);
+    s.scannedEmailIds = []; // new interest → re-scan all recent emails
+  }
+  saveSettings(s);
+}
+export function removeEventInterest(topic) {
+  const s = loadSettings();
+  s.eventInterests = s.eventInterests.filter(t => t !== topic);
+  saveSettings(s);
+}
+export function updateEventInterest(oldTopic, newTopic) {
+  const s = loadSettings();
+  const idx = s.eventInterests.indexOf(oldTopic);
+  if (idx >= 0) s.eventInterests[idx] = newTopic.trim();
+  saveSettings(s);
+}
+export function setEventsSearchSettings(enabled, intervalDays, email) {
+  const s = loadSettings();
+  s.eventsSearchEnabled = !!enabled;
+  s.eventsSearchIntervalDays = Math.max(1, parseInt(intervalDays) || 7);
+  if (email !== undefined) s.eventsSearchEmail = email || null;
+  saveSettings(s);
+}
+export function setEventsSearchLastRunAt() {
+  const s = loadSettings();
+  s.eventsSearchLastRunAt = new Date().toISOString();
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {
