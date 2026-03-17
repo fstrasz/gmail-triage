@@ -28,6 +28,8 @@
 
 - **Triage queue** — Fetches up to 25 unread emails and presents them one at a time with sender, subject, and action buttons: VIP, OK, OK & Clean, Junk, Unsubscribe, Archive, Delete, and Review. As emails are actioned, new ones load automatically to keep the queue topped up. The first email in the queue auto-previews on load.
 
+- **Thread-aware archive** — Archiving an email archives the entire Gmail conversation thread, not just the single message. Any other cards from the same thread currently visible in the triage queue are simultaneously greyed out and dismissed, keeping the UI in sync without a page reload.
+
 - **Tier labels** — Senders are marked `..VIP` or `..OK` (the `..` prefix sorts these labels to the top of Gmail's sidebar). On each triage load, all inbox emails from known VIP/OK senders are auto-labeled. Unread VIP/OK emails still appear in the triage queue; already-read ones are skipped. Label changes propagate in real time to all cards in the current triage session via an activity log.
 
 - **Blocklist** — Block by email address + display name, or entire domain (`@example.com`). On triage load, all matching inbox emails are labeled `.DelPend` and removed. Blocked senders are also filtered out of the triage queue before it renders.
