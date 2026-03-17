@@ -66,14 +66,19 @@ export function triageEmailRow(e) {
   const safe = s => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const hasUnsub = !!e.listUnsubscribe;
   const tier     = e.tier || null;
+  const ruleLabels = e.ruleLabels || [];
 
-  const tierBorder = tier === "..VIP" ? "border-left:4px solid #f59e0b"
-                   : tier === "..OK"  ? "border-left:4px solid #14b8a6" : "";
+  const tierBorder = tier === "..VIP" ? "border-left:4px solid #f59e0b;background:#fffbeb"
+                   : tier === "..OK"  ? "border-left:4px solid #14b8a6;background:#f0fdfa"
+                   : ruleLabels.length ? "border-left:4px solid #4f46e5;background:#eef2ff" : "";
   const tierBadge  = tier === "..VIP"
     ? `<span style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">⭐ VIP</span>`
     : tier === "..OK"
     ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">✅ OK</span>`
     : "";
+  const ruleBadges = ruleLabels.map(l =>
+    `<span style="background:#e0e7ff;color:#4f46e5;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">${l.replace(/</g,"&lt;")}</span>`
+  ).join("");
 
   const unsubStyle = hasUnsub ? "" : ' style="opacity:.6;border:2px dashed #f59e0b"';
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header"';
@@ -82,7 +87,7 @@ export function triageEmailRow(e) {
     <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId||''}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
       <div class="triage-header" onclick="openPreview('${e.id}')">
         <div class="triage-meta">
-          <div class="triage-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
+          <div class="triage-from">${fromName}${tierBadge}${ruleBadges} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
           <div class="triage-subj">${subj}</div>
         </div>
         <div class="triage-date">${dateStr}</div>

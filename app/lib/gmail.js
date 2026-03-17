@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
 import { isBlocked } from "./blocklist.js";
+import { loadRules } from "./rules.js";
 
 const TOKEN_PATH = path.join(process.cwd(), "token.json");
 const CRED_PATH  = path.join(process.cwd(), "credentials.json");
@@ -176,6 +177,14 @@ export async function fetchEmails(gmail, max = 25) {
     })
   ));
 
+  // Build rule label ID → name map for badge display
+  const ruleLabelMap = {};
+  for (const r of loadRules()) {
+    if (r.enabled === false || !r.label) continue;
+    const id = labelCache[r.label];
+    if (id) ruleLabelMap[id] = r.label;
+  }
+
   const emails = [];
   for (const d of details) {
     if (emails.length >= max) break;
@@ -193,12 +202,14 @@ export async function fetchEmails(gmail, max = 25) {
     // VIP/OK emails that are already read need no action — skip them
     if (tier && !lbls.includes("UNREAD")) continue;
 
+    const ruleLabels = lbls.map(id => ruleLabelMap[id]).filter(Boolean);
+
     emails.push({
       id: d.data.id, threadId: d.data.threadId, subject: g("Subject"), from: fromRaw,
       date: g("Date"), snippet: d.data.snippet,
       listUnsubscribe: g("List-Unsubscribe"),
       listUnsubscribePost: g("List-Unsubscribe-Post"),
-      tier,
+      tier, ruleLabels,
     });
   }
   return emails;
