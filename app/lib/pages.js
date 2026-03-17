@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.0";
+const APP_VERSION = "v1.0.2";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -440,13 +440,26 @@ function clientScript() { return `
       scheduleDismiss(id);
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
-  async function doArchive(id){
+  async function doArchive(id,threadId){
     setStatus(id,'tag-working','⏳ Archiving...');markDone(id,'r-archived');
     try{
-      await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+      await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,threadId:threadId||null})});
       document.getElementById('tag-'+id).textContent='📥 Archived';
       document.getElementById('tag-'+id).className='status-tag tag-archive';
       scheduleDismiss(id);
+      // Dismiss any other visible rows from the same thread
+      if(threadId){
+        document.querySelectorAll('[data-thread-id="'+threadId+'"]').forEach(function(row){
+          var sid=row.id.replace(/^row-/,'');
+          if(sid===id||row.classList.contains('done'))return;
+          markDone(sid,'r-archived');
+          var tag=document.getElementById('tag-'+sid);
+          if(tag){tag.textContent='📥 Archived';tag.className='status-tag tag-archive';tag.style.display='inline-block';}
+          var acts=document.getElementById('actions-'+sid);
+          if(acts)acts.style.display='none';
+          scheduleDismiss(sid);
+        });
+      }
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doDelete(id){

@@ -1,7 +1,7 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow } from "./lib/html.js";
@@ -246,12 +246,16 @@ app.post("/api/delete", async (req, res) => {
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// ─── API: Archive (read + remove inbox, single message) ──────────────────────
+// ─── API: Archive (read + remove inbox; archives full thread if threadId given) ─
 app.post("/api/archive", async (req, res) => {
-  const { id } = req.body;
+  const { id, threadId } = req.body;
   try {
     const gmail = await getGmailClient();
-    await archiveMessage(gmail, id);
+    if (threadId) {
+      await archiveThread(gmail, threadId);
+    } else {
+      await archiveMessage(gmail, id);
+    }
     appendLog({ type:"triage", action:"archive", msgId:id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }

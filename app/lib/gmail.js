@@ -194,7 +194,7 @@ export async function fetchEmails(gmail, max = 25) {
     if (tier && !lbls.includes("UNREAD")) continue;
 
     emails.push({
-      id: d.data.id, subject: g("Subject"), from: fromRaw,
+      id: d.data.id, threadId: d.data.threadId, subject: g("Subject"), from: fromRaw,
       date: g("Date"), snippet: d.data.snippet,
       listUnsubscribe: g("List-Unsubscribe"),
       listUnsubscribePost: g("List-Unsubscribe-Post"),
@@ -321,6 +321,15 @@ export async function archiveMessage(gmail, id) {
   await gmail.users.messages.batchModify({
     userId: "me",
     requestBody: { ids: [id], removeLabelIds: ["INBOX", "UNREAD"] },
+  });
+}
+
+// ─── Archive all messages in a thread (read + remove inbox) ───────────────────
+export async function archiveThread(gmail, threadId) {
+  await gmail.users.threads.modify({
+    userId: "me",
+    id: threadId,
+    requestBody: { removeLabelIds: ["INBOX", "UNREAD"] },
   });
 }
 

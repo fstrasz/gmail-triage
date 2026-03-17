@@ -28,7 +28,7 @@ export function emailCard(e) {
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header — compose will open"';
 
   return `
-    <div class="email-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+    <div class="email-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId||''}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
       <div class="email-header">
         <div class="email-meta">
           <div class="email-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400">&lt;${fromEmail}&gt;</span></div>
@@ -44,7 +44,7 @@ export function emailCard(e) {
         <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
         <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
         <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
-        <button class="btn btn-archive"    onclick="doArchive('${e.id}')">📥 Archive</button>
+        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId||''}')">📥 Archive</button>
         <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
         <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
         <button class="btn btn-expand"     onclick="toggleSnippet('${e.id}')">▼ Preview</button>
@@ -79,7 +79,7 @@ export function triageEmailRow(e) {
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header"';
 
   return `
-    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId||''}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
       <div class="triage-header" onclick="openPreview('${e.id}')">
         <div class="triage-meta">
           <div class="triage-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
@@ -95,7 +95,7 @@ export function triageEmailRow(e) {
         <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
         <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
         <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
-        <button class="btn btn-archive"    onclick="doArchive('${e.id}')">📥 Archive</button>
+        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId||''}')">📥 Archive</button>
         <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
         <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
         <button class="btn btn-expand"     onclick="openPreview('${e.id}')">▼ Preview</button>
