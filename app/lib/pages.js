@@ -1,11 +1,11 @@
-import { triageEmailRow } from "./html.js";
+import { triageEmailRow, esc } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 import { loadStats } from "./stats.js";
 import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.11";
+const APP_VERSION = "v1.0.12";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -623,7 +623,7 @@ export function senderPage(emails, fromEmail, fromName) {
       ${nav}
       <div class="main-content">
         <div class="main-topbar">
-          <span style="font-weight:600;font-size:.92rem">👤 ${displayName.replace(/</g,"&lt;")}${tierBadge} <span style="font-weight:400;color:#94a3b8;font-size:.8rem">&lt;${fromEmail}&gt;</span></span>
+          <span style="font-weight:600;font-size:.92rem">👤 ${esc(displayName)}${tierBadge} <span style="font-weight:400;color:#94a3b8;font-size:.8rem">&lt;${esc(fromEmail)}&gt;</span></span>
           <a href="javascript:history.back()" class="btn-nav">← Back</a>
         </div>
         <div style="flex:1;min-height:0;display:flex;overflow:hidden">
@@ -947,7 +947,6 @@ export function viplistPage(list) {
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = [], viewMode = "table") {
-  const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   // Merge entries by email so each sender gets one row with all list badges
   const rawAll = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
@@ -1815,7 +1814,6 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
             <th style="padding:6px 14px;text-align:right;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Count</th>
           </tr></thead>
           <tbody>${activityLog.slice(0, 200).map(e => {
-            const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
             const ts = e.ts ? new Date(e.ts).toLocaleString('en-US', { timeZone: settings.timezone || 'America/Los_Angeles', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
             const actionMap = { vip:'⭐ VIP', ok:'✅ OK', 'ok-clean':'✅ OK & Clean', junk:'🗑 Junk', unsub:'🚫 Unsub', archive:'📥 Archive', delete:'🗑 Delete', 'rule-applied':'⚡ Rule' };
             const badge = e.type === 'rule'
@@ -1989,7 +1987,6 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
 // ─── Rules page ────────────────────────────────────────────────────────────────
 export function rulesPage(rules) {
   const nav = sidebar({ active: 'rules' });
-  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   const ruleCards = rules.length
     ? rules.map(r => {
