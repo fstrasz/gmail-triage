@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.06";
+const APP_VERSION = "v1.0.07";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -948,38 +948,50 @@ export function viplistPage(list) {
 // ─── Unified Lists page ────────────────────────────────────────────────────────
 export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = [], viewMode = "table") {
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const all = [
+  // Merge entries by email so each sender gets one row with all list badges
+  const rawAll = [
     ...blocklist.map(e => ({ ...e, listType: 'block' })),
     ...viplist.map(e => ({ ...e, listType: 'vip' })),
     ...oklist.map(e => ({ ...e, listType: 'ok' })),
   ];
+  const byEmail = {};
+  for (const e of rawAll) {
+    const k = e.email.toLowerCase();
+    if (!byEmail[k]) byEmail[k] = { email: e.email, name: e.name, date: e.date, lists: [] };
+    byEmail[k].lists.push({ listType: e.listType, reason: e.reason });
+    if (e.name && !byEmail[k].name) byEmail[k].name = e.name;
+    if (e.date && (!byEmail[k].date || e.date > byEmail[k].date)) byEmail[k].date = e.date;
+  }
+  const all = Object.values(byEmail);
 
-  const removeForm = (e) => `<form method="POST" action="/lists/remove" style="margin:0">
-    <input type="hidden" name="email" value="${esc(e.email)}"/>
-    <input type="hidden" name="name" value="${esc(e.name||"")}"/>
-    <input type="hidden" name="listType" value="${e.listType}"/>
+  const removeForm = (email, listType) => `<form method="POST" action="/lists/remove" style="margin:0;display:inline">
+    <input type="hidden" name="email" value="${esc(email)}"/>
+    <input type="hidden" name="name" value=""/>
+    <input type="hidden" name="listType" value="${listType}"/>
     <button class="btn btn-danger" type="submit" style="font-size:.72rem;padding:2px 7px">✕</button>
   </form>`;
 
-  const badge = (e) => e.listType === 'block'
-    ? `<span class="badge-block">🚫 ${esc(e.reason || 'blocked')}</span>`
-    : e.listType === 'vip'
+  const badgeHtml = (list) => list.listType === 'block'
+    ? `<span class="badge-block">🚫 ${esc(list.reason || 'blocked')}</span>`
+    : list.listType === 'vip'
     ? `<span class="badge-vip">⭐ VIP</span>`
     : `<span class="badge-ok">✅ OK</span>`;
 
-  const rows = all.map(e => `<tr data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+  const typesStr = (e) => e.lists.map(l => l.listType).join(' ');
+
+  const rows = all.map(e => `<tr data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
       <td data-col="name" class="lt-td">${e.name ? `<span class="lt-name">${esc(e.name)}</span>` : `<span style="color:#cbd5e1">—</span>`}</td>
       <td data-col="email" class="lt-td"><span class="lt-email">${esc(e.email)}</span></td>
       <td data-col="date" class="lt-td" style="white-space:nowrap">${e.date ? new Date(e.date).toLocaleDateString() : "—"}</td>
-      <td data-col="label" class="lt-td">${badge(e)}</td>
-      <td data-col="action" class="lt-td lt-action">${removeForm(e)}</td>
+      <td data-col="label" class="lt-td">${e.lists.map(l => badgeHtml(l)).join(' ')}</td>
+      <td data-col="action" class="lt-td lt-action">${e.lists.map(l => removeForm(e.email, l.listType)).join('')}</td>
     </tr>`).join("");
 
-  const compactRows = all.map(e => `<div class="lt-compact-row" data-type="${e.listType}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
-    ${badge(e)}
+  const compactRows = all.map(e => `<div class="lt-compact-row" data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+    ${e.lists.map(l => badgeHtml(l)).join(' ')}
     <span class="lt-compact-name">${e.name ? `<strong>${esc(e.name)}</strong> <span style="color:#94a3b8">&lt;${esc(e.email)}&gt;</span>` : `<span>${esc(e.email)}</span>`}</span>
     <span class="lt-compact-date">${e.date ? new Date(e.date).toLocaleDateString() : ""}</span>
-    ${removeForm(e)}
+    ${e.lists.map(l => removeForm(e.email, l.listType)).join('')}
   </div>`).join("");
 
   const nav = sidebar({ active: 'lists' });
@@ -1199,7 +1211,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     function searchList(q) { _search = q.toLowerCase(); savePrefs(); applyFilters(); }
     function applyFilters() {
       document.querySelectorAll('#list-tbody [data-type]').forEach(function(r) {
-        var tm = _filter==='all' || r.dataset.type===_filter;
+        var tm = _filter==='all' || r.dataset.type.indexOf(_filter)>=0;
         var sm = !_search || r.dataset.email.includes(_search) || r.dataset.name.includes(_search);
         r.style.display = (tm && sm) ? '' : 'none';
       });
