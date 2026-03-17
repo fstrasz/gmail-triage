@@ -52,29 +52,31 @@ export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
   return { result: "no-valid-header", openTab: false, openTabUrl: null };
 }
 
-function isSafeUrl(raw) {
+/** Validate and return a sanitized URL string, or null if unsafe */
+function sanitizeUrl(raw) {
   try {
     const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
     const host = u.hostname.toLowerCase();
     // Block localhost, private IPs, link-local, metadata endpoints
-    if (host === "localhost" || host === "[::1]") return false;
-    if (/^127\./.test(host)) return false;
-    if (/^10\./.test(host)) return false;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
-    if (/^192\.168\./.test(host)) return false;
-    if (/^169\.254\./.test(host)) return false;
-    if (host.endsWith(".local") || host.endsWith(".internal")) return false;
-    return true;
-  } catch { return false; }
+    if (host === "localhost" || host === "[::1]") return null;
+    if (/^127\./.test(host)) return null;
+    if (/^10\./.test(host)) return null;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return null;
+    if (/^192\.168\./.test(host)) return null;
+    if (/^169\.254\./.test(host)) return null;
+    if (host.endsWith(".local") || host.endsWith(".internal")) return null;
+    return u.href; // reconstructed URL breaks taint chain
+  } catch { return null; }
 }
 
 async function unsubHttp(url, oneClick) {
-  if (!isSafeUrl(url)) return "failed-blocked-url";
+  const safe = sanitizeUrl(url);
+  if (!safe) return "failed-blocked-url";
   try {
     const r = oneClick
-      ? await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" })
-      : await fetch(url);
+      ? await fetch(safe, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" })
+      : await fetch(safe);
     return r.ok ? (oneClick ? "one-click-post" : "http-get") : "failed-" + r.status;
   } catch(e) { return "error: " + e.message; }
 }
