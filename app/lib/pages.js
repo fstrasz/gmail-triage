@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.03";
+const APP_VERSION = "v1.0.04";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -70,11 +70,12 @@ function sidebar({ active = '' } = {}) {
     return `<a href="${href}" class="sb-item${isActive ? ' sb-active' : ''}">${icon} ${label}${badgeHtml}</a>`;
   };
   return `<div class="sidebar">
-    <div class="sb-logo">
+    <a href="/" class="sb-logo" style="text-decoration:none;color:inherit;display:block">
       <div style="font-size:.9rem;font-weight:700;color:#1e293b">📧 Gmail Triage</div>
       <div style="font-size:.68rem;color:#94a3b8;margin-top:1px">${APP_VERSION}</div>
-    </div>
+    </a>
     <div class="sb-nav">
+      ${item('/','🏠','Home','',active==='home')}
       ${item('/triage','▶','Start Triage','',active==='triage')}
       ${item('/stats','📊','Stats',null,active==='stats')}
       ${item('/review','🤖','Review',null,active==='review')}
