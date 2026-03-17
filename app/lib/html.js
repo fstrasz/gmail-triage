@@ -1,6 +1,12 @@
 import { extractEmail, extractName } from "./gmail.js";
 import { loadSettings } from "./settings.js";
 
+/** Escape HTML special characters to prevent XSS */
+export function esc(s) {
+  if (!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 export function emailCard(e) {
   const fromEmail = extractEmail(e.from);
   const fromName  = extractName(e.from);
@@ -111,7 +117,7 @@ export function triageEmailRow(e) {
 export function shell(title, body, script = "") {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${title}</title>
+  <title>${esc(title)}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}

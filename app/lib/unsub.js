@@ -1,5 +1,16 @@
 // ─── Unsubscribe logic ─────────────────────────────────────────────────────────
 
+/** Extract a value from angle brackets without regex backtracking */
+function extractAngleBracket(header, prefix) {
+  if (!header) return null;
+  const lc = header.toLowerCase();
+  const start = lc.indexOf("<" + prefix.toLowerCase());
+  if (start === -1) return null;
+  const end = header.indexOf(">", start + 1);
+  if (end === -1) return null;
+  return header.slice(start + 1, end);
+}
+
 export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
   // No header — open Gmail compose pre-filled so user can send manually
   if (!unsubUrl || !unsubUrl.trim()) {
@@ -10,9 +21,9 @@ export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
     return { result: "no-header→compose", openTab: true, openTabUrl };
   }
 
-  const httpUrl  = unsubUrl.match(/<(https?:\/\/[^>]+)>/i)?.[1]
-    ?? (unsubUrl.startsWith("http") ? unsubUrl : null);
-  const mailto   = unsubUrl.match(/<mailto:([^>]+)>/i)?.[1] ?? null;
+  const httpUrl  = extractAngleBracket(unsubUrl, "http")
+    ?? (unsubUrl.startsWith("http") ? unsubUrl.trim() : null);
+  const mailto   = extractAngleBracket(unsubUrl, "mailto:");
   const oneClick = (unsubPost || "").toLowerCase().includes("one-click");
 
   // Try HTTP first
@@ -41,7 +52,25 @@ export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
   return { result: "no-valid-header", openTab: false, openTabUrl: null };
 }
 
+function isSafeUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    // Block localhost, private IPs, link-local, metadata endpoints
+    if (host === "localhost" || host === "[::1]") return false;
+    if (/^127\./.test(host)) return false;
+    if (/^10\./.test(host)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+    if (/^192\.168\./.test(host)) return false;
+    if (/^169\.254\./.test(host)) return false;
+    if (host.endsWith(".local") || host.endsWith(".internal")) return false;
+    return true;
+  } catch { return false; }
+}
+
 async function unsubHttp(url, oneClick) {
+  if (!isSafeUrl(url)) return "failed-blocked-url";
   try {
     const r = oneClick
       ? await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" })
@@ -64,8 +93,7 @@ async function unsubMailto(gmail, val) {
     "",
     body,
   ].join("\r\n");
-  const raw = Buffer.from(mime).toString("base64")
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const raw = Buffer.from(mime).toString("base64url");
   try {
     await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
     return "mailto-sent";

@@ -4,7 +4,7 @@ import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isB
 import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
-import { shell, triageEmailRow } from "./lib/html.js";
+import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
@@ -70,7 +70,7 @@ app.get("/triage", async (req, res) => {
     res.send(shell("Triage", body, script));
     setLastTriageAt(); // stamp after response is sent
   } catch(e) {
-    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
+    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`));
   }
 });
 
@@ -80,7 +80,7 @@ app.get("/stats", (req, res) => {
     const { body, script } = statsPage(loadStats(), loadBlocklist());
     res.send(shell("Stats", body, script));
   } catch(e) {
-    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
+    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`));
   }
 });
 
@@ -271,7 +271,7 @@ app.get("/sender", async (req, res) => {
     const { body, script } = senderPage(emails, email, name || null);
     res.send(shell(name || email, body, script));
   } catch(e) {
-    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}\n${e.stack}</pre></div>`));
+    res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`));
   }
 });
 
