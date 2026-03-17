@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.07";
+const APP_VERSION = "v1.0.08";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -983,7 +983,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
       <td data-col="name" class="lt-td">${e.name ? `<span class="lt-name">${esc(e.name)}</span>` : `<span style="color:#cbd5e1">—</span>`}</td>
       <td data-col="email" class="lt-td"><span class="lt-email">${esc(e.email)}</span></td>
       <td data-col="date" class="lt-td" style="white-space:nowrap">${e.date ? new Date(e.date).toLocaleDateString() : "—"}</td>
-      <td data-col="label" class="lt-td">${e.lists.map(l => badgeHtml(l)).join(' ')}</td>
+      <td data-col="label" class="lt-td"><div style="display:flex;flex-direction:column;gap:3px">${e.lists.map(l => badgeHtml(l)).join('')}</div></td>
       <td data-col="action" class="lt-td lt-action">${e.lists.map(l => removeForm(e.email, l.listType)).join('')}</td>
     </tr>`).join("");
 
