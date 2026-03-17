@@ -18,24 +18,6 @@ if ($WhatIf) {
 }
 Write-Host ""
 
-# -- Bump patch version in pages.js (skip on WhatIf) --------------------------
-$pagesFile = "$Source\app\lib\pages.js"
-$pagesContent = Get-Content $pagesFile -Raw
-if ($pagesContent -match 'APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
-    $major = $Matches[1]; $minor = $Matches[2]; $patch = [int]$Matches[3]
-    $newVersion = "v$major.$minor.$($patch + 1)"
-    if (-not $WhatIf) {
-        $pagesContent = $pagesContent -replace 'APP_VERSION = "v\d+\.\d+\.\d+"', "APP_VERSION = `"$newVersion`""
-        Set-Content $pagesFile $pagesContent -NoNewline
-        Write-Host "  Version: bumped to $newVersion" -ForegroundColor Cyan
-    } else {
-        Write-Host "  Version: would bump to $newVersion (dry run)" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "  Version: could not parse APP_VERSION in pages.js -- skipping bump" -ForegroundColor Yellow
-}
-Write-Host ""
-
 if (-not (Test-Path $Dest)) {
     Write-Host "ERROR: Destination not reachable: $Dest" -ForegroundColor Red
     Write-Host "Make sure Y: is mapped and the network share is online." -ForegroundColor Yellow
@@ -43,18 +25,19 @@ if (-not (Test-Path $Dest)) {
 }
 
 # -- Auto-increment version in pages.js and commit locally (no push) -----------
-if (-not $WhatIf) {
-    $pagesFile = "$Source\app\lib\pages.js"
-    $content = Get-Content $pagesFile -Raw
-    if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
-        $major = $Matches[1]
-        $minor = $Matches[2]
-        $patch = [int]$Matches[3] + 1
-        $newVersion = "v${major}.${minor}.$( '{0:D2}' -f $patch )"
+$pagesFile = "$Source\app\lib\pages.js"
+$content = Get-Content $pagesFile -Raw
+if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
+    $major = $Matches[1]
+    $minor = $Matches[2]
+    $patch = [int]$Matches[3] + 1
+    $newVersion = "v${major}.${minor}.$( '{0:D2}' -f $patch )"
+
+    if (-not $WhatIf) {
         $newContent = $content -replace 'const APP_VERSION = "v[^"]+"', "const APP_VERSION = `"$newVersion`""
         Set-Content $pagesFile $newContent -NoNewline
 
-        $commitMsg = "Bump version to $newVersion`n`nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+        $commitMsg = "Bump version to $newVersion`n`nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
         git -C $Source add app/lib/pages.js | Out-Null
         git -C $Source commit -m $commitMsg | Out-Null
 
@@ -64,11 +47,13 @@ if (-not $WhatIf) {
             Write-Host ""
             Write-Host "  REMINDER: $newVersion is a milestone -- consider tagging a stable GitHub release." -ForegroundColor Yellow
         }
-        Write-Host ""
     } else {
-        Write-Host "  WARNING: Could not find APP_VERSION in pages.js -- skipping version bump." -ForegroundColor Yellow
-        Write-Host ""
+        Write-Host "  Version: would bump to $newVersion (dry run)" -ForegroundColor Yellow
     }
+    Write-Host ""
+} else {
+    Write-Host "  WARNING: Could not find APP_VERSION in pages.js -- skipping version bump." -ForegroundColor Yellow
+    Write-Host ""
 }
 
 $robocopyArgs = @(

@@ -72,10 +72,7 @@ export function addToBlocklist(email, reason = "junk", name = null) {
 }
 
 export function removeFromBlocklist(email, name = null) {
-  const normName = name?.trim() || null;
-  saveBlocklist(loadBlocklist().filter(e =>
-    !(e.email === email && (normName ? e.name === normName : !e.name))
-  ));
+  saveBlocklist(loadBlocklist().filter(e => e.email !== email));
 }
 
 export function isBlocked(fromEmail, fromName = null) {

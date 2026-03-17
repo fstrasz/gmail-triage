@@ -25,10 +25,10 @@ app.use(express.urlencoded({ extended: true }));
 // ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
 function getListConflicts(viplist, oklist, blocklist) {
   const byEmail = {};
-  for (const e of viplist)   { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("VIP"); }
-  for (const e of oklist)    { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: [] }).lists.push("OK"); }
-  for (const e of blocklist) { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name||null, lists: [] }).lists.push("Block"); }
-  return Object.values(byEmail).filter(e => e.lists.length > 1);
+  for (const e of viplist)   { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: new Set() }).lists.add("VIP"); }
+  for (const e of oklist)    { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name, lists: new Set() }).lists.add("OK"); }
+  for (const e of blocklist) { const k = e.email.toLowerCase(); (byEmail[k] = byEmail[k] || { email: k, name: e.name||null, lists: new Set() }).lists.add("Block"); }
+  return Object.values(byEmail).filter(e => e.lists.size > 1).map(e => ({ ...e, lists: [...e.lists] }));
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
