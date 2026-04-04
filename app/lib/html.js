@@ -7,55 +7,9 @@ export function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-export function emailCard(e) {
-  const fromEmail = extractEmail(e.from);
-  const fromName  = extractName(e.from);
-  const dateStr   = e.date ? (() => {
-    const d  = new Date(e.date);
-    const tz = loadSettings().timezone;
-    const time = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone: tz});
-    const date = d.toLocaleDateString('en-US', {timeZone: tz});
-    return `${time} ${date}`;
-  })() : "";
-  const subj      = (e.subject || "(no subject)").replace(/</g, "&lt;");
-  const safe = s  => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const hasUnsub  = !!e.listUnsubscribe;
-  const tier      = e.tier || null;
-
-  const tierBorder = tier === "..VIP" ? "border-left:4px solid #f59e0b"
-                   : tier === "..OK"  ? "border-left:4px solid #14b8a6" : "";
-  const tierBadge  = tier === "..VIP"
-    ? `<span style="background:#fef3c7;color:#92400e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px">⭐ VIP</span>`
-    : tier === "..OK"
-    ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px">✅ OK</span>`
-    : "";
-
-  const unsubStyle = hasUnsub ? "" : ' style="opacity:.6;border:2px dashed #f59e0b"';
-  const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header — compose will open"';
-
-  return `
-    <div class="email-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId||''}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
-      <div class="email-header">
-        <div class="email-meta">
-          <div class="email-from">${fromName}${tierBadge} <span style="color:#94a3b8;font-weight:400">&lt;${fromEmail}&gt;</span></div>
-          <div class="email-subject">${subj}</div>
-        </div>
-        <div class="email-date">${dateStr}</div>
-        <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
-      </div>
-      <div class="email-actions" id="actions-${e.id}">
-        <button class="btn btn-vip"        onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..VIP')">⭐ VIP</button>
-        <button class="btn btn-ok"         onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..OK')">✅ OK</button>
-        <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">✅ OK &amp; Clean</button>
-        <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
-        <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
-        <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
-        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId||''}')">📥 Archive</button>
-        <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
-        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
-        <button class="btn btn-expand"     onclick="toggleSnippet('${e.id}')">▼ Preview</button>
-      </div>
-    </div>`;
+/** Escape a value for use inside an inline JS string literal (single-quoted) */
+export function safe(s) {
+  return String(s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 export function triageEmailRow(e) {
@@ -69,7 +23,6 @@ export function triageEmailRow(e) {
     return `${time} ${date}`;
   })() : "";
   const subj     = (e.subject || "(no subject)").replace(/</g, "&lt;");
-  const safe = s => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const hasUnsub = !!e.listUnsubscribe;
   const tier     = e.tier || null;
   const ruleLabels = e.ruleLabels || [];

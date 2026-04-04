@@ -33,7 +33,7 @@ export function extractName(from) {
   return m ? m[1].replace(/"/g, "").trim() : from;
 }
 export function fromQuery(fromEmail) {
-  return "from:" + fromEmail + " -in:sent -in:trash";
+  return `from:"${fromEmail}" -in:sent -in:trash`;
 }
 
 // ─── Label cache ───────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export async function labelSender(gmail, labelName, fromEmail, fromName = null, 
   let pageToken = null;
   do {
     // in:inbox naturally excludes sent-only and trashed mail
-    const params = { userId: "me", q: "from:" + fromEmail + " in:inbox", maxResults: 500 };
+    const params = { userId: "me", q: `from:"${fromEmail}" in:inbox`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) {
@@ -218,7 +218,7 @@ export async function fetchEmails(gmail, max = 25) {
 // ─── Fetch all emails from one sender (for sender detail page) ────────────────
 export async function fetchSenderEmails(gmail, fromEmail, maxResults = 100) {
   const res = await gmail.users.messages.list({
-    userId: "me", q: `from:${fromEmail} -in:trash -in:sent`, maxResults,
+    userId: "me", q: `from:"${fromEmail}" -in:trash -in:sent`, maxResults,
   });
   const messages = res.data.messages || [];
   if (!messages.length) return [];
@@ -307,7 +307,7 @@ export async function getDelPendSummary(gmail) {
 // ─── Trash all DelPend messages (optionally scoped to one sender) ───────────────
 export async function trashDelPend(gmail, fromEmail = null) {
   const delPendId = await ensureLabel(gmail, ".DelPend");
-  const q = fromEmail ? `label:.DelPend from:${fromEmail}` : "label:.DelPend";
+  const q = fromEmail ? `label:.DelPend from:"${fromEmail}"` : "label:.DelPend";
   const ids = []; let pageToken = null;
   do {
     const params = { userId: "me", q, maxResults: 500 };
@@ -470,7 +470,7 @@ export async function removeDelPendFromSender(gmail, fromEmail) {
   const delPendId = await ensureLabel(gmail, ".DelPend");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: `label:.DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    const params = { userId: "me", q: `label:.DelPend label:..OK from:"${fromEmail}"`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);
@@ -489,7 +489,7 @@ export async function removeOkLabelFromSender(gmail, fromEmail) {
   const okId = await ensureLabel(gmail, "..OK");
   const ids = []; let pageToken = null;
   do {
-    const params = { userId: "me", q: `label:.DelPend label:..OK from:${fromEmail}`, maxResults: 500 };
+    const params = { userId: "me", q: `label:.DelPend label:..OK from:"${fromEmail}"`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const res = await gmail.users.messages.list(params);
     for (const m of res.data.messages || []) ids.push(m.id);

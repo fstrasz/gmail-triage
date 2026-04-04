@@ -19,6 +19,13 @@ import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink } from "./lib/f
 
 const app  = express();
 const PORT = 3000;
+
+function findPart(part, mimeType) {
+  if (!part) return null;
+  if (part.mimeType === mimeType && part.body?.data) return part.body.data;
+  if (part.parts) { for (const p of part.parts) { const f = findPart(p, mimeType); if (f) return f; } }
+  return null;
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -340,7 +347,6 @@ app.get("/api/preview/:id", async (req, res) => {
     const msg=await gmail.users.messages.get({userId:"me",id:req.params.id,format:"full"});
     const headers=msg.data.payload.headers;
     const g=n=>headers.find(x=>x.name===n)?.value||"";
-    function findPart(part,mimeType){if(!part)return null;if(part.mimeType===mimeType&&part.body?.data)return part.body.data;if(part.parts){for(const p of part.parts){const f=findPart(p,mimeType);if(f)return f;}}return null;}
     const htmlData=findPart(msg.data.payload,"text/html");
     const plainData=findPart(msg.data.payload,"text/plain");
     const raw=htmlData||plainData;
@@ -359,12 +365,6 @@ app.post("/api/review", async (req, res) => {
     const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
     const headers = msg.data.payload.headers;
     const g = n => headers.find(x => x.name === n)?.value || "";
-    function findPart(part, mime) {
-      if (!part) return null;
-      if (part.mimeType === mime && part.body?.data) return part.body.data;
-      if (part.parts) { for (const p of part.parts) { const f = findPart(p, mime); if (f) return f; } }
-      return null;
-    }
     const plainRaw = findPart(msg.data.payload, "text/plain") || findPart(msg.data.payload, "text/html");
     const body = plainRaw ? Buffer.from(plainRaw, "base64url").toString("utf8").replace(/<[^>]+>/g, " ") : "";
     const from = g("From");

@@ -18,7 +18,7 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
   const ids = [];
   let pageToken = null;
   do {
-    const params = { userId: "me", q: "from:" + fromEmail + " in:inbox -label:..VIP", maxResults: 500 };
+    const params = { userId: "me", q: `from:"${fromEmail}" in:inbox -label:..VIP`, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
     const result = await gmail.users.messages.list(params);
     for (const m of result.data.messages || []) {

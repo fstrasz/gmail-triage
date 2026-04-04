@@ -179,7 +179,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults) {
           <span>Preview</span>
           <button class="preview-close" onclick="closePreview()">✕</button>
         </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
       </div>
     </div>
   `;
@@ -642,7 +642,7 @@ export function senderPage(emails, fromEmail, fromName) {
               <span>Preview</span>
               <button class="preview-close" onclick="closePreview()">✕</button>
             </div>
-            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
+            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
           </div>
         </div>
       </div>
@@ -808,7 +808,7 @@ export function labeledPage(labelName, emails) {
           <span>Preview</span>
           <button class="preview-close" onclick="closePreview()">✕</button>
         </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-popups"></iframe>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
       </div>
     </div>`;
 
