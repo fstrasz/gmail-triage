@@ -25,3 +25,11 @@ Complete ALL steps before responding to the user. Do not greet until every step 
 - Keep responses concise
 - No emojis
 - Don't over-engineer — minimal changes for the task at hand
+
+## Session Management
+Use "start the session" to begin a session. Use "close it out" or "wrap it up" to end a session.
+Break reminders every 45 minutes.
+
+## Key Project Documents
+- @docs/project-status.md
+- @docs/known-issues.md
