@@ -1285,6 +1285,13 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     applyFilters();
 
     // ─── Reapply buttons ────────────────────────────────────────────────────────
+    function formatResult(result) {
+      if (!result.ok) return 'Error: ' + (result.error || 'unknown');
+      const errors = (result.results || []).filter(r => r.error);
+      if (errors.length) return result.totalLabeled + ' labeled, ' + errors.length + ' failed';
+      return result.totalLabeled + ' labeled';
+    }
+
     async function readSSE(resp, btn) {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -1301,7 +1308,11 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
           try {
             const msg = JSON.parse(line);
             if (msg.type === 'progress') {
-              btn.textContent = msg.current + '/' + msg.total + ' ' + (msg.email || '');
+              if (msg.error) {
+                btn.textContent = msg.current + '/' + msg.total + ' ERR: ' + (msg.email || '');
+              } else {
+                btn.textContent = msg.current + '/' + msg.total + ' ' + (msg.email || '');
+              }
             } else if (msg.type === 'done') {
               return msg;
             } else if (msg.type === 'error') {
@@ -1335,19 +1346,14 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
                 return;
               }
             } else if (data.ok) {
-              btn.textContent = data.totalLabeled + ' labeled';
-              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+              btn.textContent = formatResult(data);
+              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 5000);
               return;
             }
           } else {
             const result = await readSSE(guardResp, btn);
-            if (result.ok) {
-              btn.textContent = result.totalLabeled + ' labeled';
-              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
-            } else {
-              btn.textContent = 'Error';
-              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
-            }
+            btn.textContent = formatResult(result);
+            setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 5000);
             return;
           }
           // Confirmed — run with SSE progress
