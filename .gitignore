@@ -1,3 +1,6 @@
+CLAUDE.md
+docs/
+scripts/cleanup-worktrees.ps1
 node_modules
 app/node_modules
 **/node_modules
