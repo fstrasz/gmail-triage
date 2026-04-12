@@ -414,8 +414,9 @@ export async function scanAndLabelTier(gmail, list, tierName) {
 export async function reapplyTier(gmail, list, tierName) {
   if (!list.length) return [];
   const labelId = await ensureLabel(gmail, tierName);
+  const results = [];
 
-  const results = await Promise.all(list.map(async entry => {
+  for (const entry of list) {
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const q = `${fromClause} -in:sent -in:trash`;
     const ids = [];
@@ -435,16 +436,16 @@ export async function reapplyTier(gmail, list, tierName) {
       pageToken = res.data.nextPageToken || null;
     } while (pageToken);
 
-    if (!ids.length) return null;
+    if (!ids.length) continue;
     for (let i = 0; i < ids.length; i += 1000) {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId] },
       });
     }
-    return { email: entry.email, labeled: ids.length };
-  }));
-  return results.filter(Boolean);
+    results.push({ email: entry.email, labeled: ids.length });
+  }
+  return results;
 }
 
 // ─── Reapply blocklist labels across all mail ─────────────────────────────────
@@ -454,8 +455,9 @@ export async function reapplyBlocklist(gmail, blocklist) {
   const vipLabelId = await ensureLabel(gmail, "..VIP");
   const okLabelId  = await ensureLabel(gmail, "..OK");
   const skip = new Set([labelId, vipLabelId, okLabelId]);
+  const results = [];
 
-  const results = await Promise.all(blocklist.map(async entry => {
+  for (const entry of blocklist) {
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const q = `${fromClause} -in:sent -in:trash`;
     const ids = [];
@@ -479,16 +481,16 @@ export async function reapplyBlocklist(gmail, blocklist) {
       pageToken = res.data.nextPageToken || null;
     } while (pageToken);
 
-    if (!ids.length) return null;
+    if (!ids.length) continue;
     for (let i = 0; i < ids.length; i += 1000) {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
       });
     }
-    return { email: entry.email, labeled: ids.length };
-  }));
-  return results.filter(Boolean);
+    results.push({ email: entry.email, labeled: ids.length });
+  }
+  return results;
 }
 
 // ─── Reapply custom label rules across all mail ───────────────────────────────
