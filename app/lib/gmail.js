@@ -421,7 +421,7 @@ export async function reapplyTier(gmail, list, tierName, onProgress = null) {
     if (onProgress) onProgress({ current: idx + 1, total: list.length, email: entry.email });
     try {
       const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
-      const q = `${fromClause} -in:sent -in:trash`;
+      const q = `${fromClause} -label:${tierName} -in:sent -in:trash`;
       const ids = [];
       let pageToken = null;
       do {
@@ -470,7 +470,7 @@ export async function reapplyBlocklist(gmail, blocklist, onProgress = null) {
     if (onProgress) onProgress({ current: idx + 1, total: blocklist.length, email: entry.email });
     try {
       const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
-      const q = `${fromClause} -in:sent -in:trash`;
+      const q = `${fromClause} -label:.DelPend -in:sent -in:trash`;
       const ids = [];
       let pageToken = null;
       do {
@@ -525,7 +525,8 @@ export async function reapplyRules(gmail, rules, onProgress = null) {
       const subjectPart = rule.subjects?.length
         ? '(' + rule.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
         : '';
-      const q = [fromPart, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+      const labelQ = rule.label.includes(' ') ? `"${rule.label}"` : rule.label;
+      const q = [fromPart, subjectPart].filter(Boolean).join(' ') + ` -label:${labelQ} -in:sent -in:trash`;
       const ids = [];
       let pageToken;
       do {

@@ -169,7 +169,12 @@ app.post("/api/reapply", async (req, res) => {
         const subjectPart = list === "rules" && entry.subjects?.length
           ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
           : '';
-        const q = [fromClause, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+        // Exclude already-labeled emails from the count
+        const labelExcl = list === "vip" ? " -label:..VIP"
+          : list === "ok" ? " -label:..OK"
+          : list === "blocklist" ? " -label:.DelPend"
+          : (entry.label ? ` -label:${entry.label.includes(' ') ? '"' + entry.label + '"' : entry.label}` : '');
+        const q = [fromClause, subjectPart].filter(Boolean).join(' ') + labelExcl + ' -in:sent -in:trash';
         if (q.trim() === '-in:sent -in:trash') continue;
         const count = await countMatchingEmails(gmail, q);
         totalCount += count;
@@ -244,7 +249,11 @@ app.post("/api/reapply/preview", async (req, res) => {
       const subjectPart = list === "rules" && entry.subjects?.length
         ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
         : '';
-      const q = [fromClause, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+      const labelExcl = list === "vip" ? " -label:..VIP"
+        : list === "ok" ? " -label:..OK"
+        : list === "blocklist" ? " -label:.DelPend"
+        : (entry.label ? ` -label:${entry.label.includes(' ') ? '"' + entry.label + '"' : entry.label}` : '');
+      const q = [fromClause, subjectPart].filter(Boolean).join(' ') + labelExcl + ' -in:sent -in:trash';
       if (q.trim() === '-in:sent -in:trash') continue;
       const count = await countMatchingEmails(gmail, q);
       totalCount += count;
