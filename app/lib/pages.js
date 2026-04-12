@@ -396,8 +396,14 @@ function clientScript() { return `
     document.getElementById('row-'+id).style.borderLeft=isVip?'4px solid #f59e0b':'4px solid #14b8a6';
     markDone(id,isVip?'r-vip':'r-ok');applyLabelToDuplicates(fromEmail,id,isVip?'r-vip':'r-ok',isVip?'⭐ VIP':'✅ OK',isVip?'tag-vip':'tag-ok');
     try{
-      var r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName,tier})});
+      var body={id,fromEmail,fromName,tier};
+      var r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       var data=await r.json();
+      if(data.guard){
+        if(!confirm(data.message)){setStatus(id,'','');document.getElementById('row-'+id).style.borderLeft='';return;}
+        r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
+        data=await r.json();
+      }
       if(isVip)vipCount+=(data.labeled||0);else okCount+=(data.labeled||0);
       updateStats();
       document.getElementById('tag-'+id).textContent=(isVip?'⭐':'✅')+' '+tier+' ('+(data.labeled||0)+' labeled)';
@@ -407,8 +413,15 @@ function clientScript() { return `
   async function doOkClean(id,fromEmail,fromName){
     setStatus(id,'tag-working','⏳ OK & cleaning...');markDone(id,'r-ok');applyLabelToDuplicates(fromEmail,id,'r-ok','✅ OK','tag-ok');
     try{
-      var r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName})});
-      var data=await r.json();cleaned+=data.cleaned||0;updateStats();
+      var body={id,fromEmail,fromName};
+      var r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      var data=await r.json();
+      if(data.guard){
+        if(!confirm(data.message)){setStatus(id,'','');return;}
+        r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
+        data=await r.json();
+      }
+      cleaned+=data.cleaned||0;updateStats();
       document.getElementById('tag-'+id).textContent='✅ OK · 🗑 '+(data.cleaned||0)+' older cleaned';
       document.getElementById('tag-'+id).className='status-tag tag-ok';
       scheduleDismiss(id);
@@ -417,8 +430,15 @@ function clientScript() { return `
   async function doJunk(id,fromEmail,fromName){
     setStatus(id,'tag-working','⏳ Blocking...');markDone(id,'junked');applyLabelToDuplicates(fromEmail,id,'junked','🗑 Junked','tag-junk');
     try{
-      var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName})});
-      var data=await r.json();junked+=data.moved||1;updateStats();
+      var body={id,fromEmail,fromName};
+      var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      var data=await r.json();
+      if(data.guard){
+        if(!confirm(data.message)){setStatus(id,'','');return;}
+        r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
+        data=await r.json();
+      }
+      junked+=data.moved||1;updateStats();
       document.getElementById('tag-'+id).textContent='🗑 Junked ('+(data.moved||0)+' labeled)';
       document.getElementById('tag-'+id).className='status-tag tag-junk';
       updateBlCount(1);
