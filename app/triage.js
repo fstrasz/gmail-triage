@@ -241,7 +241,7 @@ app.get("/api/next", async (req, res) => {
 
 // ─── API: Tier ─────────────────────────────────────────────────────────────────
 app.post("/api/tier", async (req, res) => {
-  const {id,fromEmail,fromName,tier}=req.body;
+  const {id,fromEmail,fromName,tier,confirmed}=req.body;
   if(!["..VIP","..OK"].includes(tier))return res.status(400).json({ok:false,error:"Invalid tier"});
   try{
     const gmail=await getGmailClient();
@@ -249,6 +249,13 @@ app.post("/api/tier", async (req, res) => {
     const alreadyListed=isVip?isViplisted(fromEmail,fromName||null):isOklisted(fromEmail,fromName||null);
     let labeled=0;
     if(!alreadyListed){
+      if(!confirmed){
+        const q=`from:"${fromEmail}" in:inbox -in:sent -in:trash`;
+        const count=await countMatchingEmails(gmail,q);
+        if(count>BULK_GUARD_THRESHOLD){
+          return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will label ${count} emails from ${fromEmail}. Confirm?`});
+        }
+      }
       if(isVip) addToViplist(fromEmail,fromName||null);
       else      addToOklist(fromEmail,fromName||null);
       labeled=await labelSender(gmail,tier,fromEmail,fromName||null,[]);
@@ -267,9 +274,17 @@ app.post("/api/tier", async (req, res) => {
 
 // ─── API: OK & Clean ───────────────────────────────────────────────────────────
 app.post("/api/ok-clean", async (req, res) => {
-  const {id,fromEmail,fromName}=req.body;
+  const {id,fromEmail,fromName,confirmed}=req.body;
   try{
     const gmail=await getGmailClient();
+    // Guard checks the bulk .DelPend operation on other emails from sender
+    if(!confirmed){
+      const q=`from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
+      const count=await countMatchingEmails(gmail,q);
+      if(count>BULK_GUARD_THRESHOLD){
+        return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will clean ${count} emails from ${fromEmail}. Confirm?`});
+      }
+    }
     const { cleaned } = await keepAndClean(gmail, id, fromEmail, fromName || null);
     addToOklist(fromEmail, fromName || null);
     addToStats({cleaned});
@@ -280,9 +295,16 @@ app.post("/api/ok-clean", async (req, res) => {
 
 // ─── API: Junk ─────────────────────────────────────────────────────────────────
 app.post("/api/junk", async (req, res) => {
-  const {fromEmail,fromName}=req.body;
+  const {fromEmail,fromName,confirmed}=req.body;
   try{
     const gmail=await getGmailClient();
+    if(!confirmed){
+      const q=`from:"${fromEmail}" -in:sent -in:trash`;
+      const count=await countMatchingEmails(gmail,q);
+      if(count>BULK_GUARD_THRESHOLD){
+        return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will label ${count} emails from ${fromEmail} as junk. Confirm?`});
+      }
+    }
     addToBlocklist(fromEmail,"junk",fromName||null);
     const moved=await blockSender(gmail,fromEmail,fromName||null);
     addToStats({junked:moved});
