@@ -52,6 +52,14 @@ export async function ensureLabel(gmail, name) {
 }
 export function getLabelId(name) { return labelCache[name] || null; }
 
+// ─── Bulk guard ───────────────────────────────────────────────────────────────
+export const BULK_GUARD_THRESHOLD = 100;
+
+export async function countMatchingEmails(gmail, query) {
+  const res = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 1 });
+  return res.data.resultSizeEstimate || 0;
+}
+
 // ─── Label all sender emails ───────────────────────────────────────────────────
 export async function labelSender(gmail, labelName, fromEmail, fromName = null, removeLabels = []) {
   const labelId = await ensureLabel(gmail, labelName);
