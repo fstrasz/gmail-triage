@@ -185,25 +185,35 @@ app.post("/api/reapply", async (req, res) => {
       }
     }
 
-    // Execute reapply
-    let results, totalLabeled;
+    // Execute reapply with SSE progress
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendProgress = (p) => res.write(`data: ${JSON.stringify({ type: 'progress', ...p })}\n\n`);
+
+    let results;
     if (list === "vip") {
-      results = await reapplyTier(gmail, entries, "..VIP");
-      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+      results = await reapplyTier(gmail, entries, "..VIP", sendProgress);
     } else if (list === "ok") {
-      results = await reapplyTier(gmail, entries, "..OK");
-      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+      results = await reapplyTier(gmail, entries, "..OK", sendProgress);
     } else if (list === "blocklist") {
-      results = await reapplyBlocklist(gmail, entries);
-      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+      results = await reapplyBlocklist(gmail, entries, sendProgress);
     } else {
-      results = await reapplyRules(gmail, entries);
-      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+      results = await reapplyRules(gmail, entries, sendProgress);
     }
 
-    res.json({ ok: true, list, totalLabeled, results });
+    const totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+    res.write(`data: ${JSON.stringify({ type: 'done', ok: true, list, totalLabeled, results })}\n\n`);
+    res.end();
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: e.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   }
 });
 

@@ -1285,34 +1285,81 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     applyFilters();
 
     // ─── Reapply buttons ────────────────────────────────────────────────────────
+    async function readSSE(resp, btn) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split(String.fromCharCode(10) + String.fromCharCode(10));
+        buf = lines.pop();
+        for (const chunk of lines) {
+          const line = chunk.replace(/^data: /, '');
+          if (!line) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'progress') {
+              btn.textContent = msg.current + '/' + msg.total + ' ' + (msg.email || '');
+            } else if (msg.type === 'done') {
+              return msg;
+            } else if (msg.type === 'error') {
+              return { ok: false, error: msg.error };
+            }
+          } catch(e) {}
+        }
+      }
+      return { ok: false, error: 'Stream ended unexpectedly' };
+    }
+
     document.querySelectorAll('.reapply-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const list = btn.dataset.list;
         btn.disabled = true;
         const origText = btn.textContent;
-        btn.textContent = 'Reapplying...';
+        btn.textContent = 'Counting...';
         try {
-          let resp = await fetch('/api/reapply', {
+          const guardResp = await fetch('/api/reapply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ list })
           });
-          let data = await resp.json();
-          if (data.guard) {
-            if (!confirm(data.message)) {
-              btn.disabled = false;
-              btn.textContent = origText;
+          const contentType = guardResp.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await guardResp.json();
+            if (data.guard) {
+              if (!confirm(data.message)) {
+                btn.disabled = false;
+                btn.textContent = origText;
+                return;
+              }
+            } else if (data.ok) {
+              btn.textContent = data.totalLabeled + ' labeled';
+              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
               return;
             }
-            resp = await fetch('/api/reapply', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ list, confirmed: true })
-            });
-            data = await resp.json();
+          } else {
+            const result = await readSSE(guardResp, btn);
+            if (result.ok) {
+              btn.textContent = result.totalLabeled + ' labeled';
+              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+            } else {
+              btn.textContent = 'Error';
+              setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+            }
+            return;
           }
-          if (data.ok) {
-            btn.textContent = data.totalLabeled + ' labeled';
+          // Confirmed — run with SSE progress
+          btn.textContent = 'Starting...';
+          const sseResp = await fetch('/api/reapply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ list, confirmed: true })
+          });
+          const result = await readSSE(sseResp, btn);
+          if (result.ok) {
+            btn.textContent = result.totalLabeled + ' labeled';
             setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
           } else {
             btn.textContent = 'Error';

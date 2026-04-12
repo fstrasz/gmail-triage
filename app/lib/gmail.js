@@ -411,12 +411,14 @@ export async function scanAndLabelTier(gmail, list, tierName) {
 }
 
 // ─── Reapply tier labels across all mail ──────────────────────────────────────
-export async function reapplyTier(gmail, list, tierName) {
+export async function reapplyTier(gmail, list, tierName, onProgress = null) {
   if (!list.length) return [];
   const labelId = await ensureLabel(gmail, tierName);
   const results = [];
 
-  for (const entry of list) {
+  for (let idx = 0; idx < list.length; idx++) {
+    const entry = list[idx];
+    if (onProgress) onProgress({ current: idx + 1, total: list.length, email: entry.email });
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const q = `${fromClause} -in:sent -in:trash`;
     const ids = [];
@@ -449,7 +451,7 @@ export async function reapplyTier(gmail, list, tierName) {
 }
 
 // ─── Reapply blocklist labels across all mail ─────────────────────────────────
-export async function reapplyBlocklist(gmail, blocklist) {
+export async function reapplyBlocklist(gmail, blocklist, onProgress = null) {
   if (!blocklist.length) return [];
   const labelId    = await ensureLabel(gmail, ".DelPend");
   const vipLabelId = await ensureLabel(gmail, "..VIP");
@@ -457,7 +459,9 @@ export async function reapplyBlocklist(gmail, blocklist) {
   const skip = new Set([labelId, vipLabelId, okLabelId]);
   const results = [];
 
-  for (const entry of blocklist) {
+  for (let idx = 0; idx < blocklist.length; idx++) {
+    const entry = blocklist[idx];
+    if (onProgress) onProgress({ current: idx + 1, total: blocklist.length, email: entry.email });
     const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
     const q = `${fromClause} -in:sent -in:trash`;
     const ids = [];
@@ -494,10 +498,13 @@ export async function reapplyBlocklist(gmail, blocklist) {
 }
 
 // ─── Reapply custom label rules across all mail ───────────────────────────────
-export async function reapplyRules(gmail, rules) {
+export async function reapplyRules(gmail, rules, onProgress = null) {
   const results = [];
+  let idx = 0;
   for (const rule of rules) {
+    idx++;
     if (rule.enabled === false) continue;
+    if (onProgress) onProgress({ current: idx, total: rules.length, email: rule.name });
     if (!rule.senders?.length && !rule.subjects?.length) continue;
     const fromPart = rule.senders?.length
       ? '(' + rule.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
