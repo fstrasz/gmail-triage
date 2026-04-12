@@ -483,6 +483,42 @@ export async function reapplyBlocklist(gmail, blocklist) {
   return results.filter(Boolean);
 }
 
+// ─── Reapply custom label rules across all mail ───────────────────────────────
+export async function reapplyRules(gmail, rules) {
+  const results = [];
+  for (const rule of rules) {
+    if (rule.enabled === false) continue;
+    if (!rule.senders?.length && !rule.subjects?.length) continue;
+    const fromPart = rule.senders?.length
+      ? '(' + rule.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+      : '';
+    const subjectPart = rule.subjects?.length
+      ? '(' + rule.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+      : '';
+    const q = [fromPart, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+    const ids = [];
+    let pageToken;
+    do {
+      const p = { userId: 'me', q, maxResults: 500 };
+      if (pageToken) p.pageToken = pageToken;
+      const r = await gmail.users.messages.list(p);
+      if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
+      pageToken = r.data.nextPageToken;
+    } while (pageToken);
+    if (!ids.length) continue;
+    const labelId = await ensureLabel(gmail, rule.label);
+    const removeLabels = rule.skipInbox ? ['INBOX', 'UNREAD'] : [];
+    for (let i = 0; i < ids.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: 'me',
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: removeLabels },
+      });
+    }
+    results.push({ ruleName: rule.name, label: rule.label, labeled: ids.length });
+  }
+  return results;
+}
+
 // ─── Apply custom label rules ──────────────────────────────────────────────────
 export async function scanAndApplyRules(gmail, rules) {
   const results = [];
