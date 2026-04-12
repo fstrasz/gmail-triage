@@ -439,6 +439,50 @@ export async function reapplyTier(gmail, list, tierName) {
   return results.filter(Boolean);
 }
 
+// ─── Reapply blocklist labels across all mail ─────────────────────────────────
+export async function reapplyBlocklist(gmail, blocklist) {
+  if (!blocklist.length) return [];
+  const labelId    = await ensureLabel(gmail, ".DelPend");
+  const vipLabelId = await ensureLabel(gmail, "..VIP");
+  const okLabelId  = await ensureLabel(gmail, "..OK");
+  const skip = new Set([labelId, vipLabelId, okLabelId]);
+
+  const results = await Promise.all(blocklist.map(async entry => {
+    const fromClause = entry.email.startsWith("@") ? `from:*${entry.email}` : `from:${entry.email}`;
+    const q = `${fromClause} -in:sent -in:trash`;
+    const ids = [];
+    let pageToken = null;
+    do {
+      const params = { userId: "me", q, maxResults: 500 };
+      if (pageToken) params.pageToken = pageToken;
+      const res = await gmail.users.messages.list(params);
+      const fetches = await Promise.all((res.data.messages || []).map(m =>
+        gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] })
+      ));
+      for (const full of fetches) {
+        const labels = full.data.labelIds || [];
+        if (labels.some(l => skip.has(l))) continue;
+        if (entry.name) {
+          const fromHeader = full.data.payload?.headers?.find(h => h.name === "From")?.value || "";
+          if (extractName(fromHeader) !== entry.name) continue;
+        }
+        ids.push(full.data.id);
+      }
+      pageToken = res.data.nextPageToken || null;
+    } while (pageToken);
+
+    if (!ids.length) return null;
+    for (let i = 0; i < ids.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
+      });
+    }
+    return { email: entry.email, labeled: ids.length };
+  }));
+  return results.filter(Boolean);
+}
+
 // ─── Apply custom label rules ──────────────────────────────────────────────────
 export async function scanAndApplyRules(gmail, rules) {
   const results = [];
