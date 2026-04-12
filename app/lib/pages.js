@@ -1032,6 +1032,12 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
             <input class="list-search" id="list-search" type="text" placeholder="Search by name or email…" oninput="searchList(this.value)"/>
             <button class="btn btn-secondary" id="create-backup-btn" style="margin-left:auto;font-size:.78rem;padding:5px 12px;white-space:nowrap" type="button">💾 Create Backup</button>
             <span id="backup-status" style="font-size:.78rem;color:#64748b"></span>
+            <div style="display:flex;gap:6px;margin-left:8px">
+              <button class="btn btn-secondary reapply-btn" data-list="vip" style="font-size:.72rem;padding:4px 10px" title="Reapply VIP labels to all mail">Reapply VIP</button>
+              <button class="btn btn-secondary reapply-btn" data-list="ok" style="font-size:.72rem;padding:4px 10px" title="Reapply OK labels to all mail">Reapply OK</button>
+              <button class="btn btn-secondary reapply-btn" data-list="blocklist" style="font-size:.72rem;padding:4px 10px" title="Reapply Blocklist labels to all mail">Reapply Block</button>
+              <button class="btn btn-secondary reapply-btn" data-list="rules" style="font-size:.72rem;padding:4px 10px" title="Reapply Rule labels to all mail">Reapply Rules</button>
+            </div>
           </div>
           <div class="card" style="overflow:hidden">
             ${viewMode === 'compact' ? `
@@ -1257,6 +1263,47 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     // Restore search
     if (_search) { var si=document.getElementById('list-search'); if(si){si.value=_search;} }
     applyFilters();
+
+    // ─── Reapply buttons ────────────────────────────────────────────────────────
+    document.querySelectorAll('.reapply-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const list = btn.dataset.list;
+        btn.disabled = true;
+        const origText = btn.textContent;
+        btn.textContent = 'Reapplying...';
+        try {
+          let resp = await fetch('/api/reapply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ list })
+          });
+          let data = await resp.json();
+          if (data.guard) {
+            if (!confirm(data.message)) {
+              btn.disabled = false;
+              btn.textContent = origText;
+              return;
+            }
+            resp = await fetch('/api/reapply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ list, confirmed: true })
+            });
+            data = await resp.json();
+          }
+          if (data.ok) {
+            btn.textContent = data.totalLabeled + ' labeled';
+            setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+          } else {
+            btn.textContent = 'Error';
+            setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+          }
+        } catch (e) {
+          btn.textContent = 'Error';
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+        }
+      });
+    });
   `;
 
   return { body, script };
