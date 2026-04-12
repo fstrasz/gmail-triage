@@ -1,7 +1,7 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
@@ -134,6 +134,71 @@ app.post("/lists/reset-blocklist", (req, res) => {
 app.post("/lists/backup", (req, res) => {
   try { const n = createNamedBackup(); res.json({ ok: true, n }); }
   catch(e) { res.json({ ok: false, error: e.message }); }
+});
+
+// ─── API: Reapply list labels across all mail ─────────────────────────────────
+app.post("/api/reapply", async (req, res) => {
+  const { list, confirmed } = req.body;
+  if (!["vip", "ok", "blocklist", "rules"].includes(list)) {
+    return res.status(400).json({ ok: false, error: "Invalid list" });
+  }
+  try {
+    const gmail = await getGmailClient();
+
+    // Load the appropriate list
+    let entries;
+    if (list === "vip") entries = loadViplist();
+    else if (list === "ok") entries = loadOklist();
+    else if (list === "blocklist") entries = loadBlocklist();
+    else entries = loadRules().filter(r => r.enabled !== false);
+
+    if (!entries.length) return res.json({ ok: true, list, totalLabeled: 0, results: [] });
+
+    // Bulk guard: count total emails across all entries
+    if (!confirmed) {
+      let totalCount = 0;
+      for (const entry of entries) {
+        const email = entry.email || '';
+        const fromClause = list === "rules"
+          ? (entry.senders?.length
+              ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+              : '')
+          : (email.startsWith("@") ? `from:*${email}` : `from:${email}`);
+        const subjectPart = list === "rules" && entry.subjects?.length
+          ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+          : '';
+        const q = [fromClause, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+        if (q.trim() === '-in:sent -in:trash') continue;
+        totalCount += await countMatchingEmails(gmail, q);
+      }
+      if (totalCount > BULK_GUARD_THRESHOLD) {
+        return res.json({
+          ok: false, guard: true, count: totalCount, list,
+          message: `This will reapply labels to approximately ${totalCount} emails across ${entries.length} entries. Confirm?`
+        });
+      }
+    }
+
+    // Execute reapply
+    let results, totalLabeled;
+    if (list === "vip") {
+      results = await reapplyTier(gmail, entries, "..VIP");
+      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+    } else if (list === "ok") {
+      results = await reapplyTier(gmail, entries, "..OK");
+      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+    } else if (list === "blocklist") {
+      results = await reapplyBlocklist(gmail, entries);
+      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+    } else {
+      results = await reapplyRules(gmail, entries);
+      totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
+    }
+
+    res.json({ ok: true, list, totalLabeled, results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ─── API: Next ─────────────────────────────────────────────────────────────────
