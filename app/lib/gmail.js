@@ -56,8 +56,16 @@ export function getLabelId(name) { return labelCache[name] || null; }
 export const BULK_GUARD_THRESHOLD = 100;
 
 export async function countMatchingEmails(gmail, query) {
-  const res = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 1 });
-  return res.data.resultSizeEstimate || 0;
+  let count = 0;
+  let pageToken = null;
+  do {
+    const params = { userId: "me", q: query, maxResults: 500 };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    count += (res.data.messages || []).length;
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  return count;
 }
 
 // ─── Label all sender emails ───────────────────────────────────────────────────
