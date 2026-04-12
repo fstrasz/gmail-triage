@@ -154,11 +154,13 @@ app.post("/api/reapply", async (req, res) => {
 
     if (!entries.length) return res.json({ ok: true, list, totalLabeled: 0, results: [] });
 
-    // Bulk guard: count total emails across all entries
+    // Bulk guard: count per-entry emails
     if (!confirmed) {
       let totalCount = 0;
+      const breakdown = [];
       for (const entry of entries) {
         const email = entry.email || '';
+        const label = list === "rules" ? entry.name : email;
         const fromClause = list === "rules"
           ? (entry.senders?.length
               ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
@@ -169,12 +171,16 @@ app.post("/api/reapply", async (req, res) => {
           : '';
         const q = [fromClause, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
         if (q.trim() === '-in:sent -in:trash') continue;
-        totalCount += await countMatchingEmails(gmail, q);
+        const count = await countMatchingEmails(gmail, q);
+        totalCount += count;
+        if (count > 0) breakdown.push({ entry: label, count, query: q });
       }
       if (totalCount > BULK_GUARD_THRESHOLD) {
+        const top10 = breakdown.sort((a, b) => b.count - a.count).slice(0, 10);
+        const lines = top10.map(b => `  ${b.entry}: ~${b.count}`).join('\n');
         return res.json({
-          ok: false, guard: true, count: totalCount, list,
-          message: `This will reapply labels to approximately ${totalCount} emails across ${entries.length} entries. Confirm?`
+          ok: false, guard: true, count: totalCount, list, breakdown,
+          message: `This will reapply labels to ~${totalCount} emails across ${entries.length} entries.\n\nTop contributors:\n${lines}\n\nConfirm?`
         });
       }
     }
@@ -196,6 +202,46 @@ app.post("/api/reapply", async (req, res) => {
     }
 
     res.json({ ok: true, list, totalLabeled, results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── API: Reapply preview (dry run — counts only, no labeling) ────────────────
+app.post("/api/reapply/preview", async (req, res) => {
+  const { list } = req.body;
+  if (!["vip", "ok", "blocklist", "rules"].includes(list)) {
+    return res.status(400).json({ ok: false, error: "Invalid list" });
+  }
+  try {
+    const gmail = await getGmailClient();
+    let entries;
+    if (list === "vip") entries = loadViplist();
+    else if (list === "ok") entries = loadOklist();
+    else if (list === "blocklist") entries = loadBlocklist();
+    else entries = loadRules().filter(r => r.enabled !== false);
+
+    let totalCount = 0;
+    const breakdown = [];
+    for (const entry of entries) {
+      const email = entry.email || '';
+      const label = list === "rules" ? entry.name : email;
+      const fromClause = list === "rules"
+        ? (entry.senders?.length
+            ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+            : '')
+        : (email.startsWith("@") ? `from:*${email}` : `from:${email}`);
+      const subjectPart = list === "rules" && entry.subjects?.length
+        ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+        : '';
+      const q = [fromClause, subjectPart].filter(Boolean).join(' ') + ' -in:sent -in:trash';
+      if (q.trim() === '-in:sent -in:trash') continue;
+      const count = await countMatchingEmails(gmail, q);
+      totalCount += count;
+      breakdown.push({ entry: label, count, query: q });
+    }
+    breakdown.sort((a, b) => b.count - a.count);
+    res.json({ ok: true, list, totalCount, entries: entries.length, breakdown });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
