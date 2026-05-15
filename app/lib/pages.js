@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.21";
+const APP_VERSION = "v1.0.22";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -49,9 +49,13 @@ function buildDelPendSection(delPendSummary) {
           </form></div>`;
       }).join("")
     : `<div class="empty">No per-sender data.</div>`;
+  const sampled = delPendSummary.sampled ?? delPendSummary.total;
+  const sampleNote = sampled < delPendSummary.total
+    ? ` <span class="bl-meta" style="font-weight:normal">(top senders from most recent ${sampled.toLocaleString()})</span>`
+    : "";
   return `<div class="card">
     <div class="card-header">
-      <span>🗑 DelPend Queue (${delPendSummary.total.toLocaleString()} messages)</span>
+      <span>🗑 DelPend Queue (${delPendSummary.total.toLocaleString()} messages)${sampleNote}</span>
       <form method="POST" action="/api/delpend/trash-all" style="margin:0">
         <button class="btn btn-danger" type="submit">🗑 Trash All</button>
       </form>
