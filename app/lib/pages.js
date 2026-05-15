@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.26";
+const APP_VERSION = "v1.0.27";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2369,6 +2369,9 @@ export function eventsPage(events, settings) {
             </form>
             <form method="POST" action="/events/search" style="margin:0">
               <button class="btn btn-primary" type="submit" style="font-size:.82rem">Search Now</button>
+            </form>
+            <form method="POST" action="/events/reset-rebuild" style="margin:0" onsubmit="return confirm('Wipe found-events.json and the inbox-scan dedup set, then re-run the full search? This cannot be undone.');">
+              <button class="btn btn-danger" type="submit" style="font-size:.82rem">Reset &amp; Rebuild</button>
             </form>
           </div>
         </div>
