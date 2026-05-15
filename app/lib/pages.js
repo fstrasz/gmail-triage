@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.22";
+const APP_VERSION = "v1.0.23";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -40,9 +40,10 @@ function buildDelPendSection(delPendSummary) {
   const senderRows = delPendSummary.senders.length
     ? delPendSummary.senders.map(s => {
         const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
+        const countStr = `${s.count.toLocaleString()}${s.capped ? "+" : ""}`;
         return `<div class="bl-row">
           <div><div class="bl-email">${lbl}</div>
-          <div class="bl-meta">${s.count.toLocaleString()} message${s.count !== 1 ? "s" : ""} in DelPend</div></div>
+          <div class="bl-meta">${countStr} message${s.count !== 1 ? "s" : ""} in DelPend</div></div>
           <form method="POST" action="/api/delpend/trash-sender">
             <input type="hidden" name="email" value="${s.email}"/>
             <button class="btn btn-danger" type="submit">🗑 Trash</button>
@@ -51,7 +52,7 @@ function buildDelPendSection(delPendSummary) {
     : `<div class="empty">No per-sender data.</div>`;
   const sampled = delPendSummary.sampled ?? delPendSummary.total;
   const sampleNote = sampled < delPendSummary.total
-    ? ` <span class="bl-meta" style="font-weight:normal">(top senders from most recent ${sampled.toLocaleString()})</span>`
+    ? ` <span class="bl-meta" style="font-weight:normal">(senders discovered from most recent ${sampled.toLocaleString()})</span>`
     : "";
   return `<div class="card">
     <div class="card-header">
