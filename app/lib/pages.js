@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.40";
+const APP_VERSION = "v1.0.41";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -328,6 +328,15 @@ function clientScript() { return `
     tag.className='status-tag '+cls;tag.textContent=text;tag.style.display='inline-block';
     document.getElementById('actions-'+id).style.display='none';
   }
+  // Revert all pre-server optimistic UI changes when user cancels at the guard.
+  function revertStatus(id){
+    var tag=document.getElementById('tag-'+id);
+    if(tag){tag.style.display='none';tag.className='status-tag';tag.textContent='';}
+    var actions=document.getElementById('actions-'+id);
+    if(actions)actions.style.display='';
+    var row=document.getElementById('row-'+id);
+    if(row)row.style.borderLeft='';
+  }
   async function loadNext(){
     if(loading){pendingLoads++;return;}loading=true;
     try{
@@ -398,53 +407,60 @@ function clientScript() { return `
   }
   async function doTier(id,fromEmail,fromName,tier){
     var isVip=tier==='..VIP';
+    // Light optimistic UI only — heavy commits (markDone, duplicates) deferred until server confirms
     setStatus(id,isVip?'tag-vip':'tag-ok',(isVip?'⭐':'✅')+' Working...');
     document.getElementById('row-'+id).style.borderLeft=isVip?'4px solid #f59e0b':'4px solid #14b8a6';
-    markDone(id,isVip?'r-vip':'r-ok');applyLabelToDuplicates(fromEmail,id,isVip?'r-vip':'r-ok',isVip?'⭐ VIP':'✅ OK',isVip?'tag-vip':'tag-ok');
     try{
       var body={id,fromEmail,fromName,tier};
       var r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       var data=await r.json();
       if(data.guard){
-        if(!confirm(data.message)){setStatus(id,'','');document.getElementById('row-'+id).style.borderLeft='';return;}
+        if(!confirm(data.message)){revertStatus(id);return;}
         r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
         data=await r.json();
       }
+      // Server confirmed — full commit
       if(isVip)vipCount+=(data.labeled||0);else okCount+=(data.labeled||0);
       updateStats();
+      markDone(id,isVip?'r-vip':'r-ok');
+      applyLabelToDuplicates(fromEmail,id,isVip?'r-vip':'r-ok',isVip?'⭐ VIP':'✅ OK',isVip?'tag-vip':'tag-ok');
       document.getElementById('tag-'+id).textContent=(isVip?'⭐':'✅')+' '+tier+' ('+(data.labeled||0)+' labeled)';
       scheduleDismiss(id);
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doOkClean(id,fromEmail,fromName){
-    setStatus(id,'tag-working','⏳ OK & cleaning...');markDone(id,'r-ok');applyLabelToDuplicates(fromEmail,id,'r-ok','✅ OK','tag-ok');
+    setStatus(id,'tag-working','⏳ OK & cleaning...');
     try{
       var body={id,fromEmail,fromName};
       var r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       var data=await r.json();
       if(data.guard){
-        if(!confirm(data.message)){setStatus(id,'','');return;}
+        if(!confirm(data.message)){revertStatus(id);return;}
         r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
         data=await r.json();
       }
       cleaned+=data.cleaned||0;updateStats();
+      markDone(id,'r-ok');
+      applyLabelToDuplicates(fromEmail,id,'r-ok','✅ OK','tag-ok');
       document.getElementById('tag-'+id).textContent='✅ OK · 🗑 '+(data.cleaned||0)+' older cleaned';
       document.getElementById('tag-'+id).className='status-tag tag-ok';
       scheduleDismiss(id);
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doJunk(id,fromEmail,fromName){
-    setStatus(id,'tag-working','⏳ Blocking...');markDone(id,'junked');applyLabelToDuplicates(fromEmail,id,'junked','🗑 Junked','tag-junk');
+    setStatus(id,'tag-working','⏳ Blocking...');
     try{
       var body={id,fromEmail,fromName};
       var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       var data=await r.json();
       if(data.guard){
-        if(!confirm(data.message)){setStatus(id,'','');return;}
+        if(!confirm(data.message)){revertStatus(id);return;}
         r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
         data=await r.json();
       }
       junked+=data.moved||1;updateStats();
+      markDone(id,'junked');
+      applyLabelToDuplicates(fromEmail,id,'junked','🗑 Junked','tag-junk');
       document.getElementById('tag-'+id).textContent='🗑 Junked ('+(data.moved||0)+' labeled)';
       document.getElementById('tag-'+id).className='status-tag tag-junk';
       updateBlCount(1);
