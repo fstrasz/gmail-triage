@@ -4,8 +4,9 @@ import { loadStats } from "./stats.js";
 import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
+import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.36";
+const APP_VERSION = "v1.0.37";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2290,8 +2291,9 @@ export function eventsPage(events, settings) {
         </div>
       </div>` : '';
 
+  const orderedKeys = sortGroupKeysByLocationOrder(Object.keys(grouped), settings.locations || []);
   const eventCards = active.length
-    ? Object.entries(grouped).map(([loc, evs]) => `
+    ? orderedKeys.map(loc => [loc, grouped[loc]]).map(([loc, evs]) => `
         <div style="margin-bottom:24px">
           <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
