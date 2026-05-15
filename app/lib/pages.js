@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.38";
+const APP_VERSION = "v1.0.39";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2391,7 +2391,32 @@ export function eventsPage(events, settings) {
     function toggleCalForm(id) {
       var el = document.getElementById('cal-form-' + id);
       el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    }`;
+    }
+    document.querySelectorAll('form[action="/events/ignore"]').forEach(function(form) {
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var card = form.closest('li');
+        var btn = form.querySelector('button');
+        if (btn) { btn.disabled = true; btn.textContent = 'Ignoring...'; }
+        try {
+          var r = await fetch('/events/ignore', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(form),
+          });
+          if (r.ok && card) {
+            card.style.transition = 'opacity 0.3s';
+            card.style.opacity = '0.35';
+            card.style.pointerEvents = 'none';
+            if (btn) btn.textContent = 'Ignored';
+          } else if (btn) {
+            btn.disabled = false; btn.textContent = 'Ignore';
+          }
+        } catch (err) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Ignore'; }
+        }
+      });
+    });`;
 
   return { body, script };
 }
