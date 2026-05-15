@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.27";
+const APP_VERSION = "v1.0.28";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2297,8 +2297,9 @@ export function eventsPage(events, settings) {
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
             ${evs.map(e => {
               const sourceIcon = e.source === 'email' ? '✉ ' : '';
-              const titleLink = e.url
-                ? `<a href="${e.url}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
+              const displayUrl = e.canonicalUrl || e.url;
+              const titleLink = displayUrl
+                ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
                 : `${sourceIcon}${e.title}`;
               const priceRating = [
                 e.pricePerPerson ? `<strong style="color:#16a34a;font-size:.88rem">${e.pricePerPerson} / person</strong>` : '',
@@ -2321,7 +2322,7 @@ export function eventsPage(events, settings) {
                     ${e.calendarEventUrl ? `<div style="margin-top:6px"><a href="${e.calendarEventUrl}" target="_blank" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ''}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-                    ${e.url ? `<a href="${e.url}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ''}
+                    ${displayUrl ? `<a href="${displayUrl}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ''}
                     ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${e.id}')">+ Calendar</button>` : ''}
                     <form method="POST" action="/events/ignore" style="margin:0">
                       <input type="hidden" name="id" value="${e.id}">
