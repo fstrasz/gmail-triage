@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.39";
+const APP_VERSION = "v1.0.40";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2397,12 +2397,16 @@ export function eventsPage(events, settings) {
         e.preventDefault();
         var card = form.closest('li');
         var btn = form.querySelector('button');
+        var id = (form.querySelector('input[name="id"]') || {}).value;
         if (btn) { btn.disabled = true; btn.textContent = 'Ignoring...'; }
         try {
           var r = await fetch('/events/ignore', {
             method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(form),
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id }),
           });
           if (r.ok && card) {
             card.style.transition = 'opacity 0.3s';
