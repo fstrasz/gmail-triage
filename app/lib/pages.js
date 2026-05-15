@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.24";
+const APP_VERSION = "v1.0.25";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2264,7 +2264,12 @@ export function rulesPage(rules) {
 // ─── Events page ───────────────────────────────────────────────────────────────
 export function eventsPage(events, settings) {
   const today = new Date().toISOString().slice(0, 10);
-  const active = (events || []).filter(e => !e.ignored && (!e.date || e.date >= today)).sort((a, b) => (a.date||'') < (b.date||'') ? -1 : 1);
+  const active = (events || []).filter(e => !e.ignored && (!e.date || e.date >= today)).sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return a.date.localeCompare(b.date);
+  });
   const interests = settings.eventInterests || [];
 
   // Group by configured location
