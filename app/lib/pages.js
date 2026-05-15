@@ -5,7 +5,7 @@ import { loadBlocklist } from "./blocklist.js";
 import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 
-const APP_VERSION = "v1.0.28";
+const APP_VERSION = "v1.0.29";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -2296,8 +2296,8 @@ export function eventsPage(events, settings) {
           <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
             ${evs.map(e => {
-              const sourceIcon = e.source === 'email' ? '✉ ' : '';
               const displayUrl = e.canonicalUrl || e.url;
+              const sourceIcon = (e.source === 'email' && !e.canonicalUrl) ? '✉ ' : '';
               const titleLink = displayUrl
                 ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
                 : `${sourceIcon}${e.title}`;
