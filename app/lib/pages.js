@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.42";
+const APP_VERSION = "v1.0.43";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -367,28 +367,30 @@ function clientScript() { return `
       row.style.borderLeft='4px solid '+(tagCls==='tag-vip'?'#f59e0b':tagCls==='tag-ok'?'#14b8a6':tagCls==='tag-junk'?'#ef4444':'#f59e0b');
     });
   }
+  // Optimistic auto-advance: called BEFORE the action fetch so the next preview
+  // loads immediately without waiting for the server (or guard) round-trip.
+  function advancePreviewFrom(currentId){
+    if(activePreviewId!==currentId)return;
+    var all=Array.from(document.querySelectorAll('.triage-row'));
+    var idx=all.findIndex(function(r){return r.id==='row-'+currentId;});
+    var nextRow=null;
+    for(var i=idx+1;i<all.length;i++){if(!all[i].classList.contains('done')&&all[i].id!=='row-'+currentId){nextRow=all[i];break;}}
+    if(!nextRow)for(var i=idx-1;i>=0;i--){if(!all[i].classList.contains('done')&&all[i].id!=='row-'+currentId){nextRow=all[i];break;}}
+    if(nextRow){
+      openPreview(nextRow.id.replace('row-',''));
+    } else {
+      closePreview();
+      loadNext().then(function(){
+        setTimeout(function(){
+          var fresh=Array.from(document.querySelectorAll('.triage-row:not(.done)')).filter(function(r){return r.id!=='row-'+currentId;});
+          if(fresh.length)openPreview(fresh[fresh.length-1].id.replace('row-',''));
+        },200);
+      });
+    }
+  }
   function markDone(id,rowCls){
     var row=document.getElementById('row-'+id);
     row.classList.add('done',rowCls);actioned++;updateStats();
-    // Auto-advance preview
-    if(activePreviewId===id){
-      var all=Array.from(document.querySelectorAll('.triage-row'));
-      var idx=all.findIndex(function(r){return r.id==='row-'+id;});
-      var nextRow=null;
-      for(var i=idx+1;i<all.length;i++){if(!all[i].classList.contains('done')){nextRow=all[i];break;}}
-      if(!nextRow)for(var i=idx-1;i>=0;i--){if(!all[i].classList.contains('done')){nextRow=all[i];break;}}
-      if(nextRow){
-        openPreview(nextRow.id.replace('row-',''));
-      } else {
-        closePreview();
-        loadNext().then(function(){
-          setTimeout(function(){
-            var fresh=document.querySelectorAll('.triage-row:not(.done)');
-            if(fresh.length)openPreview(fresh[fresh.length-1].id.replace('row-',''));
-          },200);
-        });
-      }
-    }
     if(actioned===total)showDone();
   }
   function scheduleDismiss(id){
@@ -410,6 +412,7 @@ function clientScript() { return `
     // Light optimistic UI only — heavy commits (markDone, duplicates) deferred until server confirms
     setStatus(id,isVip?'tag-vip':'tag-ok',(isVip?'⭐':'✅')+' Working...');
     document.getElementById('row-'+id).style.borderLeft=isVip?'4px solid #f59e0b':'4px solid #14b8a6';
+    advancePreviewFrom(id);
     try{
       var body={id,fromEmail,fromName,tier};
       var r=await fetch('/api/tier',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -430,6 +433,7 @@ function clientScript() { return `
   }
   async function doOkClean(id,fromEmail,fromName){
     setStatus(id,'tag-working','⏳ OK & cleaning...');
+    advancePreviewFrom(id);
     try{
       var body={id,fromEmail,fromName};
       var r=await fetch('/api/ok-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -449,6 +453,7 @@ function clientScript() { return `
   }
   async function doJunk(id,fromEmail,fromName){
     setStatus(id,'tag-working','⏳ Blocking...');
+    advancePreviewFrom(id);
     try{
       var body={id,fromEmail,fromName};
       var r=await fetch('/api/junk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
