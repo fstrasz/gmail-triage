@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.43";
+const APP_VERSION = "v1.0.44";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -475,7 +475,9 @@ function clientScript() { return `
   async function doUnsub(id,fromEmail,fromName){
     unsubbed++;
     var row=document.getElementById('row-'+id);
-    setStatus(id,'tag-working','⏳ Unsubscribing...');markDone(id,'unsubbed');applyLabelToDuplicates(fromEmail,id,'unsubbed','🚫 Unsub','tag-unsub');
+    setStatus(id,'tag-working','⏳ Unsubscribing...');
+    advancePreviewFrom(id);
+    markDone(id,'unsubbed');applyLabelToDuplicates(fromEmail,id,'unsubbed','🚫 Unsub','tag-unsub');
     try{
       var r=await fetch('/api/unsub',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({id,fromEmail,fromName,unsubUrl:row.dataset.unsubUrl,unsubPost:row.dataset.unsubPost})});
@@ -489,7 +491,9 @@ function clientScript() { return `
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doArchive(id,threadId){
-    setStatus(id,'tag-working','⏳ Archiving...');markDone(id,'r-archived');
+    setStatus(id,'tag-working','⏳ Archiving...');
+    advancePreviewFrom(id);
+    markDone(id,'r-archived');
     try{
       await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,threadId:threadId||null})});
       document.getElementById('tag-'+id).textContent='📥 Archived';
@@ -511,7 +515,9 @@ function clientScript() { return `
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
   async function doDelete(id){
-    setStatus(id,'tag-working','⏳ Deleting...');markDone(id,'junked');
+    setStatus(id,'tag-working','⏳ Deleting...');
+    advancePreviewFrom(id);
+    markDone(id,'junked');
     try{
       await fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
       document.getElementById('tag-'+id).textContent='🗑 Deleted';
@@ -522,6 +528,7 @@ function clientScript() { return `
   async function doReview(id,fromEmail,fromName,subject){
     setStatus(id,'tag-review','🤖 Analyzing...');
     document.getElementById('tag-'+id).style.display='inline-flex';
+    advancePreviewFrom(id);
     try{
       var r=await fetch('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fromEmail,fromName,subject})});
       var data=await r.json();
