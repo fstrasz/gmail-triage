@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.0.44";
+const APP_VERSION = "v1.0.45";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -428,6 +428,26 @@ function clientScript() { return `
       markDone(id,isVip?'r-vip':'r-ok');
       applyLabelToDuplicates(fromEmail,id,isVip?'r-vip':'r-ok',isVip?'⭐ VIP':'✅ OK',isVip?'tag-vip':'tag-ok');
       document.getElementById('tag-'+id).textContent=(isVip?'⭐':'✅')+' '+tier+' ('+(data.labeled||0)+' labeled)';
+      scheduleDismiss(id);
+    }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
+  }
+  async function doVipClean(id,fromEmail,fromName){
+    setStatus(id,'tag-working','⏳ VIP & cleaning...');
+    advancePreviewFrom(id);
+    try{
+      var body={id,fromEmail,fromName};
+      var r=await fetch('/api/vip-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      var data=await r.json();
+      if(data.guard){
+        if(!confirm(data.message)){revertStatus(id);return;}
+        r=await fetch('/api/vip-clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,confirmed:true})});
+        data=await r.json();
+      }
+      vipCount+=1;cleaned+=data.cleaned||0;updateStats();
+      markDone(id,'r-vip');
+      applyLabelToDuplicates(fromEmail,id,'r-vip','⭐ VIP','tag-vip');
+      document.getElementById('tag-'+id).textContent='⭐ VIP · 🗑 '+(data.cleaned||0)+' cleaned';
+      document.getElementById('tag-'+id).className='status-tag tag-vip';
       scheduleDismiss(id);
     }catch(e){document.getElementById('tag-'+id).textContent='⚠ '+e.message;}
   }
