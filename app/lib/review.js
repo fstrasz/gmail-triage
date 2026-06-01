@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const REVIEW_PATH = path.join(process.cwd(), "review.json");
 
@@ -7,7 +8,7 @@ export function loadReview() {
   try { return JSON.parse(fs.readFileSync(REVIEW_PATH)); } catch { return []; }
 }
 export function saveReview(list) {
-  fs.writeFileSync(REVIEW_PATH, JSON.stringify(list, null, 2));
+  atomicWriteFileSync(REVIEW_PATH, JSON.stringify(list, null, 2));
 }
 export function addToReview(item) {
   const list = loadReview().filter(e => e.id !== item.id); // replace if re-analyzed

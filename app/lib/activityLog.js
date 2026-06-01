@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const LOG_PATH = path.join(process.cwd(), "activity-log.json");
 const MAX_ENTRIES = 1000;
@@ -9,7 +10,7 @@ export function loadLog() {
 }
 
 function saveLog(entries) {
-  fs.writeFileSync(LOG_PATH, JSON.stringify(entries, null, 2));
+  atomicWriteFileSync(LOG_PATH, JSON.stringify(entries, null, 2));
 }
 
 export function appendLog(entry) {

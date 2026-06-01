@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { atomicWriteFileSync } from './atomicWrite.js';
 
 const RULES_PATH = path.join(process.cwd(), 'rules.json');
 
@@ -8,7 +9,7 @@ export function loadRules() {
   try { return JSON.parse(fs.readFileSync(RULES_PATH)); } catch { return []; }
 }
 export function saveRules(rules) {
-  fs.writeFileSync(RULES_PATH, JSON.stringify(rules, null, 2));
+  atomicWriteFileSync(RULES_PATH, JSON.stringify(rules, null, 2));
 }
 export function addRule({ name, senders, subjects, label, skipInbox }) {
   const rules = loadRules();

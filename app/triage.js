@@ -1,7 +1,7 @@
 import express from "express";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted, loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/viplist.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
@@ -12,7 +12,7 @@ import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
 import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
-import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
+import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, scanAll, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { sendEventsEmail } from "./lib/eventSearch.js";
 import { appendLog, loadLog } from "./lib/activityLog.js";
 import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink, pruneInvalidEmailEvents, saveFoundEvents } from "./lib/foundEvents.js";
@@ -56,18 +56,11 @@ app.get("/triage", async (req, res) => {
     const gmail      = await getGmailClient();
     const blocklist  = loadBlocklist();
     const savedStats = loadStats();
-    const viplist  = loadViplist();
-    const oklist   = loadOklist();
 
     const { lastTriageAt } = loadSettings();
     const scheduledResults = loadScanLog()
       .filter(e => e.runAt && (!lastTriageAt || new Date(e.runAt) > new Date(lastTriageAt)));
-    const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
-      scanAndCleanBlocklist(gmail, blocklist),
-      scanAndLabelTier(gmail, viplist, "..VIP"),
-      scanAndLabelTier(gmail, oklist, "..OK"),
-      scanAndApplyRules(gmail, loadRules()),
-    ]);
+    const { scanClean, scanVip, scanOk, scanRules } = await scanAll(gmail);
     const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
     for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
     const emails = await fetchEmails(gmail, 25);
@@ -161,21 +154,8 @@ app.post("/api/reapply", async (req, res) => {
       for (const entry of entries) {
         const email = entry.email || '';
         const label = list === "rules" ? entry.name : email;
-        const fromClause = list === "rules"
-          ? (entry.senders?.length
-              ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
-              : '')
-          : (email.startsWith("@") ? `from:*${email}` : `from:${email}`);
-        const subjectPart = list === "rules" && entry.subjects?.length
-          ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
-          : '';
-        // Exclude already-labeled emails from the count
-        const labelExcl = list === "vip" ? " -label:..VIP"
-          : list === "ok" ? " -label:..OK"
-          : list === "blocklist" ? " -label:.DelPend"
-          : (entry.label ? ` -label:${entry.label.includes(' ') ? '"' + entry.label + '"' : entry.label}` : '');
-        const q = [fromClause, subjectPart].filter(Boolean).join(' ') + labelExcl + ' -in:sent -in:trash';
-        if (q.trim() === '-in:sent -in:trash') continue;
+        const q = buildReapplyQuery(list, entry);
+        if (!q) continue;
         const count = await countMatchingEmails(gmail, q);
         totalCount += count;
         if (count > 0) breakdown.push({ entry: label, count, query: q });
@@ -241,20 +221,8 @@ app.post("/api/reapply/preview", async (req, res) => {
     for (const entry of entries) {
       const email = entry.email || '';
       const label = list === "rules" ? entry.name : email;
-      const fromClause = list === "rules"
-        ? (entry.senders?.length
-            ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
-            : '')
-        : (email.startsWith("@") ? `from:*${email}` : `from:${email}`);
-      const subjectPart = list === "rules" && entry.subjects?.length
-        ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
-        : '';
-      const labelExcl = list === "vip" ? " -label:..VIP"
-        : list === "ok" ? " -label:..OK"
-        : list === "blocklist" ? " -label:.DelPend"
-        : (entry.label ? ` -label:${entry.label.includes(' ') ? '"' + entry.label + '"' : entry.label}` : '');
-      const q = [fromClause, subjectPart].filter(Boolean).join(' ') + labelExcl + ' -in:sent -in:trash';
-      if (q.trim() === '-in:sent -in:trash') continue;
+      const q = buildReapplyQuery(list, entry);
+      if (!q) continue;
       const count = await countMatchingEmails(gmail, q);
       totalCount += count;
       breakdown.push({ entry: label, count, query: q });
@@ -685,10 +653,7 @@ app.post("/settings/daily-summary/test", async (req, res) => {
 });
 app.post("/settings/run-scan", async (req, res) => {
   try {
-    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved } = await runScheduledScan(
-      getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier,
-      loadRules, scanAndApplyRules
-    );
+    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved } = await runScheduledScan(getGmailClient);
     res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved: rulesMoved || 0, timeLabel });
   } catch(e) { res.json({ ok: false, error: e.message }); }
 });
@@ -785,70 +750,6 @@ app.post("/events/send-email", async (req, res) => {
   } catch(e) { console.error("events send-email error:", e.message); }
   res.redirect("/events");
 });
-// TEMPORARY diagnostic: GET /events/debug-body?id=<gmailMessageId>
-// Shows exactly what scanEmailsForEvents would extract for this message,
-// plus raw text/plain and stripped text/html. Remove after diagnosis.
-app.get("/events/debug-body", async (req, res) => {
-  const id = (req.query.id || '').trim();
-  if (!/^[a-f0-9]+$/i.test(id)) return res.status(400).type('text').send('bad id');
-  try {
-    const gmail = await getGmailClient();
-    const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
-    const subject = (msg.data.payload?.headers || []).find(h => h.name === 'Subject')?.value || '(no subject)';
-    const labelIds = msg.data.labelIds || [];
-
-    // Inline the same extraction helpers from eventSearch.js to be self-contained
-    const decode = data => Buffer.from(data, 'base64').toString('utf-8');
-    const findPart = (payload, mime) => {
-      if (!payload) return null;
-      if (payload.mimeType === mime && payload.body?.data) return payload.body.data;
-      if (payload.parts) { for (const p of payload.parts) { const r = findPart(p, mime); if (r) return r; } }
-      return null;
-    };
-    const plainData = findPart(msg.data.payload, 'text/plain');
-    const htmlData = findPart(msg.data.payload, 'text/html');
-    const plain = plainData ? decode(plainData) : null;
-    const html = htmlData ? decode(htmlData) : null;
-    const htmlStripped = html ? html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim() : null;
-    const final = plain || htmlStripped || '';
-
-    const out = [
-      `=== MESSAGE ${id} ===`,
-      `Subject: ${subject}`,
-      `Labels: ${labelIds.join(', ')}`,
-      `Snippet: ${msg.data.snippet || ''}`,
-      ``,
-      `--- text/plain part ---`,
-      plain == null ? '(none)' : `(${plain.length} chars)`,
-      plain == null ? '' : plain.slice(0, 5000),
-      ``,
-      `--- text/html part raw length ---`,
-      html == null ? '(none)' : `(${html.length} chars)`,
-      ``,
-      `--- text/html after htmlToText (first 5000 chars) ---`,
-      htmlStripped == null ? '(none)' : `(${htmlStripped.length} chars total)`,
-      htmlStripped == null ? '' : htmlStripped.slice(0, 5000),
-      ``,
-      `--- FINAL body that Claude would receive (first 5000 chars) ---`,
-      `(${final.length} chars total — capped at 50000 in scanEmailsForEvents)`,
-      final.slice(0, 5000),
-    ].join('\n');
-    res.type('text').send(out);
-  } catch (e) {
-    res.status(500).type('text').send('error: ' + e.message + '\n' + (e.stack || ''));
-  }
-});
 
 app.post("/events/reset-rebuild", async (req, res) => {
   try {
@@ -896,7 +797,7 @@ app.post("/settings/events-search", (req, res) => {
 
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);
-  startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist, scanAndCleanBlocklist, scanAndLabelTier, loadRules, scanAndApplyRules);
+  startScheduler(getGmailClient);
   startDailySummaryScheduler(getGmailClient);
   startEventsSearchScheduler(getGmailClient);
 });

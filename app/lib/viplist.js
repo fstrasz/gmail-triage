@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 // ── VIP ────────────────────────────────────────────────────────────────────────
 const VIPLIST_PATH = path.join(process.cwd(), "viplist.json");
@@ -17,7 +18,7 @@ export function loadViplist() {
   } catch { return []; }
 }
 export function saveViplist(list) {
-  fs.writeFileSync(VIPLIST_PATH, JSON.stringify(list, null, 2));
+  atomicWriteFileSync(VIPLIST_PATH, JSON.stringify(list, null, 2));
 }
 export function addToViplist(email, name = null) {
   const list = loadViplist();
@@ -62,7 +63,7 @@ export function loadOklist() {
   } catch { return []; }
 }
 export function saveOklist(list) {
-  fs.writeFileSync(OKLIST_PATH, JSON.stringify(list, null, 2));
+  atomicWriteFileSync(OKLIST_PATH, JSON.stringify(list, null, 2));
 }
 export function addToOklist(email, name = null) {
   const list = loadOklist();

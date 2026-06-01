@@ -70,13 +70,51 @@ export function sanitizeUrl(raw) {
   } catch { return null; }
 }
 
+// Manual redirect follower with per-hop SSRF re-check. fetch's redirect:'follow' would
+// allow an attacker-controlled public URL to 302 into a private IP, bypassing the
+// initial sanitizeUrl. We follow up to 5 hops, each through sanitizeUrl.
+async function fetchWithSsrfGuardedRedirects(initialUrl, init = {}, maxHops = 5) {
+  let url = initialUrl;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    const safe = sanitizeUrl(url);
+    if (!safe) throw new Error('blocked-redirect-target');
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
+    try {
+      const r = await fetch(safe, {
+        ...init,
+        redirect: 'manual',
+        signal: ac.signal,
+        headers: {
+          'User-Agent': 'gmail-triage/1.x (+unsub)',
+          ...(init.headers || {}),
+        },
+      });
+      if (r.status >= 300 && r.status < 400) {
+        const next = r.headers.get('location');
+        if (!next) return r;
+        url = new URL(next, safe).toString();
+        continue;
+      }
+      return r;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error('too-many-redirects');
+}
+
 async function unsubHttp(url, oneClick) {
   const safe = sanitizeUrl(url);
   if (!safe) return "failed-blocked-url";
   try {
     const r = oneClick
-      ? await fetch(safe, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" })
-      : await fetch(safe);
+      ? await fetchWithSsrfGuardedRedirects(safe, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "List-Unsubscribe=One-Click",
+        })
+      : await fetchWithSsrfGuardedRedirects(safe);
     return r.ok ? (oneClick ? "one-click-post" : "http-get") : "failed-" + r.status;
   } catch(e) { return "error: " + e.message; }
 }

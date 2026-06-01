@@ -52,6 +52,29 @@ export async function ensureLabel(gmail, name) {
 }
 export function getLabelId(name) { return labelCache[name] || null; }
 
+// ─── Reapply query builder ────────────────────────────────────────────────────
+// Builds the Gmail search query used by /api/reapply guard, /api/reapply/preview, and
+// internally inside reapplyTier/reapplyBlocklist/reapplyRules. One source of truth so
+// future tweaks (e.g. adding -in:spam) apply uniformly. Returns null if the entry is empty.
+export function buildReapplyQuery(list, entry) {
+  const email = entry.email || '';
+  const fromClause = list === "rules"
+    ? (entry.senders?.length
+        ? '(' + entry.senders.map(s => s.startsWith('@') ? `from:*${s}` : `from:${s}`).join(' OR ') + ')'
+        : '')
+    : (email.startsWith("@") ? `from:*${email}` : `from:${email}`);
+  const subjectPart = list === "rules" && entry.subjects?.length
+    ? '(' + entry.subjects.map(s => `subject:"${s}"`).join(' OR ') + ')'
+    : '';
+  const labelExcl = list === "vip" ? " -label:..VIP"
+    : list === "ok" ? " -label:..OK"
+    : list === "blocklist" ? " -label:.DelPend"
+    : (entry.label ? ` -label:${entry.label.includes(' ') ? '"' + entry.label + '"' : entry.label}` : '');
+  const q = [fromClause, subjectPart].filter(Boolean).join(' ') + labelExcl + ' -in:sent -in:trash';
+  if (q.trim() === '-in:sent -in:trash') return null;
+  return q;
+}
+
 // ─── Bulk guard ───────────────────────────────────────────────────────────────
 export const BULK_GUARD_THRESHOLD = 100;
 
@@ -624,75 +647,6 @@ export async function scanAndApplyRules(gmail, rules) {
                    moved: ids.length, labelName: rule.label, subjects: [], latestEmailDate });
   }
   return results;
-}
-
-// ─── OK + DelPend conflict detection & resolution ──────────────────────────────
-export async function getKeptDelPendConflicts(gmail) {
-  const ids = []; let pageToken = null;
-  do {
-    const params = { userId: "me", q: "label:.DelPend label:..OK", maxResults: 500 };
-    if (pageToken) params.pageToken = pageToken;
-    const res = await gmail.users.messages.list(params);
-    for (const m of res.data.messages || []) ids.push(m.id);
-    pageToken = res.data.nextPageToken || null;
-  } while (pageToken);
-  if (!ids.length) return [];
-
-  const CHUNK = 50;
-  const details = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const batch = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
-      gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From"] })
-    ));
-    details.push(...batch);
-  }
-  const senderMap = {};
-  for (const d of details) {
-    const from = d.data.payload.headers.find(h => h.name === "From")?.value || "";
-    const email = extractEmail(from);
-    const name  = extractName(from);
-    if (!senderMap[email]) senderMap[email] = { email, name, count: 0 };
-    senderMap[email].count++;
-  }
-  return Object.values(senderMap).sort((a, b) => b.count - a.count);
-}
-
-export async function removeDelPendFromSender(gmail, fromEmail) {
-  const delPendId = await ensureLabel(gmail, ".DelPend");
-  const ids = []; let pageToken = null;
-  do {
-    const params = { userId: "me", q: `label:.DelPend label:..OK from:"${fromEmail}"`, maxResults: 500 };
-    if (pageToken) params.pageToken = pageToken;
-    const res = await gmail.users.messages.list(params);
-    for (const m of res.data.messages || []) ids.push(m.id);
-    pageToken = res.data.nextPageToken || null;
-  } while (pageToken);
-  for (let i = 0; i < ids.length; i += 1000) {
-    await gmail.users.messages.batchModify({
-      userId: "me",
-      requestBody: { ids: ids.slice(i, i + 1000), removeLabelIds: [delPendId] },
-    });
-  }
-  return ids.length;
-}
-
-export async function removeOkLabelFromSender(gmail, fromEmail) {
-  const okId = await ensureLabel(gmail, "..OK");
-  const ids = []; let pageToken = null;
-  do {
-    const params = { userId: "me", q: `label:.DelPend label:..OK from:"${fromEmail}"`, maxResults: 500 };
-    if (pageToken) params.pageToken = pageToken;
-    const res = await gmail.users.messages.list(params);
-    for (const m of res.data.messages || []) ids.push(m.id);
-    pageToken = res.data.nextPageToken || null;
-  } while (pageToken);
-  for (let i = 0; i < ids.length; i += 1000) {
-    await gmail.users.messages.batchModify({
-      userId: "me",
-      requestBody: { ids: ids.slice(i, i + 1000), removeLabelIds: [okId] },
-    });
-  }
-  return ids.length;
 }
 
 // ─── Inbox size snapshot ───────────────────────────────────────────────────────

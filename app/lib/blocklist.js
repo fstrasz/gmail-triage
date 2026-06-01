@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const BLOCKLIST_PATH      = path.join(process.cwd(), "blocklist.json");
 const BACKUP_PATH         = path.join(process.cwd(), "blocklist.backup.json");
@@ -10,7 +11,7 @@ export function loadBlocklist() {
 }
 
 export function saveBlocklist(list) {
-  fs.writeFileSync(BLOCKLIST_PATH, JSON.stringify(list, null, 2));
+  atomicWriteFileSync(BLOCKLIST_PATH, JSON.stringify(list, null, 2));
 }
 
 export function resetBlocklist() {
@@ -18,7 +19,7 @@ export function resetBlocklist() {
 }
 export function backupBlocklist() {
   const list = loadBlocklist();
-  fs.writeFileSync(BACKUP_PATH, JSON.stringify({ list, backedUpAt: new Date().toISOString() }, null, 2));
+  atomicWriteFileSync(BACKUP_PATH, JSON.stringify({ list, backedUpAt: new Date().toISOString() }, null, 2));
   return list.length;
 }
 export function loadBlocklistBackup() {
@@ -48,7 +49,7 @@ export function createNamedBackup() {
   const backups = loadNamedBackups();
   const n = backups.length ? Math.max(...backups.map(b => b.n)) + 1 : 1;
   backups.push({ n, list: loadBlocklist(), backedUpAt: new Date().toISOString() });
-  fs.writeFileSync(NAMED_BACKUPS_PATH, JSON.stringify(backups, null, 2));
+  atomicWriteFileSync(NAMED_BACKUPS_PATH, JSON.stringify(backups, null, 2));
   return n;
 }
 export function restoreNamedBackup(n, merge = false) {
@@ -59,7 +60,7 @@ export function restoreNamedBackup(n, merge = false) {
   return list.length;
 }
 export function deleteNamedBackup(n) {
-  fs.writeFileSync(NAMED_BACKUPS_PATH, JSON.stringify(loadNamedBackups().filter(b => b.n !== n), null, 2));
+  atomicWriteFileSync(NAMED_BACKUPS_PATH, JSON.stringify(loadNamedBackups().filter(b => b.n !== n), null, 2));
 }
 
 export function addToBlocklist(email, reason = "junk", name = null) {

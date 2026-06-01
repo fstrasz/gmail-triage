@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const SETTINGS_PATH = path.join(process.cwd(), "settings.json");
 const DEFAULTS = {
@@ -32,7 +33,7 @@ export function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) }; } catch { return { ...DEFAULTS }; }
 }
 export function saveSettings(s) {
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
+  atomicWriteFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
 }
 export function addLocation(loc) {
   const s = loadSettings();

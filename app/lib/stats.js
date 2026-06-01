@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const STATS_PATH = path.join(process.cwd(), "stats.json");
 
@@ -14,7 +15,7 @@ export function loadStats() {
 }
 
 export function saveStats(s) {
-  fs.writeFileSync(STATS_PATH, JSON.stringify(s, null, 2));
+  atomicWriteFileSync(STATS_PATH, JSON.stringify(s, null, 2));
 }
 
 export function resetStats() {

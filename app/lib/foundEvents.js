@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { atomicWriteFileSync } from './atomicWrite.js';
 
 const PATH = path.join(process.cwd(), 'found-events.json');
 
@@ -8,7 +9,7 @@ export function loadFoundEvents() {
   try { return JSON.parse(fs.readFileSync(PATH)); } catch { return []; }
 }
 export function saveFoundEvents(events) {
-  fs.writeFileSync(PATH, JSON.stringify(events, null, 2));
+  atomicWriteFileSync(PATH, JSON.stringify(events, null, 2));
 }
 
 // Merge new events in, deduplicating by URL (or title+date if no URL).
@@ -51,11 +52,17 @@ const GMAIL_MSG_URL_RE = /^https:\/\/mail\.google\.com\/mail\/u\/\d+\/#all\/([a-
 
 export async function pruneInvalidEmailEvents(gmail) {
   const events = loadFoundEvents();
+  const today = new Date().toISOString().slice(0, 10);
   let modified = false;
+  let skipped = 0;
   for (const e of events) {
     if (e.ignored) continue;
     const m = e.url?.match(GMAIL_MSG_URL_RE);
     if (!m) continue;
+    // Skip past-date events — they're already filtered from the email at send time
+    // (see scheduler.js + triage.js /events/send-email), so checking their Gmail status
+    // wastes API calls. Null-date and future events are still validated.
+    if (e.date && e.date < today) { skipped++; continue; }
     try {
       const res = await gmail.users.messages.get({
         userId: 'me', id: m[1], format: 'metadata', metadataHeaders: ['Subject'],
@@ -69,5 +76,6 @@ export async function pruneInvalidEmailEvents(gmail) {
       // other errors: leave the event alone
     }
   }
+  if (skipped) console.log(`[foundEvents] prune: skipped ${skipped} past-date events`);
   if (modified) saveFoundEvents(events);
 }

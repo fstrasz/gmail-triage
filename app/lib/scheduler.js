@@ -3,6 +3,11 @@ import path from "path";
 import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt, setWebSearchLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
 import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail, shouldSkipWebSearch } from "./eventSearch.js";
+import { atomicWriteFileSync } from "./atomicWrite.js";
+import { loadBlocklist } from "./blocklist.js";
+import { loadViplist, loadOklist } from "./viplist.js";
+import { loadRules } from "./rules.js";
+import { scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules } from "./gmail.js";
 import { upsertFoundEvents, loadFoundEvents, pruneInvalidEmailEvents } from "./foundEvents.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
@@ -18,7 +23,7 @@ function appendToLog(entries) {
   const cutoff = Date.now() - 48 * 60 * 60 * 1000;
   const log = loadScanLog().filter(e => e.runAt && new Date(e.runAt).getTime() > cutoff);
   log.push(...entries);
-  fs.writeFileSync(LOG_PATH, JSON.stringify(log, null, 2));
+  atomicWriteFileSync(LOG_PATH, JSON.stringify(log, null, 2));
 }
 
 // ─── Timing helpers ────────────────────────────────────────────────────────────
@@ -70,18 +75,23 @@ function fmtDate(date) {
   return date.toLocaleDateString("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-// ─── Scheduled scan ────────────────────────────────────────────────────────────
-export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
-                                        scanAndCleanBlocklist, scanAndLabelTier,
-                                        loadRules, scanAndApplyRules) {
-  const timeLabel = fmtTime(new Date());
-  const gmail = await getGmailClient();
+// Run all four scans in parallel against the same Gmail client. Returns per-scan arrays.
+// Shared by the scheduler (runScheduledScan) and the on-demand /triage GET handler.
+export async function scanAll(gmail) {
   const [scanClean, scanVip, scanOk, scanRules] = await Promise.all([
     scanAndCleanBlocklist(gmail, loadBlocklist()),
     scanAndLabelTier(gmail, loadViplist(), "..VIP"),
     scanAndLabelTier(gmail, loadOklist(), "..OK"),
-    scanAndApplyRules ? scanAndApplyRules(gmail, (loadRules ? loadRules() : [])) : Promise.resolve([]),
+    scanAndApplyRules(gmail, loadRules()),
   ]);
+  return { scanClean, scanVip, scanOk, scanRules };
+}
+
+// ─── Scheduled scan ────────────────────────────────────────────────────────────
+export async function runScheduledScan(getGmailClient) {
+  const timeLabel = fmtTime(new Date());
+  const gmail = await getGmailClient();
+  const { scanClean, scanVip, scanOk, scanRules } = await scanAll(gmail);
   const results = [...scanClean, ...scanVip, ...scanOk, ...scanRules];
   if (results.length) {
     appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
@@ -110,16 +120,12 @@ export async function runScheduledScan(getGmailClient, loadBlocklist, loadViplis
   return { results, timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved };
 }
 
-export function startScheduler(getGmailClient, loadBlocklist, loadViplist, loadOklist,
-                                scanAndCleanBlocklist, scanAndLabelTier,
-                                loadRules, scanAndApplyRules) {
+export function startScheduler(getGmailClient) {
   async function runScan() {
     const s = loadSettings();
     if (s.schedulerEnabled) {
       try {
-        await runScheduledScan(getGmailClient, loadBlocklist, loadViplist, loadOklist,
-                               scanAndCleanBlocklist, scanAndLabelTier,
-                               loadRules, scanAndApplyRules);
+        await runScheduledScan(getGmailClient);
       } catch(e) {
         console.error(`[scheduler] scan failed: ${e.message}`);
       }
