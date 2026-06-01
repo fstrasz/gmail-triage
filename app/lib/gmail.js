@@ -284,6 +284,14 @@ export async function trashMessage(gmail, id) {
 // ─── DelPend summary (total + per-sender counts) ───────────────────────────────
 // Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
 // Returns exact counts for every sender in DelPend regardless of blocklist.
+// Home page DelPend section:
+// 1) Total count comes from messages.list pagination over the label (cheap).
+// 2) Senders discovered by fetching From headers for the SAMPLE_CAP newest messages.
+// 3) Each discovered sender's accurate count fetched separately, capped at PER_SENDER_CAP
+//    to bound per-call cost (display shows "200+" when capped).
+const DELPEND_SAMPLE_CAP = 200;
+const DELPEND_PER_SENDER_CAP = 200;
+
 export async function getDelPendSummary(gmail) {
   const delPendId = await ensureLabel(gmail, ".DelPend");
   const ids = []; let pageToken = null;
@@ -296,28 +304,50 @@ export async function getDelPendSummary(gmail) {
   } while (pageToken);
 
   const total = ids.length;
-  if (total === 0) return { total: 0, senders: [] };
+  if (total === 0) return { total: 0, senders: [], sampled: 0 };
 
-  // Batch-fetch From headers in parallel chunks of 50
-  const CHUNK = 50;
+  // Discover unique senders from the newest SAMPLE_CAP messages
+  const sampledIds = ids.slice(0, DELPEND_SAMPLE_CAP);
+  const CHUNK = 25;
   const details = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const batch = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
+  for (let i = 0; i < sampledIds.length; i += CHUNK) {
+    const batch = await Promise.all(sampledIds.slice(i, i + CHUNK).map(id =>
       gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From"] })
     ));
     details.push(...batch);
   }
-
-  // Group and count by sender email
-  const senderMap = {};
+  const senderInfo = {};
   for (const d of details) {
     const from = d.data.payload.headers.find(h => h.name === "From")?.value || "";
     const email = extractEmail(from);
-    const name  = extractName(from);
-    if (!senderMap[email]) senderMap[email] = { email, name, count: 0 };
-    senderMap[email].count++;
+    if (!email) continue;
+    const name = extractName(from);
+    if (!senderInfo[email]) senderInfo[email] = { email, name };
   }
-  return { total, senders: Object.values(senderMap).sort((a, b) => b.count - a.count) };
+
+  // Per-sender accurate count, capped — one cheap messages.list per sender
+  const senders = [];
+  for (const info of Object.values(senderInfo)) {
+    const escaped = info.email.replace(/"/g, '\\"');
+    const q = `from:"${escaped}" label:.DelPend`;
+    try {
+      const res = await gmail.users.messages.list({
+        userId: "me", q, maxResults: DELPEND_PER_SENDER_CAP + 1,
+      });
+      const matched = (res.data.messages || []).length;
+      senders.push({
+        email: info.email,
+        name: info.name,
+        count: Math.min(matched, DELPEND_PER_SENDER_CAP),
+        capped: matched > DELPEND_PER_SENDER_CAP,
+      });
+    } catch (e) {
+      console.error(`getDelPendSummary count failed for ${info.email}:`, e.message);
+    }
+  }
+  senders.sort((a, b) => b.count - a.count);
+
+  return { total, sampled: sampledIds.length, senders };
 }
 
 // ─── Trash all DelPend messages (optionally scoped to one sender) ───────────────

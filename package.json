@@ -1,0 +1,10 @@
+{
+  "name": "gmail-triage-repo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Repo-level package.json — provides `npm test` from the repo root. The runtime app lives under app/ with its own package.json.",
+  "scripts": {
+    "test": "node scripts/test-events.mjs"
+  }
+}

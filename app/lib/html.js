@@ -54,6 +54,7 @@ export function triageEmailRow(e) {
       </div>
       <div class="triage-actions" id="actions-${e.id}">
         <button class="btn btn-vip"        onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..VIP')">⭐ VIP</button>
+        <button class="btn btn-vip"        onclick="doVipClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">⭐ VIP &amp; Clean</button>
         <button class="btn btn-ok"         onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..OK')">✅ OK</button>
         <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">✅ OK &amp; Clean</button>
         <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>

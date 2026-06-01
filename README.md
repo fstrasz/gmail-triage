@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-4_Steps-blue?style=for-the-badge" alt="Quick Start"></a>
-  <a href="#features"><img src="https://img.shields.io/badge/Actions-9_Types-green?style=for-the-badge" alt="Actions"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/Actions-10_Types-green?style=for-the-badge" alt="Actions"></a>
   <a href="#deployment-optional"><img src="https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
 </p>
 
@@ -26,7 +26,7 @@
 
 ### Inbox Triage
 
-- **Triage queue** — Fetches up to 25 unread emails and presents them one at a time with sender, subject, and action buttons: VIP, OK, OK & Clean, Junk, Unsubscribe, Archive, Delete, and Review. As emails are actioned, new ones load automatically to keep the queue topped up. The first email in the queue auto-previews on load.
+- **Triage queue** — Fetches up to 25 unread emails and presents them one at a time with sender, subject, and action buttons: VIP, VIP & Clean, OK, OK & Clean, Junk, Unsubscribe, Archive, Delete, and Review. As emails are actioned, new ones load automatically to keep the queue topped up. The first email in the queue auto-previews on load. After clicking any action, the next email is previewed immediately — no waiting for the server.
 
 - **Thread-aware archive** — Archiving an email archives the entire Gmail conversation thread, not just the single message. Any other cards from the same thread currently visible in the triage queue are simultaneously greyed out and dismissed, keeping the UI in sync without a page reload.
 
@@ -34,7 +34,9 @@
 
 - **Blocklist** — Block by email address + display name, or entire domain (`@example.com`). On triage load, all matching inbox emails are labeled `.DelPend` and removed. Blocked senders are also filtered out of the triage queue before it renders.
 
-- **OK & Clean** — Labels the current email `..OK` then bulk-labels every other email from that sender `.DelPend`. Cleans up an entire sender's history in one click.
+- **OK & Clean / VIP & Clean** — Adds the sender to the OK (or VIP) list so future mail from this sender is auto-labeled, AND uniformly archives every CURRENT inbox message from that sender — including the clicked one — by adding `.DelPend` and removing `INBOX` + `UNREAD` labels. The list entry governs future mail; current inbox state is wiped uniformly. Excludes `..VIP`-labeled messages from cleanup as a safety against demoting an existing VIP sender.
+
+- **Bulk safety guard** — Any action that would label or archive more than 100 emails (VIP, OK, VIP & Clean, OK & Clean, Junk, list Reapply) triggers a confirmation dialog showing the exact count before proceeding. Cancel cleanly reverts the card to its pre-click state. The guard applies to UI-triggered actions only; scheduler auto-scans run without prompts.
 
 - **Auto-unsubscribe** — Reads `List-Unsubscribe` / `List-Unsubscribe-Post` headers and attempts removal in order: RFC 8058 one-click POST, HTTP GET, unsubscribe email via Gmail API, open URL in browser tab. Falls back to a pre-filled Gmail compose window if no header is present.
 
@@ -62,11 +64,19 @@
 
 ### Events of Interest
 
-- **Claude web search** — Provide a list of interests (e.g., "wine festivals", "trap shooting") and locations. Claude uses its web search capability to find upcoming real-world events over a configurable lookahead window, with venue, date, rating, price estimate, and a direct link. Results are grouped by location and emailed on a configurable schedule or triggered on demand.
+- **Claude web search** — Provide a list of interests (e.g., "wine festivals", "trap shooting") and locations (e.g., "Las Vegas, NV", "Temecula, CA"). Claude uses its web search capability to find upcoming real-world events over a 90-day lookahead window, with venue, date, rating, price estimate, and a direct link. Interest matching is semantic ("wine dinners" includes wine tastings, pairings, festivals); location matching is regional (Las Vegas includes Henderson; Temecula includes Murrieta and the wine-country corridor).
 
-- **Inbox event scan** — In parallel with web search, Claude scans the last 3 days of actual inbox emails looking for event mentions matching your interests. De-duplicates against previously seen email IDs (reset when interests change). Surfaces anything new alongside the web search results.
+- **Inbox event scan with full-body extraction** — Claude scans the most recent 100 inbox emails (last 3 days, excluding `.DelPend` and self-sent "Gmail Triage" subjects) using the email's full text body, picking whichever of text/plain or HTML-stripped is longer. Multi-event newsletters (e.g., a weekly events digest with 16 events listed) produce 16 separate entries, not one summary entry. Bodies are batched into Claude calls with a token-budget packer (180k input budget, max 20 emails per batch for attention quality).
 
-- **Events page** (`/events`) — Displays all found events sorted by date, grouped by location. Includes a Send Email button to re-deliver the latest results.
+- **Image vision date enrichment** — Marketing emails frequently embed event dates inside flyer images. When the text pass returns an event with `date: null`, the source email's images are sent to Claude's vision API with a strict prompt asking for the date visible in the image. Returned dates are window-validated (must fall in `[today, today+90d]`) before being accepted.
+
+- **Canonical-link extraction** — Email-source events default to a Gmail message URL (`#all/<id>`) that only works for the recipient's account. After extraction, each event's source email is parsed for anchors and the canonical public event URL (registration, ticket, or "view in browser" page) is identified — using title-word ranking when the URL slug clearly matches, falling back to Claude when ambiguous. Recipients of the events email can click links that work for them.
+
+- **24-hour web-search gate** — `searchEventsOfInterest` is the most expensive Claude call. The web search is gated to at most once per 24 hours of rolling time; manual "Search Now" within that window runs the cheap inbox-scan only. **Reset & Rebuild** clears the gate and forces a fresh search.
+
+- **Auto-prune of invalid links** — Before each events-email send, every persisted email-source event is checked: if the source Gmail message returns 404, is labeled `TRASH`, or has a self-referential "Gmail Triage" subject, the event is marked ignored automatically.
+
+- **Events page** (`/events`) — Displays all upcoming events sorted by date with TBD events at the bottom of each location group. Location groups are ordered to match your configured `settings.locations`, so the page doesn't reflow when you ignore a single event. **Send Email** re-delivers the current set; **Search Now** runs a fresh search (respects the 24h gate); **Reset & Rebuild** wipes `found-events.json` + the inbox-scan dedup set + the web-search gate, then runs a complete fresh search. Ignoring an event greys the card in-place without a page reload.
 
 - **Configurable interests and schedule** — Add, edit, or remove interest topics from the Settings page. Set a search interval (daily, weekly, etc.) and recipient email(s). Comma, semicolon, or space-separated recipients are all accepted.
 
@@ -220,7 +230,7 @@ gmail-triage/
 │       ├── keptlist.js    # Kept senders list
 │       ├── rules.js       # Custom label rules engine
 │       ├── activityLog.js # Real-time label propagation log
-│       ├── eventSearch.js # Claude web search + inbox scan for events
+│       ├── eventSearch.js # Claude web search + full-body inbox scan with token-budget batching, image vision date enrichment, canonical-link extraction, 24h web-search gate
 │       ├── foundEvents.js # Found events persistence
 │       ├── claude.js      # Anthropic Claude API integration
 │       ├── calendar.js    # Google Calendar API integration

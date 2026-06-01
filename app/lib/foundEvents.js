@@ -44,3 +44,30 @@ export function setEventCalendarLink(id, url) {
   if (idx >= 0) events[idx].calendarEventUrl = url;
   saveFoundEvents(events);
 }
+
+// Mark events ignored when their Gmail message URL no longer resolves
+// (message purged → 404, or moved to Trash → drops to #all on click).
+const GMAIL_MSG_URL_RE = /^https:\/\/mail\.google\.com\/mail\/u\/\d+\/#all\/([a-f0-9]+)$/i;
+
+export async function pruneInvalidEmailEvents(gmail) {
+  const events = loadFoundEvents();
+  let modified = false;
+  for (const e of events) {
+    if (e.ignored) continue;
+    const m = e.url?.match(GMAIL_MSG_URL_RE);
+    if (!m) continue;
+    try {
+      const res = await gmail.users.messages.get({
+        userId: 'me', id: m[1], format: 'metadata', metadataHeaders: ['Subject'],
+      });
+      const labels = res.data.labelIds || [];
+      if (labels.includes('TRASH')) { e.ignored = true; modified = true; continue; }
+      const subject = (res.data.payload?.headers || []).find(h => h.name === 'Subject')?.value || '';
+      if (subject.includes('Gmail Triage')) { e.ignored = true; modified = true; }
+    } catch (err) {
+      if (err.code === 404 || err.status === 404) { e.ignored = true; modified = true; }
+      // other errors: leave the event alone
+    }
+  }
+  if (modified) saveFoundEvents(events);
+}

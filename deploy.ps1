@@ -24,6 +24,22 @@ if (-not (Test-Path $Dest)) {
     exit 1
 }
 
+# -- Run test suite before deploying ------------------------------------------
+Write-Host "Running test suite..." -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
+} else {
+    & node "$Source\scripts\test-events.mjs"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "TESTS FAILED (exit $LASTEXITCODE). Aborting deploy before version bump." -ForegroundColor Red
+        Write-Host "Run 'npm test' to see failures and fix before retrying." -ForegroundColor Yellow
+        exit $LASTEXITCODE
+    }
+    Write-Host "  Tests passed." -ForegroundColor Green
+    Write-Host ""
+}
+
 # -- Auto-increment version in pages.js and commit locally (no push) -----------
 $pagesFile = "$Source\app\lib\pages.js"
 $content = Get-Content $pagesFile -Raw

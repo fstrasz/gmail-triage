@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt } from "./settings.js";
+import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt, setWebSearchLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
-import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail } from "./eventSearch.js";
-import { upsertFoundEvents, loadFoundEvents } from "./foundEvents.js";
+import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail, shouldSkipWebSearch } from "./eventSearch.js";
+import { upsertFoundEvents, loadFoundEvents, pruneInvalidEmailEvents } from "./foundEvents.js";
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -275,9 +275,11 @@ function _scheduleSummary() {
       }
       // Also send current found events daily if there are any non-ignored events
       try {
-        const activeEvents = loadFoundEvents().filter(e => !e.ignored);
+        const gmail = await _summaryGmailGetter();
+        await pruneInvalidEmailEvents(gmail);
+        const today = new Date().toISOString().slice(0, 10);
+        const activeEvents = loadFoundEvents().filter(e => !e.ignored && (!e.date || e.date >= today));
         if (activeEvents.length) {
-          const gmail = await _summaryGmailGetter();
           await sendEventsEmail(gmail, activeEvents, loadSettings());
           console.log(`[scheduler] daily events email sent (${activeEvents.length} events)`);
         }
@@ -307,14 +309,16 @@ export async function runEventsSearchNow(getGmailClient) {
     return 0;
   }
   const locations = s.locations || [];
-  console.log(`[scheduler] events search: searching web + inbox for ${interests.length} interest(s)...`);
+  const skipWeb = shouldSkipWebSearch(Date.now(), s.webSearchLastRunAt);
+  console.log(`[scheduler] events search: inbox always, web ${skipWeb ? 'SKIPPED (last ran ' + s.webSearchLastRunAt + ')' : 'will run (last ran ' + (s.webSearchLastRunAt || 'never') + ')'}`);
   const gmail = await getGmailClient();
   const [webResult, emailResult] = await Promise.allSettled([
-    searchEventsOfInterest(interests, locations),
+    skipWeb ? Promise.resolve([]) : searchEventsOfInterest(interests, locations),
     scanEmailsForEvents(gmail, interests, locations),
   ]);
   const webEvents   = webResult.status   === 'fulfilled' ? webResult.value   : (console.error('[scheduler] web search failed:', webResult.reason?.message), []);
   const emailEvents = emailResult.status === 'fulfilled' ? emailResult.value : (console.error('[scheduler] email scan failed:', emailResult.reason?.message), []);
+  if (!skipWeb && webResult.status === 'fulfilled') setWebSearchLastRunAt();
   const allEvents = [...webEvents, ...emailEvents];
   const added = upsertFoundEvents(allEvents);
   await sendEventsEmail(gmail, allEvents, s);

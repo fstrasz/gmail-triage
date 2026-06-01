@@ -53,7 +53,7 @@ export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
 }
 
 /** Validate and return a sanitized URL string, or null if unsafe */
-function sanitizeUrl(raw) {
+export function sanitizeUrl(raw) {
   try {
     const u = new URL(raw);
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;

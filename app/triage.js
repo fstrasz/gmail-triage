@@ -10,12 +10,12 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { sendEventsEmail } from "./lib/eventSearch.js";
 import { appendLog, loadLog } from "./lib/activityLog.js";
-import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink } from "./lib/foundEvents.js";
+import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink, pruneInvalidEmailEvents, saveFoundEvents } from "./lib/foundEvents.js";
 
 const app  = express();
 const PORT = 3000;
@@ -354,6 +354,29 @@ app.post("/api/ok-clean", async (req, res) => {
     addToOklist(fromEmail, fromName || null);
     addToStats({cleaned});
     appendLog({ type:"triage", action:"ok-clean", sender:fromEmail, senderName:fromName||null, count:cleaned });
+    res.json({ok:true,cleaned});
+  }catch(e){res.status(500).json({ok:false,error:e.message,cleaned:0});}
+});
+
+// ─── API: VIP & Clean ──────────────────────────────────────────────────────────
+// Adds sender to VIP list (future mail gets ..VIP), then DelPends ALL current
+// inbox mail from sender (including the clicked one) — same as OK & Clean but
+// the future-state list is VIP.
+app.post("/api/vip-clean", async (req, res) => {
+  const {id,fromEmail,fromName,confirmed}=req.body;
+  try{
+    const gmail=await getGmailClient();
+    if(!confirmed){
+      const q=`from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
+      const count=await countMatchingEmails(gmail,q);
+      if(count>BULK_GUARD_THRESHOLD){
+        return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will clean ${count} emails from ${fromEmail}. Confirm?`});
+      }
+    }
+    const { cleaned } = await keepAndClean(gmail, id, fromEmail, fromName || null);
+    addToViplist(fromEmail, fromName || null);
+    addToStats({cleaned});
+    appendLog({ type:"triage", action:"vip-clean", sender:fromEmail, senderName:fromName||null, count:cleaned });
     res.json({ok:true,cleaned});
   }catch(e){res.status(500).json({ok:false,error:e.message,cleaned:0});}
 });
@@ -755,13 +778,92 @@ app.post("/events/search", async (req, res) => {
 app.post("/events/send-email", async (req, res) => {
   try {
     const gmail = await getGmailClient();
-    const active = loadFoundEvents().filter(e => !e.ignored);
+    await pruneInvalidEmailEvents(gmail);
+    const today = new Date().toISOString().slice(0, 10);
+    const active = loadFoundEvents().filter(e => !e.ignored && (!e.date || e.date >= today));
     await sendEventsEmail(gmail, active, loadSettings());
   } catch(e) { console.error("events send-email error:", e.message); }
   res.redirect("/events");
 });
+// TEMPORARY diagnostic: GET /events/debug-body?id=<gmailMessageId>
+// Shows exactly what scanEmailsForEvents would extract for this message,
+// plus raw text/plain and stripped text/html. Remove after diagnosis.
+app.get("/events/debug-body", async (req, res) => {
+  const id = (req.query.id || '').trim();
+  if (!/^[a-f0-9]+$/i.test(id)) return res.status(400).type('text').send('bad id');
+  try {
+    const gmail = await getGmailClient();
+    const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+    const subject = (msg.data.payload?.headers || []).find(h => h.name === 'Subject')?.value || '(no subject)';
+    const labelIds = msg.data.labelIds || [];
+
+    // Inline the same extraction helpers from eventSearch.js to be self-contained
+    const decode = data => Buffer.from(data, 'base64').toString('utf-8');
+    const findPart = (payload, mime) => {
+      if (!payload) return null;
+      if (payload.mimeType === mime && payload.body?.data) return payload.body.data;
+      if (payload.parts) { for (const p of payload.parts) { const r = findPart(p, mime); if (r) return r; } }
+      return null;
+    };
+    const plainData = findPart(msg.data.payload, 'text/plain');
+    const htmlData = findPart(msg.data.payload, 'text/html');
+    const plain = plainData ? decode(plainData) : null;
+    const html = htmlData ? decode(htmlData) : null;
+    const htmlStripped = html ? html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim() : null;
+    const final = plain || htmlStripped || '';
+
+    const out = [
+      `=== MESSAGE ${id} ===`,
+      `Subject: ${subject}`,
+      `Labels: ${labelIds.join(', ')}`,
+      `Snippet: ${msg.data.snippet || ''}`,
+      ``,
+      `--- text/plain part ---`,
+      plain == null ? '(none)' : `(${plain.length} chars)`,
+      plain == null ? '' : plain.slice(0, 5000),
+      ``,
+      `--- text/html part raw length ---`,
+      html == null ? '(none)' : `(${html.length} chars)`,
+      ``,
+      `--- text/html after htmlToText (first 5000 chars) ---`,
+      htmlStripped == null ? '(none)' : `(${htmlStripped.length} chars total)`,
+      htmlStripped == null ? '' : htmlStripped.slice(0, 5000),
+      ``,
+      `--- FINAL body that Claude would receive (first 5000 chars) ---`,
+      `(${final.length} chars total — capped at 50000 in scanEmailsForEvents)`,
+      final.slice(0, 5000),
+    ].join('\n');
+    res.type('text').send(out);
+  } catch (e) {
+    res.status(500).type('text').send('error: ' + e.message + '\n' + (e.stack || ''));
+  }
+});
+
+app.post("/events/reset-rebuild", async (req, res) => {
+  try {
+    saveFoundEvents([]);
+    clearScannedEmailIds();
+    clearWebSearchLastRunAt();
+    await runEventsSearchNow(getGmailClient);
+  } catch(e) { console.error("events reset-rebuild error:", e.message); }
+  res.redirect("/events");
+});
 app.post("/events/ignore", (req, res) => {
   ignoreFoundEvent(req.body.id);
+  if (req.headers['x-requested-with'] === 'XMLHttpRequest') {
+    return res.json({ ok: true, id: req.body.id });
+  }
   res.redirect("/events");
 });
 app.post("/events/calendar", async (req, res) => {

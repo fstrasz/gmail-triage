@@ -100,6 +100,16 @@ export function clearScannedEmailIds() {
   s.scannedEmailIds = [];
   saveSettings(s);
 }
+export function setWebSearchLastRunAt() {
+  const s = loadSettings();
+  s.webSearchLastRunAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function clearWebSearchLastRunAt() {
+  const s = loadSettings();
+  delete s.webSearchLastRunAt;
+  saveSettings(s);
+}
 export function addEventInterest(topic) {
   const s = loadSettings();
   const t = topic.trim();

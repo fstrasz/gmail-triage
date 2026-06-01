@@ -1,20 +1,15 @@
 import { ensureLabel, extractName } from "./gmail.js";
 
 // ─── OK & Clean ────────────────────────────────────────────────────────────────
-// Labels `id` as ..OK (stays in inbox), then finds all other messages from the
-// same sender and labels them DelPend (stays in inbox).
+// Adds sender to the OK list (caller does that) and clears EVERY message from
+// this sender currently in inbox — including the one clicked — by applying
+// .DelPend and removing INBOX/UNREAD. The OK-list entry governs future mail
+// from this sender; current inbox state is wiped uniformly.
 // Returns { cleaned: number }.
 export async function keepAndClean(gmail, id, fromEmail, fromName) {
-  const okId      = await ensureLabel(gmail, "..OK");
   const delPendId = await ensureLabel(gmail, ".DelPend");
 
-  // Label the kept message ..OK (stays in inbox, marks sender as OK)
-  await gmail.users.messages.modify({
-    userId: "me", id,
-    requestBody: { addLabelIds: [okId], removeLabelIds: ["UNREAD"] },
-  });
-
-  // Collect all other messages from this sender
+  // Collect every message from this sender in inbox (excluding VIP)
   const ids = [];
   let pageToken = null;
   do {
@@ -22,7 +17,6 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
     if (pageToken) params.pageToken = pageToken;
     const result = await gmail.users.messages.list(params);
     for (const m of result.data.messages || []) {
-      if (m.id === id) continue;
       if (fromName) {
         const dh = await gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] });
         const fh = dh.data.payload.headers.find(h => h.name === "From")?.value || "";
@@ -33,12 +27,16 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
     pageToken = result.data.nextPageToken || null;
   } while (pageToken);
 
-  // Batch-move older messages to DelPend
+  // Safety: ensure the clicked message is included even if Gmail's list query
+  // hasn't surfaced it yet (label propagation lag).
+  if (id && !ids.includes(id)) ids.push(id);
+
+  // Batch-apply .DelPend, remove INBOX + UNREAD (true archive)
   for (let i = 0; i < ids.length; i += 1000) {
     try {
       await gmail.users.messages.batchModify({
         userId: "me",
-        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [delPendId], removeLabelIds: ["UNREAD"] },
+        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [delPendId], removeLabelIds: ["INBOX", "UNREAD"] },
       });
     } catch(e) { console.error("keep-clean batchModify FAILED:", e.message); }
   }
