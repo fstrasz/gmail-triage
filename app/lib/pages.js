@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.1.0";
+const APP_VERSION = "v1.2.0";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
@@ -183,7 +183,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults) {
       <div class="preview-panel" id="preview-panel">
         <div class="preview-header">
           <span>Preview</span>
-          <button class="preview-close" onclick="closePreview()">✕</button>
+          <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
         </div>
         <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
       </div>
@@ -397,9 +397,9 @@ function clientScript() { return `
     setTimeout(function(){
       var row=document.getElementById('row-'+id);
       if(!row)return;
-      row.style.transition='opacity 1s,max-height 1s,margin 1s,padding 1s';
+      row.style.transition='opacity .3s,max-height .3s,margin .3s,padding .3s';
       row.style.opacity='0';row.style.maxHeight='0';row.style.marginBottom='0';row.style.overflow='hidden';
-      setTimeout(function(){if(row.parentNode){row.remove();loadNext();}},1000);
+      setTimeout(function(){if(row.parentNode){row.remove();loadNext();}},300);
     },5000);
   }
   function showDone(){
@@ -714,7 +714,7 @@ export function senderPage(emails, fromEmail, fromName) {
           <div class="preview-panel" id="preview-panel">
             <div class="preview-header">
               <span>Preview</span>
-              <button class="preview-close" onclick="closePreview()">✕</button>
+              <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
             </div>
             <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
           </div>
@@ -765,9 +765,9 @@ export function senderPage(emails, fromEmail, fromName) {
       setTimeout(function(){
         var r=document.getElementById('row-'+id);
         if(!r)return;
-        r.style.transition='opacity 1s,max-height 1s,margin 1s,padding 1s';
+        r.style.transition='opacity .3s,max-height .3s,margin .3s,padding .3s';
         r.style.opacity='0';r.style.maxHeight='0';r.style.marginBottom='0';r.style.overflow='hidden';
-        setTimeout(function(){if(r.parentNode)r.remove();},1000);
+        setTimeout(function(){if(r.parentNode)r.remove();},300);
       },5000);
     }
     function advancePreviewFrom(id){
@@ -880,7 +880,7 @@ export function labeledPage(labelName, emails) {
       <div class="preview-panel" id="preview-panel">
         <div class="preview-header">
           <span>Preview</span>
-          <button class="preview-close" onclick="closePreview()">✕</button>
+          <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
         </div>
         <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
       </div>
@@ -1160,10 +1160,10 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
       </div>
     </div>
 
-    <div id="reset-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:center;justify-content:center">
+    <div id="reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:center;justify-content:center">
       <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
         <div style="font-size:2rem;text-align:center;margin-bottom:12px">⚠️</div>
-        <h3 style="margin:0 0 10px;text-align:center;color:#b91c1c;font-size:1.05rem">Reset Blocklist?</h3>
+        <h3 id="reset-modal-title" style="margin:0 0 10px;text-align:center;color:#b91c1c;font-size:1.05rem">Reset Blocklist?</h3>
         <p style="font-size:.85rem;color:#374151;margin:0 0 8px">You are about to <strong>permanently delete all ${blocklist.length} blocked sender${blocklist.length !== 1 ? 's' : ''}</strong>. This list may represent hours of triage work.</p>
         <p style="font-size:.85rem;color:#374151;margin:0 0 18px">A backup will be saved and can be restored from Settings. Gmail labels already applied to emails are not affected.</p>
         <div style="font-size:.82rem;color:#64748b;margin-bottom:6px">Type <strong>RESET</strong> to confirm:</div>
@@ -1322,6 +1322,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
     }
     function closeResetModal() { document.getElementById('reset-modal').style.display='none'; }
     document.getElementById('reset-modal').addEventListener('click',function(e){if(e.target===this)closeResetModal();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&document.getElementById('reset-modal').style.display!=='none')closeResetModal();});
 
     // Init
     var _viewMode = '${viewMode}';
@@ -1955,7 +1956,7 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           </tbody>
         </table>
       </div>
-      <div id="restore-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
+      <div id="restore-modal" role="dialog" aria-modal="true" aria-labelledby="restore-modal-title" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
         <div style="background:#fff;border-radius:12px;padding:24px 28px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,.25)">
           <h3 style="margin:0 0 10px;font-size:1rem;color:#1e293b" id="restore-modal-title">Restore Backup</h3>
           <p id="restore-modal-body" style="font-size:.84rem;color:#64748b;margin:0 0 18px"></p>
@@ -2153,7 +2154,8 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
       if (modal) modal.style.display = 'none';
     }
     var _rm = document.getElementById('restore-modal');
-    if (_rm) _rm.addEventListener('click', function(e) { if (e.target === this) closeRestoreModal(); });`;
+    if (_rm) _rm.addEventListener('click', function(e) { if (e.target === this) closeRestoreModal(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && _rm && _rm.style.display !== 'none') closeRestoreModal(); });`;
 
   return { body, script };
 }

@@ -74,6 +74,45 @@ export function shell(title, body, script = "") {
   <title>${esc(title)}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>"/>
   <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root{
+      --color-surface:#f1f5f9;
+      --color-surface-2:#fff;
+      --color-border:#e2e8f0;
+      --color-border-strong:#cbd5e1;
+      --color-text:#1e293b;
+      --color-text-muted:#475569;
+      --color-text-subtle:#94a3b8;
+      --color-brand:#4f46e5;
+      --color-brand-hover:#4338ca;
+      --color-vip:#f59e0b;
+      --color-vip-bg:#fef3c7;
+      --color-vip-text:#92400e;
+      --color-ok:#14b8a6;
+      --color-ok-bg:#ccfbf1;
+      --color-ok-text:#0f766e;
+      --color-junk:#ef4444;
+      --color-junk-bg:#fee2e2;
+      --color-junk-text:#b91c1c;
+      --color-warning:#f59e0b;
+    }
+    /* ── Accessibility ─────────────────────────────────────────────────────── */
+    button:focus-visible,
+    a:focus-visible,
+    [role="button"]:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible{
+      outline:2px solid var(--color-brand);
+      outline-offset:2px;
+    }
+    /* ── Motion preferences ────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{
+        animation-duration:.01ms!important;
+        transition-duration:.01ms!important;
+      }
+    }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;overflow:hidden}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b}
@@ -118,6 +157,13 @@ export function shell(title, body, script = "") {
     .btn-archive{background:#dbeafe;color:#1e40af}.btn-archive:hover{background:#bfdbfe}
     .btn-danger{background:#ef4444;color:#fff;font-size:.75rem;padding:4px 10px}.btn-danger:hover{background:#dc2626}
     .btn-primary{background:#4f46e5;color:#fff}.btn-primary:hover{background:#4338ca}
+    /* Size variants — replace inline style overrides scattered across pages.js */
+    .btn-xs{padding:3px 9px;font-size:.72rem}
+    .btn-sm{padding:5px 12px;font-size:.78rem}
+    .btn-lg{padding:10px 22px;font-size:.95rem}
+    /* Ghost variant — outline button for secondary actions */
+    .btn-ghost{background:transparent;color:var(--color-text-muted);border:1px solid var(--color-border-strong)}.btn-ghost:hover{background:var(--color-surface);color:var(--color-text)}
+    .btn:active{transform:scale(.97);transition:transform 50ms}
     .status-tag{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
     .tag-junk{background:#fee2e2;color:#b91c1c}
     .tag-unsub{background:#fef3c7;color:#92400e}
