@@ -12,20 +12,32 @@ export function saveFoundEvents(events) {
   atomicWriteFileSync(PATH, JSON.stringify(events, null, 2));
 }
 
-// Merge new events in, deduplicating by URL (or title+date if no URL).
-// Ignored events are never re-added.
+// Build the dedup key for an event. Email-source events from the SAME newsletter
+// share the same Gmail message URL — using url alone would drop 15 of 16 events
+// from a multi-event digest. Web events keep url as the key (canonical event page).
+export function dedupKey(ev) {
+  if (ev.url && GMAIL_MSG_URL_RE.test(ev.url)) {
+    // Email-source: scope key with title (+date if present) so per-event uniqueness holds.
+    return `${ev.url}|${ev.title || ''}|${ev.date || ''}`;
+  }
+  if (ev.url) return ev.url;
+  return `${ev.title || ''}|${ev.date || ''}`;
+}
+
+// Merge new events in. Email-source events dedup by (url, title, date) so multi-event
+// newsletters preserve every entry. Web events dedup by url. Ignored events stay ignored.
 export function upsertFoundEvents(newEvents) {
   const existing = loadFoundEvents();
-  const ignoredUrls = new Set(existing.filter(e => e.ignored && e.url).map(e => e.url));
-  const knownUrls   = new Set(existing.filter(e => e.url).map(e => e.url));
-  const knownKeys   = new Set(existing.map(e => `${e.title}|${e.date}`));
+  const ignoredKeys = new Set(existing.filter(e => e.ignored).map(dedupKey));
+  const knownKeys   = new Set(existing.map(dedupKey));
   let added = 0;
   for (const ev of newEvents) {
-    if (ev.url && ignoredUrls.has(ev.url)) continue;
-    if (ev.url && knownUrls.has(ev.url)) continue;
-    if (!ev.url && knownKeys.has(`${ev.title}|${ev.date}`)) continue;
+    const key = dedupKey(ev);
+    if (ignoredKeys.has(key)) continue;
+    if (knownKeys.has(key)) continue;
     existing.push({ id: randomUUID(), ...ev,
       foundAt: new Date().toISOString(), ignored: false, calendarEventUrl: null });
+    knownKeys.add(key);
     added++;
   }
   saveFoundEvents(existing);

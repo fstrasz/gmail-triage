@@ -624,6 +624,115 @@ test('pruneInvalidEmailEvents: transient API error leaves event untouched', asyn
   }
 });
 
+// ─── dedupKey / upsertFoundEvents — multi-event newsletter preservation ─────
+
+test('dedupKey: web event keyed by url alone', async () => {
+  const { dedupKey } = await import(foundEventsModulePath);
+  assert.equal(dedupKey({ url: 'https://example.com/event/123', title: 'A', date: '2026-06-01' }),
+    'https://example.com/event/123');
+});
+
+test('dedupKey: Gmail message URL keyed by (url, title, date)', async () => {
+  const { dedupKey } = await import(foundEventsModulePath);
+  const url = 'https://mail.google.com/mail/u/0/#all/19abc123def456';
+  const k1 = dedupKey({ url, title: 'Wine Tasting', date: '2026-06-01' });
+  const k2 = dedupKey({ url, title: 'Cigar Festival', date: '2026-06-02' });
+  assert.notEqual(k1, k2, 'different titles → different keys for same Gmail URL');
+  assert.equal(k1, url + '|Wine Tasting|2026-06-01');
+});
+
+test('dedupKey: missing url falls back to title|date', async () => {
+  const { dedupKey } = await import(foundEventsModulePath);
+  assert.equal(dedupKey({ title: 'Holiday Party', date: '2026-12-15' }), 'Holiday Party|2026-12-15');
+});
+
+test('upsertFoundEvents: 16 events from same Gmail URL all preserved (newsletter case)', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-upsert-test-'));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    fs.writeFileSync('found-events.json', '[]');
+    const { upsertFoundEvents, loadFoundEvents } = await import(foundEventsModulePath + '?t=' + Date.now());
+    const sharedUrl = 'https://mail.google.com/mail/u/0/#all/19abc123def456';
+    const events = Array.from({ length: 16 }, (_, i) => ({
+      url: sharedUrl,
+      title: `Event ${i + 1}`,
+      date: '2026-06-' + String(i + 1).padStart(2, '0'),
+      source: 'email',
+    }));
+    const added = upsertFoundEvents(events);
+    assert.equal(added, 16, 'all 16 events from same Gmail URL must be added');
+    assert.equal(loadFoundEvents().length, 16);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('upsertFoundEvents: re-running the same newsletter does not duplicate', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-upsert-test-'));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    fs.writeFileSync('found-events.json', '[]');
+    const { upsertFoundEvents, loadFoundEvents } = await import(foundEventsModulePath + '?t=' + Date.now());
+    const sharedUrl = 'https://mail.google.com/mail/u/0/#all/19abc123def456';
+    const events = [
+      { url: sharedUrl, title: 'Event 1', date: '2026-06-01', source: 'email' },
+      { url: sharedUrl, title: 'Event 2', date: '2026-06-02', source: 'email' },
+    ];
+    assert.equal(upsertFoundEvents(events), 2, 'first run: 2 added');
+    assert.equal(upsertFoundEvents(events), 0, 'second run: 0 added (dedup by url|title|date)');
+    assert.equal(loadFoundEvents().length, 2);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('upsertFoundEvents: web events dedup by url alone', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-upsert-test-'));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    fs.writeFileSync('found-events.json', '[]');
+    const { upsertFoundEvents, loadFoundEvents } = await import(foundEventsModulePath + '?t=' + Date.now());
+    // Two web events with the same url but different titles → second is dedup'd
+    const events = [
+      { url: 'https://example.com/event/42', title: 'First Title', date: '2026-06-01' },
+      { url: 'https://example.com/event/42', title: 'Different Title', date: '2026-06-02' },
+    ];
+    assert.equal(upsertFoundEvents(events), 1, 'web events with same url collapse to 1');
+    assert.equal(loadFoundEvents().length, 1);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('upsertFoundEvents: ignored event blocks re-add of same key', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-upsert-test-'));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    const url = 'https://mail.google.com/mail/u/0/#all/19abc123def456';
+    fs.writeFileSync('found-events.json', JSON.stringify([
+      { id: '1', url, title: 'Event 1', date: '2026-06-01', ignored: true, source: 'email' },
+    ]));
+    const { upsertFoundEvents, loadFoundEvents } = await import(foundEventsModulePath + '?t=' + Date.now());
+    const added = upsertFoundEvents([
+      { url, title: 'Event 1', date: '2026-06-01', source: 'email' },
+    ]);
+    assert.equal(added, 0, 'ignored event must not be re-added');
+    const all = loadFoundEvents();
+    assert.equal(all.length, 1);
+    assert.equal(all[0].ignored, true, 'still ignored');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 // ─── buildReapplyQuery: shared by /api/reapply guard, /preview, lib functions ─
 
 const gmailModulePath = url.pathToFileURL(
