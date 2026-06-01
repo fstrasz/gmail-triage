@@ -6,7 +6,7 @@ import { loadViplist, loadOklist } from "./viplist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.2.0";
+const APP_VERSION = "v1.2.01";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
