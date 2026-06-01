@@ -1,24 +1,26 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { loadSettings, addScannedEmailIds } from './settings.js';
 
+function searchHorizon() {
+  const now = new Date();
+  const until = new Date(now.getTime() + SEARCH_WINDOW_DAYS * 24 * 3600000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  return { now, until, today: fmt(now), horizon: fmt(until), fmt };
+}
+
 export async function searchEventsOfInterest(interests, locations) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const now = new Date();
-  const until = new Date(now.getTime() + 90 * 24 * 3600000);
-  const fmt = d => d.toISOString().slice(0, 10);
+  const { today, horizon } = searchHorizon();
 
   const prompt = `Search the web for upcoming real-world events matching these interests, \
-in the listed locations, from ${fmt(now)} through ${fmt(until)} (next 3 months).
+in the listed locations, from ${today} through ${horizon} (next ${SEARCH_WINDOW_DAYS / 30} months).
 
 Interests:
 ${interests.map(i => `- ${i}`).join('\n')}
 
 Locations: ${locations.length ? locations.join(', ') : 'any'}
 
-INTERPRETATION RULES (apply liberally):
-- Interest matching is SEMANTIC, not literal. "wine dinners" matches wine pairings, wine tastings, wine flights, vintner dinners, wine festivals. "food festivals" matches culinary events, tasting events, food expos. "trap shooting" matches skeet, sporting clays, shotgun-sports events. "events at the Sphere" matches any show, concert, or residency at Sphere Las Vegas. Cooking classes match any food/beverage interest. Whiskey/spirits events match wine-adjacent interests.
-- Location matching is REGIONAL. "Las Vegas, NV" includes Henderson, North Las Vegas, Boulder City, and the greater Las Vegas metro. "Temecula, CA" includes the Temecula Valley wine country, Murrieta, Wildomar, Fallbrook, and adjacent wine-country communities. Include events at venues in those regions even if the address is in a different listed city.
-- When in doubt, INCLUDE. Better to surface a borderline match than miss a real one.
+${INTERPRETATION_RULES}
 
 For every event found return a JSON array (no markdown, raw JSON only):
 [{ "title", "date" (YYYY-MM-DD), "time" (HH:MM 24h or null), "location" (venue + city), "url", "description" (1-2 sentences describing the EVENT itself — what it is, what attendees experience. Do NOT include match-explanation phrases like "Matches wine festivals" or "Aligns with your interests" — the matched interest is shown separately as a tag.), "interest" (which interest matched), "configuredLocation" (which of the Locations listed above matched, exactly as written), "rating" (numeric Google/Yelp/venue rating e.g. 4.5, or null if not found), "pricePerPerson" (estimated price per person as a string e.g. "$50-$120", "Free", or null) }]
@@ -58,13 +60,25 @@ const VISION_MAX_IMAGES = 4;
 const VISION_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const VISION_SUPPORTED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-// Pass 2 batching constants — pack as many emails per Claude call as fit under the budget,
+// Body-scan batching constants — pack as many emails per Claude call as fit under the budget,
 // AND cap batch size by email count to preserve per-email attention in long contexts.
-const PASS2_TOKEN_BUDGET = 180_000;          // Sonnet 4.6 context is 200k; leave 20k for response + overhead
-const PASS2_PROMPT_OVERHEAD_TOKENS = 800;    // fixed prompt template
-const PASS2_MAX_EMAILS_PER_BATCH = 20;       // attention cap — even if tokens fit, smaller batches enumerate better
-const PASS2_RESPONSE_MAX_TOKENS = 16384;     // headroom for 50+ events JSON
-const CHARS_PER_TOKEN = 4;                   // rough English approximation
+const BODY_TOKEN_BUDGET = 180_000;          // Sonnet 4.6 context is 200k; leave 20k for response + overhead
+const BODY_PROMPT_OVERHEAD_TOKENS = 800;    // fixed prompt template
+const BODY_MAX_EMAILS_PER_BATCH = 20;       // attention cap — even if tokens fit, smaller batches enumerate better
+const BODY_RESPONSE_MAX_TOKENS = 16384;     // headroom for 50+ events JSON
+const CHARS_PER_TOKEN = 4;                  // rough English approximation
+
+// Per-event enrichment models — short-input/short-output classification tasks use Haiku
+const ENRICHMENT_MODEL = 'claude-haiku-4-5';
+// Bounded concurrency for enrichment Claude calls (per-event)
+const ENRICHMENT_CONCURRENCY = 5;
+
+// Shared prompt fragments — these used to be duplicated across web search + body scan + image vision.
+const SEARCH_WINDOW_DAYS = 90;
+const INTERPRETATION_RULES = `INTERPRETATION RULES (apply liberally):
+- Interest matching is SEMANTIC, not literal. "wine dinners" matches wine pairings, wine tastings, wine flights, vintner dinners, wine festivals. "food festivals" matches culinary events, tasting events, food expos. "trap shooting" matches skeet, sporting clays, shotgun-sports events. "events at the Sphere" matches any show, concert, or residency at Sphere Las Vegas. Cooking classes match any food/beverage interest. Whiskey/spirits events match wine-adjacent interests.
+- Location matching is REGIONAL. "Las Vegas, NV" includes Henderson, North Las Vegas, Boulder City, and the greater Las Vegas metro. "Temecula, CA" includes the Temecula Valley wine country, Murrieta, Wildomar, Fallbrook, and adjacent wine-country communities. Include events at venues in those regions even if the address is in a different listed city.
+- When in doubt, INCLUDE. Better to surface a borderline match than miss a real one.`;
 
 // Robust JSON-array extraction: walk the text tracking bracket depth, accounting for
 // strings and escapes. Returns the first complete top-level [ ... ] substring, or null.
@@ -311,10 +325,10 @@ async function extractCanonicalLink(gmail, messageId, eventTitle, client, getFul
       console.log(`[eventSearch] canonical (rank-only) for "${eventTitle}": ${decision.href}${decision.score != null ? ' score=' + decision.score : ''}`);
       return decision.href;
     }
-    // Ambiguous → ask Claude
+    // Ambiguous → ask Claude (Haiku — pick-one-URL classification)
     const capped = decision.candidates;
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: ENRICHMENT_MODEL,
       max_tokens: 200,
       messages: [{
         role: 'user',
@@ -334,24 +348,41 @@ async function extractCanonicalLink(gmail, messageId, eventTitle, client, getFul
   }
 }
 
+// Bounded-concurrency mapper. Runs at most `concurrency` workers; ignores per-item errors
+// (logged by callers via their own try/catch). Preserves input order in returned array.
+export async function mapWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (true) {
+      const i = idx++;
+      if (i >= items.length) return;
+      try { results[i] = await fn(items[i], i); }
+      catch (e) { results[i] = undefined; }
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 async function enrichCanonicalLinks(gmail, events, getFullMessage) {
   const todo = events.filter(e =>
     e.source === 'email' && !e.canonicalUrl && GMAIL_MSG_URL_RE.test(e.url || '')
   );
   if (!todo.length) return;
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  for (const event of todo) {
+  await mapWithConcurrency(todo, ENRICHMENT_CONCURRENCY, async (event) => {
     const messageId = event.url.match(GMAIL_MSG_URL_RE)[1];
     const link = await extractCanonicalLink(gmail, messageId, event.title, client, getFullMessage);
     if (link) {
       event.canonicalUrl = link;
       console.log(`[eventSearch] canonical link for "${event.title}": ${link}`);
     }
-  }
+  });
 }
 
-// Second pass: for events the text scan left dateless, send the source email's
-// images to Claude and ask for the date visible in them.
+// For events the text scan left dateless, send the source email's images to Claude vision.
 async function enrichDatesFromImages(gmail, events, getFullMessage) {
   const todo = events.filter(e =>
     e.source === 'email' && !e.date && GMAIL_MSG_URL_RE.test(e.url || '')
@@ -359,17 +390,13 @@ async function enrichDatesFromImages(gmail, events, getFullMessage) {
   if (!todo.length) return;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const now = new Date();
-  const until = new Date(now.getTime() + 90 * 24 * 3600000);
-  const fmt = d => d.toISOString().slice(0, 10);
-  const today = fmt(now);
-  const horizon = fmt(until);
+  const { today, horizon } = searchHorizon();
 
-  for (const event of todo) {
+  await mapWithConcurrency(todo, ENRICHMENT_CONCURRENCY, async (event) => {
     const messageId = event.url.match(GMAIL_MSG_URL_RE)[1];
     try {
       const images = await fetchEmailImages(gmail, messageId, getFullMessage);
-      if (!images.length) continue;
+      if (!images.length) return;
 
       const content = [
         ...images.map(img => ({
@@ -387,7 +414,7 @@ No other text, no explanation.`,
       ];
 
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: ENRICHMENT_MODEL,
         max_tokens: 50,
         messages: [{ role: 'user', content }],
       });
@@ -403,7 +430,7 @@ No other text, no explanation.`,
     } catch (e) {
       console.error(`enrichDatesFromImages failed for "${event.title}":`, e.message);
     }
-  }
+  });
 }
 
 // Per-email body cap so a single mega-newsletter can't consume the whole token budget alone.
@@ -432,12 +459,7 @@ export async function scanEmailsForEvents(gmail, interests, locations) {
     return msg;
   };
 
-  const now = new Date();
-  const until = new Date(now.getTime() + 90 * 24 * 3600000);
-  const fmt = d => d.toISOString().slice(0, 10);
-
-  // Mark all fetched emails as scanned regardless of yield
-  addScannedEmailIds(messages.map(m => m.id));
+  const { now, until, fmt } = searchHorizon();
 
   // Fetch full bodies for every eligible message (no Pass 1 pre-filter — bodies decide)
   const bodies = await Promise.all(messages.map(async m => {
@@ -455,10 +477,10 @@ export async function scanEmailsForEvents(gmail, interests, locations) {
   const batches = batchByTokenBudget(
     bodies,
     b => b.tokens,
-    PASS2_TOKEN_BUDGET - PASS2_PROMPT_OVERHEAD_TOKENS,
-    PASS2_MAX_EMAILS_PER_BATCH,
+    BODY_TOKEN_BUDGET - BODY_PROMPT_OVERHEAD_TOKENS,
+    BODY_MAX_EMAILS_PER_BATCH,
   );
-  console.log(`[eventSearch] pass 2: ${bodies.length} emails packed into ${batches.length} batch(es) (cap ${PASS2_MAX_EMAILS_PER_BATCH}/batch)`);
+  console.log(`[eventSearch] body scan: ${bodies.length} emails packed into ${batches.length} batch(es) (cap ${BODY_MAX_EMAILS_PER_BATCH}/batch)`);
 
   const pass2Schema = `Return a JSON array (no markdown, raw JSON only). For each event found:
 [{ "title", "date" (YYYY-MM-DD or null), "time" (HH:MM 24h or null), "location" (venue + city), "url": "https://mail.google.com/mail/u/0/#all/MESSAGE_ID", "description" (1-2 sentences describing the EVENT itself — what it is, what attendees experience. Do NOT include match-explanation phrases like "Matches wine festivals" or "Aligns with your interests" — the matched interest is shown separately as a tag.), "interest" (which interest matched), "configuredLocation" (which of the Locations listed above matched, exactly as written), "rating" (null), "pricePerPerson" (if mentioned, else null), "source": "email" }]
@@ -469,48 +491,67 @@ Example: an email titled "Weekend Wine & Food Events near Las Vegas" with body l
 
 Return [] if no relevant events found.`;
 
-  const allEvents = [];
-  for (const [bi, batch] of batches.entries()) {
-    const prompt = `Examine the following inbox emails and extract every real-world event mentioned, matching these interests in these locations, occurring between ${fmt(now)} and ${fmt(until)}.
+  // Stable system prefix — interests/locations/rules/schema are identical across all batches
+  // in this run. Marking with cache_control: ephemeral lets batches 2..N pay ~10% input cost
+  // on the cached prefix tokens.
+  const systemBlocks = [{
+    type: 'text',
+    text: `You extract real-world events from inbox emails. Apply these rules to every batch.
 
 Interests:
 ${interests.map(i => `- ${i}`).join('\n')}
 
 Locations: ${locations.length ? locations.join(', ') : 'any'}
 
-INTERPRETATION RULES (apply liberally):
-- Interest matching is SEMANTIC, not literal. "wine dinners" matches wine pairings, wine tastings, wine flights, vintner dinners, wine festivals. "food festivals" matches culinary events, tasting events, food expos. "trap shooting" matches skeet, sporting clays, shotgun-sports events. "events at the Sphere" matches any show, concert, or residency at Sphere Las Vegas. Cooking classes match any food/beverage interest. Whiskey/spirits events match wine-adjacent interests.
-- Location matching is REGIONAL. "Las Vegas, NV" includes Henderson, North Las Vegas, Boulder City, and the greater Las Vegas metro. "Temecula, CA" includes the Temecula Valley wine country, Murrieta, Wildomar, Fallbrook, and adjacent wine-country communities. Include events at venues in those regions even if the address is in a different listed city.
-- When in doubt, INCLUDE. Better to surface a borderline match than miss a real one.
+${INTERPRETATION_RULES}
+
+${pass2Schema}`,
+    cache_control: { type: 'ephemeral' },
+  }];
+
+  const allEvents = [];
+  const successfulIds = new Set();
+  const usage = { input: 0, output: 0, cache_read: 0, cache_creation: 0 };
+  for (const [bi, batch] of batches.entries()) {
+    const userPrompt = `Date window: ${fmt(now)} through ${fmt(until)}.
 
 Emails:
 ${batch.map(b => b.formatted).join('\n\n')}
 
-${pass2Schema}`;
+Return the JSON array per the schema above. Empty array if no events.`;
     try {
       const r = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: PASS2_RESPONSE_MAX_TOKENS,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: BODY_RESPONSE_MAX_TOKENS,
+        system: systemBlocks,
+        messages: [{ role: 'user', content: userPrompt }],
       });
+      const u = r.usage || {};
+      usage.input += u.input_tokens || 0;
+      usage.output += u.output_tokens || 0;
+      usage.cache_read += u.cache_read_input_tokens || 0;
+      usage.cache_creation += u.cache_creation_input_tokens || 0;
       const t = r.content.filter(b => b.type === 'text').map(b => b.text).join('');
       const arr = extractJsonArray(t);
-      console.log(`[eventSearch] pass 2 batch ${bi+1}/${batches.length}: ${batch.length} emails, response ${t.length} chars, stop_reason: ${r.stop_reason}, json match: ${arr ? 'yes' : 'no'}`);
-      if (!arr) { console.warn(`[eventSearch] pass 2 batch ${bi+1}: response preview: ${t.slice(0, 400)}`); continue; }
+      console.log(`[eventSearch] body batch ${bi+1}/${batches.length}: ${batch.length} emails, response ${t.length} chars, stop_reason: ${r.stop_reason}, json match: ${arr ? 'yes' : 'no'}`);
+      if (!arr) { console.warn(`[eventSearch] body batch ${bi+1}: response preview: ${t.slice(0, 400)}`); continue; }
       let parsed;
       try { parsed = JSON.parse(arr); }
       catch (je) {
-        console.error(`[eventSearch] pass 2 batch ${bi+1}: JSON parse failed: ${je.message}`);
-        console.error(`[eventSearch] pass 2 batch ${bi+1}: JSON head (first 300 chars): ${arr.slice(0, 300)}`);
+        console.error(`[eventSearch] body batch ${bi+1}: JSON parse failed: ${je.message}`);
+        console.error(`[eventSearch] body batch ${bi+1}: JSON head (first 300 chars): ${arr.slice(0, 300)}`);
         continue;
       }
       if (Array.isArray(parsed)) {
-        console.log(`[eventSearch] pass 2 batch ${bi+1}: extracted ${parsed.length} event(s)`);
+        console.log(`[eventSearch] body batch ${bi+1}: extracted ${parsed.length} event(s)`);
         allEvents.push(...parsed);
+        // Only mark batch IDs as scanned on SUCCESSFUL parse. A transient API failure leaves
+        // emails un-marked so they retry next run.
+        for (const b of batch) successfulIds.add(b.id);
         // Diagnostic: when a batch returns ZERO events, dump what Claude said + the email
         // subjects + body excerpts in that batch so we can see why Claude declined to extract.
         if (parsed.length === 0) {
-          console.warn(`[eventSearch] pass 2 batch ${bi+1}: ZERO events — preamble (first 500 chars): ${t.slice(0, 500).replace(/\s+/g, ' ')}`);
+          console.warn(`[eventSearch] body batch ${bi+1}: ZERO events — preamble (first 500 chars): ${t.slice(0, 500).replace(/\s+/g, ' ')}`);
           for (const [ei, b] of batch.entries()) {
             const excerpt = (b.body || '').slice(0, 250).replace(/\s+/g, ' ');
             console.warn(`[eventSearch]   email ${ei+1}/${batch.length} id=${b.id} subj="${b.subject}" body[${b.body.length}ch]: ${excerpt}`);
@@ -518,10 +559,15 @@ ${pass2Schema}`;
         }
       }
     } catch (e) {
-      console.error(`[eventSearch] pass 2 batch ${bi+1} failed:`, e.message);
+      console.error(`[eventSearch] body batch ${bi+1} failed:`, e.message);
     }
   }
-  console.log(`[eventSearch] pass 2: extracted ${allEvents.length} event(s) total`);
+  // Mark only IDs from successfully-parsed batches as scanned — transient failures retry next run.
+  if (successfulIds.size) addScannedEmailIds([...successfulIds]);
+  console.log(`[eventSearch] body scan: extracted ${allEvents.length} event(s) total, ${successfulIds.size}/${messages.length} emails marked scanned`);
+  // Cost summary — Sonnet 4.6 rates: $3/MTok input, $3.75/MTok cache write, $0.30/MTok cache read, $15/MTok output
+  const cost = (usage.input * 3 + usage.cache_creation * 3.75 + usage.cache_read * 0.30 + usage.output * 15) / 1_000_000;
+  console.log(`[eventSearch] body scan tokens: ${usage.input} input, ${usage.cache_creation} cache_creation, ${usage.cache_read} cache_read, ${usage.output} output — est $${cost.toFixed(4)}`);
 
   // Enrichment passes (share the same per-run message cache)
   await Promise.all([
