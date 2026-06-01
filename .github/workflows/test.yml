@@ -15,5 +15,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+      - name: Install app dependencies
+        # Tests dynamically import app/lib/gmail.js which static-imports googleapis.
+        # Without app/node_modules the import fails with ERR_MODULE_NOT_FOUND.
+        working-directory: app
+        run: npm ci
       - name: Run test harness
         run: npm test
