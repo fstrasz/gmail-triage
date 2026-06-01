@@ -624,6 +624,151 @@ test('pruneInvalidEmailEvents: transient API error leaves event untouched', asyn
   }
 });
 
+// ─── buildReapplyQuery: shared by /api/reapply guard, /preview, lib functions ─
+
+const gmailModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'gmail.js')
+).href;
+
+test('buildReapplyQuery: vip list with email entry', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  const q = buildReapplyQuery('vip', { email: 'alice@example.com' });
+  assert.ok(q.includes('from:alice@example.com'));
+  assert.ok(q.includes('-label:..VIP'));
+  assert.ok(q.includes('-in:sent'));
+  assert.ok(q.includes('-in:trash'));
+});
+
+test('buildReapplyQuery: ok list with domain entry uses wildcard', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  const q = buildReapplyQuery('ok', { email: '@example.com' });
+  assert.ok(q.includes('from:*@example.com'));
+  assert.ok(q.includes('-label:..OK'));
+});
+
+test('buildReapplyQuery: blocklist excludes .DelPend', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  const q = buildReapplyQuery('blocklist', { email: 'spam@example.com' });
+  assert.ok(q.includes('-label:.DelPend'));
+});
+
+test('buildReapplyQuery: rules entry with senders + subjects + custom label', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  const q = buildReapplyQuery('rules', {
+    senders: ['alice@example.com', '@bob.com'],
+    subjects: ['Invoice', 'Receipt'],
+    label: 'Finance',
+  });
+  assert.ok(q.includes('from:alice@example.com'));
+  assert.ok(q.includes('from:*@bob.com'));
+  assert.ok(q.includes('subject:"Invoice"'));
+  assert.ok(q.includes('subject:"Receipt"'));
+  assert.ok(q.includes('-label:Finance'));
+});
+
+test('buildReapplyQuery: rules entry with label containing space gets quoted', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  const q = buildReapplyQuery('rules', {
+    senders: ['alice@example.com'],
+    label: 'Wine Events',
+  });
+  assert.ok(q.includes('-label:"Wine Events"'));
+});
+
+test('buildReapplyQuery: returns null when nothing to query', async () => {
+  const { buildReapplyQuery } = await import(gmailModulePath);
+  // Rules entry with no senders and no subjects produces a query with only the noise filters
+  const q = buildReapplyQuery('rules', { label: 'Empty' });
+  // -label:Empty -in:sent -in:trash is valid, but rules with no match criteria...
+  // Actually the helper checks if the trimmed query equals just -in:sent -in:trash.
+  // A label-only rules entry produces "-label:Empty -in:sent -in:trash" which is NOT null.
+  // The null case is rules with no senders, no subjects, AND no label.
+  const empty = buildReapplyQuery('rules', {});
+  assert.equal(empty, null);
+});
+
+// ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
+
+test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {
+  const { extractEmail } = await import(gmailModulePath);
+  assert.equal(extractEmail('Frank Strasz <frank@example.com>'), 'frank@example.com');
+  assert.equal(extractEmail('"Last, First" <ll@example.com>'), 'll@example.com');
+  assert.equal(extractEmail('Frank <FRANK@EXAMPLE.COM>'), 'frank@example.com');
+});
+
+test('extractEmail: bare address returns lowercased trimmed', async () => {
+  const { extractEmail } = await import(gmailModulePath);
+  assert.equal(extractEmail('frank@example.com'), 'frank@example.com');
+  assert.equal(extractEmail('  Frank@Example.COM  '), 'frank@example.com');
+});
+
+test('extractEmail: plus-tag preserved', async () => {
+  const { extractEmail } = await import(gmailModulePath);
+  assert.equal(extractEmail('frank+newsletter@example.com'), 'frank+newsletter@example.com');
+  assert.equal(extractEmail('Newsletter <frank+ml@example.com>'), 'frank+ml@example.com');
+});
+
+test('extractName: "Name <addr>" form returns Name, quotes stripped', async () => {
+  const { extractName } = await import(gmailModulePath);
+  assert.equal(extractName('Frank Strasz <frank@example.com>'), 'Frank Strasz');
+  assert.equal(extractName('"Last, First" <ll@example.com>'), 'Last, First');
+});
+
+test('extractName: bare address returns the address (no name to extract)', async () => {
+  const { extractName } = await import(gmailModulePath);
+  assert.equal(extractName('frank@example.com'), 'frank@example.com');
+});
+
+// ─── mapWithConcurrency: bounded parallel mapper ─────────────────────────────
+
+test('mapWithConcurrency: runs all items, preserves order', async () => {
+  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const items = [1, 2, 3, 4, 5];
+  const out = await mapWithConcurrency(items, 2, async (n) => n * 10);
+  assert.deepEqual(out, [10, 20, 30, 40, 50]);
+});
+
+test('mapWithConcurrency: respects concurrency cap', async () => {
+  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  let inflight = 0;
+  let maxInflight = 0;
+  const items = Array.from({ length: 10 }, (_, i) => i);
+  await mapWithConcurrency(items, 3, async () => {
+    inflight++;
+    if (inflight > maxInflight) maxInflight = inflight;
+    await new Promise(r => setTimeout(r, 10));
+    inflight--;
+  });
+  assert.ok(maxInflight <= 3, 'maxInflight must not exceed concurrency cap');
+  assert.ok(maxInflight >= 2, 'maxInflight should approach the cap');
+});
+
+test('mapWithConcurrency: per-item errors return undefined; does not throw', async () => {
+  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const items = [1, 2, 3];
+  const out = await mapWithConcurrency(items, 2, async (n) => {
+    if (n === 2) throw new Error('boom');
+    return n * 10;
+  });
+  assert.equal(out[0], 10);
+  assert.equal(out[1], undefined);
+  assert.equal(out[2], 30);
+});
+
+test('mapWithConcurrency: empty input → empty output', async () => {
+  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const out = await mapWithConcurrency([], 5, async () => 1);
+  assert.deepEqual(out, []);
+});
+
+// ─── shouldSkipWebSearch: extra edge cases ────────────────────────────────────
+
+test('shouldSkipWebSearch: numeric (BigInt) timestamps in iso form', async () => {
+  const { shouldSkipWebSearch } = await import(eventSearchModulePath);
+  // Reject any string Date.parse can't make sense of
+  assert.equal(shouldSkipWebSearch(Date.now(), '0'), false);
+});
+
 // ─── sanitizeUrl: SSRF guard (backing CodeQL alert W1 dismissed) ─────────────
 
 test('sanitizeUrl: accepts public http/https URLs', async () => {
