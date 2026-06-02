@@ -71,6 +71,9 @@ app.get("/triage", async (req, res) => {
     res.send(shell("Triage", body, script));
     setLastTriageAt(); // stamp after response is sent
   } catch(e) {
+    // If the failure happened AFTER the response was sent (e.g. setLastTriageAt),
+    // a second send would throw ERR_HTTP_HEADERS_SENT and crash the process — log instead.
+    if (res.headersSent) { console.error("[/triage] post-response error:", e.stack || e.message); return; }
     res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`));
   }
 });

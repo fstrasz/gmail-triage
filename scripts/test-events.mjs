@@ -42,6 +42,9 @@ const senderListModulePath = url.pathToFileURL(
 const activityLogModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'activityLog.js')
 ).href;
+const atomicWriteModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'atomicWrite.js')
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -1205,6 +1208,40 @@ test('activityLog: caps at 250 entries, newest first, compact JSON', async () =>
     assert.ok(!raw.includes('\n  '), 'no 2-space indented lines (compact)');
   } finally {
     process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── atomicWriteFileSync: rename + bind-mount fallback ───────────────────────
+
+test('atomicWriteFileSync: normal path writes content (temp + rename)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-aw-'));
+  try {
+    const { atomicWriteFileSync } = await import(atomicWriteModulePath + '?t=' + Date.now() + Math.random());
+    const f = path.join(dir, 'x.json');
+    atomicWriteFileSync(f, '{"a":1}');
+    assert.equal(fs.readFileSync(f, 'utf8'), '{"a":1}');
+    assert.equal(fs.readdirSync(dir).filter(n => n.includes('.tmp-')).length, 0, 'no leftover temp');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('atomicWriteFileSync: falls back to direct write when rename throws EBUSY (bind-mount case)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-aw-ebusy-'));
+  const fsmod = await import('node:fs');
+  const origRename = fsmod.default.renameSync;
+  try {
+    const f = path.join(dir, 'y.json');
+    fs.writeFileSync(f, 'old');
+    // Simulate a Docker single-file bind mount: rename onto the target fails EBUSY.
+    fsmod.default.renameSync = () => { const e = new Error('EBUSY: resource busy'); e.code = 'EBUSY'; throw e; };
+    const { atomicWriteFileSync } = await import(atomicWriteModulePath + '?t=' + Date.now() + Math.random());
+    atomicWriteFileSync(f, 'new');
+    assert.equal(fs.readFileSync(f, 'utf8'), 'new', 'fallback wrote content despite EBUSY');
+    assert.equal(fs.readdirSync(dir).filter(n => n.includes('.tmp-')).length, 0, 'temp cleaned up after EBUSY');
+  } finally {
+    fsmod.default.renameSync = origRename;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

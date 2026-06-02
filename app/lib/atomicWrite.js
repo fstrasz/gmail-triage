@@ -18,6 +18,15 @@ export function atomicWriteFileSync(filePath, content) {
   } catch (e) {
     // Best-effort cleanup if rename failed but tmp was written
     try { fs.unlinkSync(tmp); } catch {}
+    // rename() onto a Docker bind-mounted single file fails with EBUSY (the target
+    // is itself a mount point); a temp dir on another device fails with EXDEV. In
+    // those cases fall back to a direct in-place write — this loses crash-atomicity
+    // but is the only way to write a single-file bind mount, which is how every
+    // config file is mounted in production (compose.yaml: ./config/x.json:/app/x.json).
+    if (e.code === 'EBUSY' || e.code === 'EXDEV' || e.code === 'EPERM') {
+      fs.writeFileSync(filePath, content);
+      return;
+    }
     throw e;
   }
 }
