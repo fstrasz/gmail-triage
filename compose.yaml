@@ -10,26 +10,11 @@ services:
     volumes:
       # App files — bind mounted for live reload
       - ./app/triage.js:/app/triage.js
-      - ./app/lib/stats.js:/app/lib/stats.js
-      - ./app/lib/blocklist.js:/app/lib/blocklist.js
-      - ./app/lib/gmail.js:/app/lib/gmail.js
-      - ./app/lib/unsub.js:/app/lib/unsub.js
-      - ./app/lib/html.js:/app/lib/html.js
-      - ./app/lib/pages.js:/app/lib/pages.js
-      - ./app/lib/keepClean.js:/app/lib/keepClean.js
-      - ./app/lib/keptlist.js:/app/lib/keptlist.js
-      - ./app/lib/viplist.js:/app/lib/viplist.js
-      - ./app/lib/oklist.js:/app/lib/oklist.js
-      - ./app/lib/senderList.js:/app/lib/senderList.js
-      - ./app/lib/claude.js:/app/lib/claude.js
-      - ./app/lib/calendar.js:/app/lib/calendar.js
-      - ./app/lib/review.js:/app/lib/review.js
-      - ./app/lib/settings.js:/app/lib/settings.js
-      - ./app/lib/scheduler.js:/app/lib/scheduler.js
-      - ./app/lib/rules.js:/app/lib/rules.js
-      - ./app/lib/activityLog.js:/app/lib/activityLog.js
-      - ./app/lib/eventSearch.js:/app/lib/eventSearch.js
-      - ./app/lib/foundEvents.js:/app/lib/foundEvents.js
+      # Whole lib dir (not individual files) so new modules — atomicWrite.js,
+      # senderList.js, oklist.js, and anything added later — are always present
+      # without editing this list. A missing per-file mount was silently crashing
+      # the app on every deploy that added a lib module.
+      - ./app/lib:/app/lib
       - ./config/activity-log.json:/app/activity-log.json
       - ./config/found-events.json:/app/found-events.json
       # Config & data
