@@ -19,6 +19,8 @@ services:
       - ./app/lib/keepClean.js:/app/lib/keepClean.js
       - ./app/lib/keptlist.js:/app/lib/keptlist.js
       - ./app/lib/viplist.js:/app/lib/viplist.js
+      - ./app/lib/oklist.js:/app/lib/oklist.js
+      - ./app/lib/senderList.js:/app/lib/senderList.js
       - ./app/lib/claude.js:/app/lib/claude.js
       - ./app/lib/calendar.js:/app/lib/calendar.js
       - ./app/lib/review.js:/app/lib/review.js
