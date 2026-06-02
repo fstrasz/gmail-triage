@@ -68,6 +68,42 @@ const BODY_MAX_EMAILS_PER_BATCH = 20;       // attention cap — even if tokens 
 const BODY_RESPONSE_MAX_TOKENS = 16384;     // headroom for 50+ events JSON
 const CHARS_PER_TOKEN = 4;                  // rough English approximation
 
+// Structured-output tool for body-scan extraction. Forcing this tool via tool_choice
+// makes Claude return validated structured data instead of free text we have to parse
+// out of prose (the old extractJsonArray path, kept as a fallback in extractBodyScanEvents).
+// Stable/deterministic so it stays inside the cached prefix (tools render before system).
+const BODY_RECORD_EVENTS_TOOL = {
+  name: 'record_events',
+  description: 'Record every real-world event extracted from the inbox emails in this batch. Call exactly once with all events found. Pass an empty array if no relevant events are found.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      events: {
+        type: 'array',
+        description: 'One entry per distinct event. A multi-event newsletter must produce one entry per event, never one entry for the whole newsletter.',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            date: { type: ['string', 'null'], description: 'YYYY-MM-DD, or null if unknown' },
+            time: { type: ['string', 'null'], description: 'HH:MM 24h, or null if unknown' },
+            location: { type: 'string', description: 'venue + city' },
+            url: { type: 'string', description: 'https://mail.google.com/mail/u/0/#all/MESSAGE_ID (the source email id)' },
+            description: { type: 'string', description: '1-2 sentences describing the EVENT itself, no match-explanation phrases' },
+            interest: { type: 'string', description: 'which configured interest matched' },
+            configuredLocation: { type: 'string', description: 'which configured Location matched, exactly as written' },
+            rating: { type: ['number', 'null'] },
+            pricePerPerson: { type: ['string', 'null'] },
+            source: { type: 'string', description: "always 'email'" },
+          },
+          required: ['title'],
+        },
+      },
+    },
+    required: ['events'],
+  },
+};
+
 // Per-event enrichment models — short-input/short-output classification tasks use Haiku
 const ENRICHMENT_MODEL = 'claude-haiku-4-5';
 // Bounded concurrency for enrichment Claude calls (per-event)
@@ -103,6 +139,27 @@ export function extractJsonArray(text) {
     }
   }
   return null;
+}
+
+// Pull the events array out of a body-scan response. Prefers the structured
+// record_events tool_use block; falls back to parsing a JSON array out of any
+// text content (the rare case where the model emits prose instead of the tool).
+// Returns { events, source, text, parseError } — events is null on failure.
+export function extractBodyScanEvents(response) {
+  const blocks = (response && response.content) || [];
+  const toolBlock = blocks.find(b => b.type === 'tool_use' && b.name === 'record_events');
+  if (toolBlock && Array.isArray(toolBlock.input?.events)) {
+    return { events: toolBlock.input.events, source: 'tool_use' };
+  }
+  const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('');
+  const arr = extractJsonArray(text);
+  if (!arr) return { events: null, source: 'text', text };
+  try {
+    const parsed = JSON.parse(arr);
+    return { events: Array.isArray(parsed) ? parsed : null, source: 'text', text };
+  } catch (e) {
+    return { events: null, source: 'text', text, parseError: e.message };
+  }
 }
 
 export function estimateTokens(text) {
@@ -524,6 +581,8 @@ Return the JSON array per the schema above. Empty array if no events.`;
         model: 'claude-sonnet-4-6',
         max_tokens: BODY_RESPONSE_MAX_TOKENS,
         system: systemBlocks,
+        tools: [BODY_RECORD_EVENTS_TOOL],
+        tool_choice: { type: 'tool', name: 'record_events' },
         messages: [{ role: 'user', content: userPrompt }],
       });
       const u = r.usage || {};
@@ -531,31 +590,25 @@ Return the JSON array per the schema above. Empty array if no events.`;
       usage.output += u.output_tokens || 0;
       usage.cache_read += u.cache_read_input_tokens || 0;
       usage.cache_creation += u.cache_creation_input_tokens || 0;
-      const t = r.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const arr = extractJsonArray(t);
-      console.log(`[eventSearch] body batch ${bi+1}/${batches.length}: ${batch.length} emails, response ${t.length} chars, stop_reason: ${r.stop_reason}, json match: ${arr ? 'yes' : 'no'}`);
-      if (!arr) { console.warn(`[eventSearch] body batch ${bi+1}: response preview: ${t.slice(0, 400)}`); continue; }
-      let parsed;
-      try { parsed = JSON.parse(arr); }
-      catch (je) {
-        console.error(`[eventSearch] body batch ${bi+1}: JSON parse failed: ${je.message}`);
-        console.error(`[eventSearch] body batch ${bi+1}: JSON head (first 300 chars): ${arr.slice(0, 300)}`);
+      const { events: parsed, source, text: t = '', parseError } = extractBodyScanEvents(r);
+      console.log(`[eventSearch] body batch ${bi+1}/${batches.length}: ${batch.length} emails, source: ${source}, stop_reason: ${r.stop_reason}, events: ${parsed ? parsed.length : 'parse-failed'}`);
+      if (!parsed) {
+        if (parseError) console.error(`[eventSearch] body batch ${bi+1}: JSON parse failed: ${parseError}`);
+        console.warn(`[eventSearch] body batch ${bi+1}: response preview: ${t.slice(0, 400)}`);
         continue;
       }
-      if (Array.isArray(parsed)) {
-        console.log(`[eventSearch] body batch ${bi+1}: extracted ${parsed.length} event(s)`);
-        allEvents.push(...parsed);
-        // Only mark batch IDs as scanned on SUCCESSFUL parse. A transient API failure leaves
-        // emails un-marked so they retry next run.
-        for (const b of batch) successfulIds.add(b.id);
-        // Diagnostic: when a batch returns ZERO events, dump what Claude said + the email
-        // subjects + body excerpts in that batch so we can see why Claude declined to extract.
-        if (parsed.length === 0) {
-          console.warn(`[eventSearch] body batch ${bi+1}: ZERO events — preamble (first 500 chars): ${t.slice(0, 500).replace(/\s+/g, ' ')}`);
-          for (const [ei, b] of batch.entries()) {
-            const excerpt = (b.body || '').slice(0, 250).replace(/\s+/g, ' ');
-            console.warn(`[eventSearch]   email ${ei+1}/${batch.length} id=${b.id} subj="${b.subject}" body[${b.body.length}ch]: ${excerpt}`);
-          }
+      console.log(`[eventSearch] body batch ${bi+1}: extracted ${parsed.length} event(s)`);
+      allEvents.push(...parsed);
+      // Only mark batch IDs as scanned on SUCCESSFUL extraction. A transient API failure leaves
+      // emails un-marked so they retry next run.
+      for (const b of batch) successfulIds.add(b.id);
+      // Diagnostic: when a batch returns ZERO events, dump the email subjects + body
+      // excerpts in that batch so we can see why Claude declined to extract.
+      if (parsed.length === 0) {
+        if (t) console.warn(`[eventSearch] body batch ${bi+1}: ZERO events — preamble (first 500 chars): ${t.slice(0, 500).replace(/\s+/g, ' ')}`);
+        for (const [ei, b] of batch.entries()) {
+          const excerpt = (b.body || '').slice(0, 250).replace(/\s+/g, ' ');
+          console.warn(`[eventSearch]   email ${ei+1}/${batch.length} id=${b.id} subj="${b.subject}" body[${b.body.length}ch]: ${excerpt}`);
         }
       }
     } catch (e) {

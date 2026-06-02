@@ -33,6 +33,15 @@ const blocklistModulePath = url.pathToFileURL(
 const viplistModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'viplist.js')
 ).href;
+const oklistModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'oklist.js')
+).href;
+const senderListModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'senderList.js')
+).href;
+const activityLogModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'activityLog.js')
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -544,6 +553,69 @@ test('extractJsonArray: returns null when unbalanced', async () => {
   assert.equal(extractJsonArray('start [1,2 no close'), null);
 });
 
+// ─── extractBodyScanEvents: tool_use primary + extractJsonArray fallback ──────
+
+test('extractBodyScanEvents: reads events from record_events tool_use block', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const events = [{ title: 'A' }, { title: 'B' }];
+  const out = extractBodyScanEvents({
+    content: [{ type: 'tool_use', name: 'record_events', input: { events } }],
+  });
+  assert.equal(out.source, 'tool_use');
+  assert.deepEqual(out.events.map(e => e.title), ['A', 'B']);
+});
+
+test('extractBodyScanEvents: empty events array from tool_use is preserved (not a failure)', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const out = extractBodyScanEvents({
+    content: [{ type: 'tool_use', name: 'record_events', input: { events: [] } }],
+  });
+  assert.equal(out.source, 'tool_use');
+  assert.deepEqual(out.events, []);
+});
+
+test('extractBodyScanEvents: falls back to text JSON when no tool_use block', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const out = extractBodyScanEvents({
+    content: [{ type: 'text', text: 'Here: [{"title":"X"}]' }],
+  });
+  assert.equal(out.source, 'text');
+  assert.deepEqual(out.events.map(e => e.title), ['X']);
+});
+
+test('extractBodyScanEvents: tool_use without an events array falls back to text', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const out = extractBodyScanEvents({
+    content: [
+      { type: 'tool_use', name: 'record_events', input: {} },
+      { type: 'text', text: '[{"title":"Y"}]' },
+    ],
+  });
+  assert.equal(out.source, 'text');
+  assert.deepEqual(out.events.map(e => e.title), ['Y']);
+});
+
+test('extractBodyScanEvents: no parseable content → events null', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const out = extractBodyScanEvents({ content: [{ type: 'text', text: 'no array here' }] });
+  assert.equal(out.events, null);
+  assert.equal(out.source, 'text');
+});
+
+test('extractBodyScanEvents: malformed JSON in text → events null with parseError', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  const out = extractBodyScanEvents({ content: [{ type: 'text', text: '[{"title": bad}]' }] });
+  assert.equal(out.events, null);
+  assert.ok(out.parseError);
+});
+
+test('extractBodyScanEvents: empty/garbage response → events null, no throw', async () => {
+  const { extractBodyScanEvents } = await import(eventSearchModulePath);
+  assert.equal(extractBodyScanEvents({}).events, null);
+  assert.equal(extractBodyScanEvents({ content: [] }).events, null);
+  assert.equal(extractBodyScanEvents(null).events, null);
+});
+
 test('pruneInvalidEmailEvents: TRASH, 404, and self-subject all flip ignored=true; others kept', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-test-'));
   const origCwd = process.cwd();
@@ -1024,7 +1096,8 @@ test('list matchers: isBlocked / isViplisted / isOklisted contracts', async () =
     // Without the query string we'd reuse the cached module pointing at project root.
     const bust = '?t=' + Date.now() + Math.random();
     const { isBlocked } = await import(blocklistModulePath + bust);
-    const { isViplisted, isOklisted } = await import(viplistModulePath + bust);
+    const { isViplisted } = await import(viplistModulePath + bust);
+    const { isOklisted } = await import(oklistModulePath + bust);
     const write = (name, data) => fs.writeFileSync(path.join(sharedDir, name), JSON.stringify(data));
     const clear = (name) => { const p = path.join(sharedDir, name); if (fs.existsSync(p)) fs.unlinkSync(p); };
 
@@ -1069,5 +1142,90 @@ test('list matchers: isBlocked / isViplisted / isOklisted contracts', async () =
   } finally {
     process.chdir(origCwd);
     fs.rmSync(sharedDir, { recursive: true, force: true });
+  }
+});
+
+// ─── senderList factory ──────────────────────────────────────────────────────
+
+test('senderList: factory load/save/add/remove/match contracts', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-factory-test-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
+    const store = senderList('list.json');
+
+    // missing file → []
+    assert.deepEqual(store.load(), []);
+
+    // add: new entry, then re-add upgrades name when existing has none
+    store.add('a@x.com');
+    store.add('a@x.com', 'Alice');
+    let list = store.load();
+    assert.equal(list.length, 1, 'dedup on email');
+    assert.equal(list[0].name, 'Alice', 'name upgraded on re-add');
+
+    // add normalizes email (lowercase + trim)
+    store.add('  B@X.com ');
+    assert.ok(store.load().some(e => e.email === 'b@x.com'), 'email normalized');
+
+    // match: exact, domain, name-scoped
+    assert.ok(store.match('a@x.com'), 'exact match');
+    assert.ok(!store.match('nobody@x.com'), 'non-match');
+    store.save([{ email: '@corp.com' }]);
+    assert.ok(store.match('anyone@corp.com'), 'domain match');
+    store.save([{ email: 's@x.com', name: 'One' }]);
+    assert.ok(store.match('s@x.com', 'One'), 'name match');
+    assert.ok(!store.match('s@x.com', 'Two'), 'name mismatch');
+    assert.ok(store.match('s@x.com'), 'no caller name still matches');
+
+    // remove: filters by email
+    store.save([{ email: 'r@x.com' }, { email: 'keep@x.com' }]);
+    store.remove('r@x.com');
+    assert.deepEqual(store.load().map(e => e.email), ['keep@x.com']);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('activityLog: caps at 250 entries, newest first, compact JSON', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-log-test-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { appendLog, loadLog } = await import(activityLogModulePath + '?t=' + Date.now() + Math.random());
+    for (let i = 0; i < 260; i++) appendLog({ type: 'triage', action: 'ok', seq: i });
+    const log = loadLog();
+    assert.equal(log.length, 250, 'capped at MAX_ENTRIES');
+    assert.equal(log[0].seq, 259, 'newest first');
+    assert.equal(log[249].seq, 10, 'oldest retained is seq 10 (10..259)');
+    // compact JSON — no pretty-print indentation
+    const raw = fs.readFileSync(path.join(dir, 'activity-log.json'), 'utf8');
+    assert.ok(!raw.includes('\n  '), 'no 2-space indented lines (compact)');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('senderList: dedupeOnLoad true drops dup emails; false keeps them', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-factory-dedup-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
+    const dupes = [{ email: 'a@x.com', name: 'One' }, { email: 'A@X.com', name: 'Two' }];
+
+    const deduped = senderList('dedup.json');
+    fs.writeFileSync(path.join(dir, 'dedup.json'), JSON.stringify(dupes));
+    assert.equal(deduped.load().length, 1, 'dedupeOnLoad true → 1 (case-insensitive)');
+
+    const raw = senderList('raw.json', { dedupeOnLoad: false });
+    fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify(dupes));
+    assert.equal(raw.load().length, 2, 'dedupeOnLoad false → keeps both (blocklist behavior)');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

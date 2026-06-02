@@ -3,14 +3,18 @@ import path from "path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const LOG_PATH = path.join(process.cwd(), "activity-log.json");
-const MAX_ENTRIES = 1000;
+// The settings page only renders the newest 200 entries; cap a little above that so
+// the "Last N events" count stays meaningful while keeping each rewrite small.
+const MAX_ENTRIES = 250;
 
 export function loadLog() {
   try { return JSON.parse(fs.readFileSync(LOG_PATH)); } catch { return []; }
 }
 
 function saveLog(entries) {
-  atomicWriteFileSync(LOG_PATH, JSON.stringify(entries, null, 2));
+  // Compact (no pretty-print) — this file is machine-read only, never hand-edited,
+  // and is rewritten on every triage action, so the smaller payload is worth it.
+  atomicWriteFileSync(LOG_PATH, JSON.stringify(entries));
 }
 
 export function appendLog(entry) {

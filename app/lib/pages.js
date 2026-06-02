@@ -2,7 +2,8 @@ import { triageEmailRow, esc } from "./html.js";
 import { extractEmail, extractName } from "./gmail.js";
 import { loadStats } from "./stats.js";
 import { loadBlocklist } from "./blocklist.js";
-import { loadViplist, loadOklist } from "./viplist.js";
+import { loadViplist } from "./viplist.js";
+import { loadOklist } from "./oklist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 

@@ -1,18 +1,22 @@
 import fs from "fs";
 import path from "path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
+import { senderList } from "./senderList.js";
 
-const BLOCKLIST_PATH      = path.join(process.cwd(), "blocklist.json");
+// Blocklist — senders routed to `.DelPend`. Uses the shared senderList factory for
+// load/save/remove/match, but keeps a bespoke `add` (carries a `reason`, dedupes on
+// email+name) and its own backup/restore machinery, which the VIP/OK lists don't have.
+// dedupeOnLoad is OFF: the blocklist allows multiple name-scoped entries per email.
+const store = senderList("blocklist.json", { dedupeOnLoad: false });
+
 const BACKUP_PATH         = path.join(process.cwd(), "blocklist.backup.json");
 const NAMED_BACKUPS_PATH  = path.join(process.cwd(), "blocklist.backups.json");
 
-export function loadBlocklist() {
-  try { return JSON.parse(fs.readFileSync(BLOCKLIST_PATH)); } catch { return []; }
-}
-
-export function saveBlocklist(list) {
-  atomicWriteFileSync(BLOCKLIST_PATH, JSON.stringify(list, null, 2));
-}
+export const loadBlocklist = store.load;
+export const saveBlocklist = store.save;
+export const removeFromBlocklist = store.remove;
+// isBlocked returns the matched entry (truthy/undefined), unlike the boolean VIP/OK matchers.
+export const isBlocked = (fromEmail, fromName = null) => store.match(fromEmail, fromName);
 
 export function resetBlocklist() {
   saveBlocklist([]);
@@ -70,20 +74,4 @@ export function addToBlocklist(email, reason = "junk", name = null) {
   if (!list.find(e => e.email === key && (normName ? e.name === normName : !e.name)))
     list.push({ email: key, name: normName, reason, date: new Date().toISOString() });
   saveBlocklist(list);
-}
-
-export function removeFromBlocklist(email, name = null) {
-  saveBlocklist(loadBlocklist().filter(e => e.email !== email));
-}
-
-export function isBlocked(fromEmail, fromName = null) {
-  const list = loadBlocklist();
-  const addr = fromEmail.toLowerCase().trim();
-  const domain = addr.split("@")[1] || "";
-  const normName = fromName ? fromName.trim() : null;
-  return list.find(e => {
-    if (e.email === "@" + domain) return true;
-    if (e.email !== addr) return false;
-    return !e.name || !normName || e.name === normName;
-  });
 }
