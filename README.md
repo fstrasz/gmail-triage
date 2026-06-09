@@ -34,6 +34,8 @@
 
 - **Blocklist** — Block by email address + display name, or entire domain (`@example.com`). On triage load, all matching inbox emails are labeled `.DelPend` and removed. Blocked senders are also filtered out of the triage queue before it renders.
 
+- **Hide VIP/OK senders filter** — A toggle on the triage screen that hides emails whose sender is already on the VIP or OK list, so you only triage senders not yet on a list. It applies to both the initial queue and the follow-ups loaded as you action emails. The toggle is per-visit (defaults off, carried in the URL as `?hideListed=1`, and resets each time you open the triage screen).
+
 - **OK & Clean / VIP & Clean** — Adds the sender to the OK (or VIP) list so future mail from this sender is auto-labeled, AND uniformly archives every CURRENT inbox message from that sender — including the clicked one — by adding `.DelPend` and removing `INBOX` + `UNREAD` labels. The list entry governs future mail; current inbox state is wiped uniformly. Excludes `..VIP`-labeled messages from cleanup as a safety against demoting an existing VIP sender.
 
 - **Bulk safety guard** — Any action that would label or archive more than 100 emails (VIP, OK, VIP & Clean, OK & Clean, Junk, list Reapply) triggers a confirmation dialog showing the exact count before proceeding. Cancel cleanly reverts the card to its pre-click state. The guard applies to UI-triggered actions only; scheduler auto-scans run without prompts.
@@ -296,3 +298,15 @@ All settings persist to `config/settings.json` and are managed at `/settings`:
 .\deploy.ps1          # deploy (bumps version, syncs files)
 .\deploy.ps1 -WhatIf  # dry run (shows what would change, no files written)
 ```
+
+## Health Check
+
+`GET /health` returns a JSON liveness + readiness verdict — HTTP **200** when healthy, **503** when degraded — built from cheap, in-process signals (no Gmail API call, so it is safe to poll frequently):
+
+```json
+{ "status": "ok", "version": "v1.2.04", "uptimeSec": 84213,
+  "checks": { "config": "ok", "token": "ok", "scheduler": "enabled",
+              "lastScanAgeMin": 47, "staleness": "ok" } }
+```
+
+The checks cover: config readability, Gmail token presence, whether the scheduler is enabled, and how long since the last successful scheduled scan (`staleness` goes `stale` → 503 after roughly two missed scan intervals). The Docker Compose `healthcheck:` probes this endpoint via Node's built-in `fetch`, so `docker ps` reports container health. To catch a fully-down container (which an in-process endpoint can't report), poll `/health` from an external monitor and alert on any non-200 or unreachable response.
