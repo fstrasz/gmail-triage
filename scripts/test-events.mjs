@@ -45,6 +45,9 @@ const listedSenderModulePath = url.pathToFileURL(
 const healthModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'health.js')
 ).href;
+const settingsModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'settings.js')
+).href;
 const activityLogModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'activityLog.js')
 ).href;
@@ -1389,4 +1392,21 @@ test('getHealthReport: config absent is healthy (defaults are fine)', async () =
   });
   assert.equal(r.ok, true);
   assert.equal(r.body.checks.config, 'absent');
+});
+
+// ─── setSchedulerLastRunAt: stamps an ISO timestamp into settings.json ───
+test('setSchedulerLastRunAt: writes an ISO timestamp readable by loadSettings', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-sched-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setSchedulerLastRunAt, loadSettings } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.equal(loadSettings().schedulerLastRunAt, null, 'defaults to null');
+    setSchedulerLastRunAt();
+    const stamped = loadSettings().schedulerLastRunAt;
+    assert.ok(stamped && !Number.isNaN(Date.parse(stamped)), 'stamped a valid ISO timestamp');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

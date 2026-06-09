@@ -26,6 +26,7 @@ const DEFAULTS = {
   eventsSearchEmail: null,
   eventsSearchIntervalDays: 7,
   eventsSearchLastRunAt: null,
+  schedulerLastRunAt: null,
   scannedEmailIds: [],
 };
 
@@ -141,6 +142,11 @@ export function setEventsSearchSettings(enabled, intervalDays, email) {
 export function setEventsSearchLastRunAt() {
   const s = loadSettings();
   s.eventsSearchLastRunAt = new Date().toISOString();
+  saveSettings(s);
+}
+export function setSchedulerLastRunAt() {
+  const s = loadSettings();
+  s.schedulerLastRunAt = new Date().toISOString();
   saveSettings(s);
 }
 export function setDailySummaryDebug(enabled) {
