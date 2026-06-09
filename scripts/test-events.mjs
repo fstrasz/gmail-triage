@@ -39,6 +39,9 @@ const oklistModulePath = url.pathToFileURL(
 const senderListModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'senderList.js')
 ).href;
+const listedSenderModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'listedSender.js')
+).href;
 const activityLogModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'activityLog.js')
 ).href;
@@ -1186,6 +1189,30 @@ test('senderList: factory load/save/add/remove/match contracts', async () => {
     store.save([{ email: 'r@x.com' }, { email: 'keep@x.com' }]);
     store.remove('r@x.com');
     assert.deepEqual(store.load().map(e => e.email), ['keep@x.com']);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── isListedSender: VIP OR OK keep-list predicate (triage "hide VIP/OK" filter) ───
+test('isListedSender: true for VIP/OK/@domain listed senders, false otherwise', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-listed-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const bust = '?t=' + Date.now() + Math.random();
+    const { isListedSender } = await import(listedSenderModulePath + bust);
+    const write = (name, data) => fs.writeFileSync(path.join(dir, name), JSON.stringify(data));
+
+    write('viplist.json', [{ email: 'vip@example.com' }, { email: '@vipcorp.com' }]);
+    write('oklist.json', [{ email: 'ok@example.com' }]);
+
+    assert.equal(isListedSender('vip@example.com'), true, 'VIP exact match → listed');
+    assert.equal(isListedSender('ok@example.com'), true, 'OK exact match → listed');
+    assert.equal(isListedSender('anyone@vipcorp.com'), true, 'VIP @domain match → listed');
+    assert.equal(isListedSender('stranger@example.com'), false, 'unlisted → not listed');
+    assert.equal(isListedSender('STRANGER@EXAMPLE.COM'), false, 'unlisted (uppercase) → not listed');
   } finally {
     process.chdir(origCwd);
     fs.rmSync(dir, { recursive: true, force: true });
