@@ -7,7 +7,7 @@ import { loadOklist } from "./oklist.js";
 import { loadRules } from "./rules.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 
-const APP_VERSION = "v1.2.03";
+export const APP_VERSION = "v1.2.03";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
