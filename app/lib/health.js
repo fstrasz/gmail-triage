@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings } from "./settings.js";
 
 const TOKEN_PATH    = path.join(process.cwd(), "token.json");
 const SETTINGS_PATH = path.join(process.cwd(), "settings.json");
@@ -16,15 +15,18 @@ export function readHealthInputs() {
     tokenState = "missing";
   }
 
-  let configState;
+  // Single read: getHealthReport defaults each settings field it reads, so the raw
+  // parsed object (or {} on failure) is sufficient — no need to also call loadSettings.
+  let settings, configState;
   try {
-    JSON.parse(fs.readFileSync(SETTINGS_PATH));
+    settings = JSON.parse(fs.readFileSync(SETTINGS_PATH));
     configState = "ok";
   } catch (e) {
+    settings = {};
     configState = e.code === "ENOENT" ? "absent" : "corrupt"; // absent → defaults are fine
   }
 
-  return { settings: loadSettings(), tokenState, configState };
+  return { settings, tokenState, configState };
 }
 
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
@@ -41,7 +43,7 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
   const schedulerEnabled = settings.schedulerEnabled !== false;
   checks.scheduler = schedulerEnabled ? "enabled" : "disabled";
 
-  const staleThresholdMin = (settings.schedulerIntervalHours ?? 2) * 60 * 2 + 30;
+  const staleThresholdMin = (settings.schedulerIntervalHours ?? 2) * 60 * 2 + 30; // 2× interval + 30 min grace
   const lastRun = settings.schedulerLastRunAt ? new Date(settings.schedulerLastRunAt).getTime() : null;
   const lastScanAgeMin = lastRun ? Math.max(0, Math.round((now - lastRun) / 60000)) : null;
   checks.lastScanAgeMin = lastScanAgeMin;
