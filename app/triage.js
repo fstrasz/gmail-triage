@@ -66,7 +66,7 @@ app.get("/triage", async (req, res) => {
     const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
     for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
     const hideListed = req.query.hideListed === "1";
-    const skipSender = hideListed ? (em, nm) => isListedSender(em, nm) : null;
+    const skipSender = hideListed ? isListedSender : null;
     const emails = await fetchEmails(gmail, 25, { skipSender });
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
