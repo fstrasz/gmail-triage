@@ -202,7 +202,7 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
 }
 
 // ─── Fetch emails for triage ───────────────────────────────────────────────────
-export async function fetchEmails(gmail, max = 25) {
+export async function fetchEmails(gmail, max = 25, { skipSender = null } = {}) {
   await Promise.all(["..VIP", "..OK", ".DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
 
   const res = await gmail.users.messages.list({
@@ -232,6 +232,10 @@ export async function fetchEmails(gmail, max = 25) {
     const fromRaw   = g("From");
     const fromEmail = extractEmail(fromRaw);
     const fromName  = extractName(fromRaw);
+
+    // Skip senders the caller wants hidden (e.g. VIP/OK-listed when the triage filter is on).
+    // Done here (inside the 100-message pool) so the queue still fills up to `max` unlisted emails.
+    if (skipSender && skipSender(fromEmail, fromName)) continue;
 
     const lbls  = d.data.labelIds || [];
     const vipId = labelCache["..VIP"] || "";
