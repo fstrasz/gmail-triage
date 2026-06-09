@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt, setWebSearchLastRunAt } from "./settings.js";
+import { loadSettings, setDailySummaryDebug, setDailySummaryLastSentAt, setEventsSearchLastRunAt, setWebSearchLastRunAt, setSchedulerLastRunAt } from "./settings.js";
 import { appendLog } from "./activityLog.js";
 import { searchEventsOfInterest, scanEmailsForEvents, sendEventsEmail, shouldSkipWebSearch } from "./eventSearch.js";
 import { atomicWriteFileSync } from "./atomicWrite.js";
@@ -93,6 +93,7 @@ export async function runScheduledScan(getGmailClient) {
   const timeLabel = fmtTime(new Date());
   const gmail = await getGmailClient();
   const { scanClean, scanVip, scanOk, scanRules } = await scanAll(gmail);
+  setSchedulerLastRunAt(); // stamp on every successful scan (even no-op) so /health staleness is trustworthy
   const results = [...scanClean, ...scanVip, ...scanOk, ...scanRules];
   if (results.length) {
     appendToLog(results.map(r => ({ ...r, reason: `⏰ ${timeLabel} - ${r.reason}`, runAt: new Date().toISOString() })));
