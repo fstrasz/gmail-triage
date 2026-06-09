@@ -133,10 +133,10 @@ export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = 
 }
 
 // ─── Triage page ───────────────────────────────────────────────────────────────
-export function triagePage(emails, blocklist, savedStats, scanResults) {
+export function triagePage(emails, blocklist, savedStats, scanResults, hideListed = false) {
   const rows = emails.map(triageEmailRow).join("");
   const dataScript = `<script type="application/json" id="page-data">${JSON.stringify({
-    total: emails.length, blCount: blocklist.length, savedStats, scanResults,
+    total: emails.length, blCount: blocklist.length, savedStats, scanResults, hideListed,
     seenSenders: emails.map(e => extractName(e.from) + "<" + extractEmail(e.from) + ">"),
     seenIds: emails.map(e => e.id),
   })}</script>`;
@@ -151,6 +151,10 @@ export function triagePage(emails, blocklist, savedStats, scanResults) {
         <div class="main-topbar">
           <span style="font-weight:600;font-size:.92rem">Inbox Triage <span style="font-weight:400;color:#94a3b8;font-size:.82rem">${emails.length} emails</span></span>
           <div style="display:flex;align-items:center;gap:10px;font-size:.82rem">
+            <a href="/triage${hideListed ? "" : "?hideListed=1"}" title="Hide emails from senders already on the VIP or OK list"
+               style="text-decoration:none;padding:3px 9px;border-radius:6px;border:1px solid ${hideListed ? "#0f766e" : "#cbd5e1"};background:${hideListed ? "#ccfbf1" : "#fff"};color:${hideListed ? "#0f766e" : "#64748b"};font-weight:600">
+              ${hideListed ? "☑" : "☐"} Hide VIP/OK senders
+            </a>
             <span id="progress">0 / ${emails.length} actioned</span>
             <span class="counter" id="junk-count">0 junked</span>
           </div>
@@ -196,7 +200,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults) {
 
 function clientScript() { return `
   var _d=JSON.parse(document.getElementById('page-data').textContent);
-  var total=_d.total,blCount=_d.blCount,savedStats=_d.savedStats,scanResults=_d.scanResults;
+  var total=_d.total,blCount=_d.blCount,savedStats=_d.savedStats,scanResults=_d.scanResults,hideListed=_d.hideListed;
   var seenSenders=new Set(_d.seenSenders),seenIds=new Set(_d.seenIds);
   var actioned=0,junked=savedStats.junked,unsubbed=savedStats.unsubbed;
   var cleaned=savedStats.cleaned;
@@ -343,7 +347,7 @@ function clientScript() { return `
     try{
       var seen=[],ids=[];
       seenSenders.forEach(function(s){seen.push(s);});seenIds.forEach(function(i){ids.push(i);});
-      var r=await fetch('/api/next?seen='+encodeURIComponent(seen.join(','))+'&seenIds='+encodeURIComponent(ids.join(',')));
+      var r=await fetch('/api/next?seen='+encodeURIComponent(seen.join(','))+'&seenIds='+encodeURIComponent(ids.join(','))+(hideListed?'&hideListed=1':''));
       var data=await r.json();
       if(data.autoCleanedEntries)data.autoCleanedEntries.forEach(function(e){addScanRow(e.email,e.reason,e.moved,e.latestEmailDate||e.ts,e.subjects);});
       if(data.html){
