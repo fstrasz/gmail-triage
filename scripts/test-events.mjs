@@ -42,6 +42,9 @@ const senderListModulePath = url.pathToFileURL(
 const listedSenderModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'listedSender.js')
 ).href;
+const healthModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'health.js')
+).href;
 const activityLogModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'activityLog.js')
 ).href;
@@ -1293,4 +1296,85 @@ test('senderList: dedupeOnLoad true drops dup emails; false keeps them', async (
     process.chdir(origCwd);
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ─── getHealthReport: pure 200/503 verdict from injected state ───
+test('getHealthReport: healthy when token ok, config ok, scan fresh', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-09T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.body.status, 'ok');
+  assert.equal(r.body.version, 'v1.2.03');
+  assert.equal(r.body.checks.token, 'ok');
+  assert.equal(r.body.checks.scheduler, 'enabled');
+  assert.equal(r.body.checks.staleness, 'ok');
+  assert.equal(r.body.checks.lastScanAgeMin, 30);
+});
+
+test('getHealthReport: degraded (503) when token missing', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-09T11:30:00Z' },
+    tokenState: 'missing', configState: 'ok',
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.body.status, 'degraded');
+  assert.equal(r.body.checks.token, 'missing');
+});
+
+test('getHealthReport: degraded when scans are stale (two missed intervals)', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 100000, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-09T06:00:00Z' },
+    tokenState: 'ok', configState: 'ok',
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.body.checks.staleness, 'stale');
+});
+
+test('getHealthReport: staleness n/a when scheduler disabled', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 100000, now,
+    settings: { schedulerEnabled: false, schedulerIntervalHours: 2, schedulerLastRunAt: null },
+    tokenState: 'ok', configState: 'ok',
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.body.checks.scheduler, 'disabled');
+  assert.equal(r.body.checks.staleness, 'n/a');
+});
+
+test('getHealthReport: warming_up when never scanned but uptime short', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 120, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: null },
+    tokenState: 'ok', configState: 'ok',
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.body.checks.staleness, 'warming_up');
+  assert.equal(r.body.checks.lastScanAgeMin, null);
+});
+
+test('getHealthReport: degraded when config corrupt', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-09T11:30:00Z' },
+    tokenState: 'ok', configState: 'corrupt',
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.body.checks.config, 'corrupt');
 });
