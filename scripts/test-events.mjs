@@ -1378,3 +1378,15 @@ test('getHealthReport: degraded when config corrupt', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.body.checks.config, 'corrupt');
 });
+
+test('getHealthReport: config absent is healthy (defaults are fine)', async () => {
+  const { getHealthReport } = await import(healthModulePath);
+  const now = Date.parse('2026-06-09T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.03', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-09T11:30:00Z' },
+    tokenState: 'ok', configState: 'absent',
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.body.checks.config, 'absent');
+});

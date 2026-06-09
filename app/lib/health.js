@@ -43,7 +43,7 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
 
   const staleThresholdMin = (settings.schedulerIntervalHours ?? 2) * 60 * 2 + 30;
   const lastRun = settings.schedulerLastRunAt ? new Date(settings.schedulerLastRunAt).getTime() : null;
-  const lastScanAgeMin = lastRun ? Math.round((now - lastRun) / 60000) : null;
+  const lastScanAgeMin = lastRun ? Math.max(0, Math.round((now - lastRun) / 60000)) : null;
   checks.lastScanAgeMin = lastScanAgeMin;
 
   if (!schedulerEnabled) {
