@@ -7,7 +7,8 @@ import { loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/okl
 import { isListedSender } from "./lib/listedSender.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
-import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
+import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
+import { getHealthReport, readHealthInputs } from "./lib/health.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
@@ -803,6 +804,17 @@ app.post("/settings/event-interests/edit", (req, res) => {
 app.post("/settings/events-search", (req, res) => {
   setEventsSearchSettings(req.body.enabled === '1', req.body.intervalDays, req.body.email);
   res.redirect("/settings");
+});
+
+// ─── Health (unauthenticated; cheap signals, no Gmail API call) ──────────────────
+app.get("/health", (req, res) => {
+  const { ok, body } = getHealthReport({
+    version: APP_VERSION,
+    uptimeSec: process.uptime(),
+    now: Date.now(),
+    ...readHealthInputs(),
+  });
+  res.status(ok ? 200 : 503).json(body);
 });
 
 app.listen(PORT, () => {
