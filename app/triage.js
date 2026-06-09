@@ -245,6 +245,7 @@ app.post("/api/reapply/preview", async (req, res) => {
 app.get("/api/next", async (req, res) => {
   const seenSenders = new Set((req.query.seen||"").split(",").filter(Boolean));
   const seenIds     = new Set((req.query.seenIds||"").split(",").filter(Boolean));
+  const hideListed  = req.query.hideListed === "1";
   try {
     const gmail   = await getGmailClient();
     const labelId = await ensureLabel(gmail, ".DelPend");
@@ -272,6 +273,8 @@ app.get("/api/next", async (req, res) => {
         const tier=lbls.includes(vipId)?"..VIP":lbls.includes(okId)?"..OK":null;
         // VIP/OK emails that are already read need no action — skip them
         if(tier&&!lbls.includes("UNREAD"))continue;
+        // Triage "Hide VIP/OK senders" filter: skip senders already on the VIP/OK list.
+        if(hideListed&&isListedSender(fromEmail,fromName))continue;
         return res.json({html:triageEmailRow({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
       }
     } while(pageToken);
