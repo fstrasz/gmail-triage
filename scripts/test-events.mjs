@@ -1209,6 +1209,7 @@ test('isListedSender: true for VIP/OK/@domain listed senders, false otherwise', 
     write('oklist.json', [{ email: 'ok@example.com' }]);
 
     assert.equal(isListedSender('vip@example.com'), true, 'VIP exact match → listed');
+    assert.equal(isListedSender('VIP@EXAMPLE.COM'), true, 'VIP match is case-insensitive → listed');
     assert.equal(isListedSender('ok@example.com'), true, 'OK exact match → listed');
     assert.equal(isListedSender('anyone@vipcorp.com'), true, 'VIP @domain match → listed');
     assert.equal(isListedSender('stranger@example.com'), false, 'unlisted → not listed');
