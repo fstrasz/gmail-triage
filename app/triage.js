@@ -4,6 +4,7 @@ import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isB
 import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted } from "./lib/viplist.js";
 import { loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/oklist.js";
+import { isListedSender } from "./lib/listedSender.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage } from "./lib/pages.js";
@@ -64,10 +65,12 @@ app.get("/triage", async (req, res) => {
     const { scanClean, scanVip, scanOk, scanRules } = await scanAll(gmail);
     const scanResults = [...scheduledResults, ...scanClean, ...scanVip, ...scanOk, ...scanRules];
     for (const r of scanRules) { if (r.moved > 0) appendLog({ type:"rule", ruleName:r.email, label:r.labelName, count:r.moved }); }
-    const emails = await fetchEmails(gmail, 25);
+    const hideListed = req.query.hideListed === "1";
+    const skipSender = hideListed ? (em, nm) => isListedSender(em, nm) : null;
+    const emails = await fetchEmails(gmail, 25, { skipSender });
     snapshotInboxSize(gmail).then(size => { if (size !== null) addToStats({ inboxSize: size }); }).catch(() => {});
     const filtered = emails.filter(e => !isBlocked(extractEmail(e.from), extractName(e.from)));
-    const { body, script } = triagePage(filtered, blocklist, savedStats, scanResults);
+    const { body, script } = triagePage(filtered, blocklist, savedStats, scanResults, hideListed);
     res.send(shell("Triage", body, script));
     setLastTriageAt(); // stamp after response is sent
   } catch(e) {
