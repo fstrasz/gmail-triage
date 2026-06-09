@@ -151,7 +151,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults, hideListe
         <div class="main-topbar">
           <span style="font-weight:600;font-size:.92rem">Inbox Triage <span style="font-weight:400;color:#94a3b8;font-size:.82rem">${emails.length} emails</span></span>
           <div style="display:flex;align-items:center;gap:10px;font-size:.82rem">
-            <a href="/triage${hideListed ? "" : "?hideListed=1"}" title="Hide emails from senders already on the VIP or OK list"
+            <a href="/triage${hideListed ? "" : "?hideListed=1"}" aria-label="${hideListed ? "Hide VIP/OK senders: on. Activate to show all senders." : "Hide VIP/OK senders: off. Activate to hide senders already on the VIP or OK list."}" title="Hide emails from senders already on the VIP or OK list"
                style="text-decoration:none;padding:3px 9px;border-radius:6px;border:1px solid ${hideListed ? "#0f766e" : "#cbd5e1"};background:${hideListed ? "#ccfbf1" : "#fff"};color:${hideListed ? "#0f766e" : "#64748b"};font-weight:600">
               ${hideListed ? "☑" : "☐"} Hide VIP/OK senders
             </a>
