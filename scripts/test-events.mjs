@@ -1170,12 +1170,13 @@ test('senderList: factory load/save/add/remove/match contracts', async () => {
     // missing file → []
     assert.deepEqual(store.load(), []);
 
-    // add: new entry, then re-add upgrades name when existing has none
-    store.add('a@x.com');
+    // add: name-scoped — an exact email+name pair dedups; a new display name is a new entry
     store.add('a@x.com', 'Alice');
+    store.add('a@x.com', 'Alice');
+    assert.equal(store.load().length, 1, 'exact email+name re-add dedups');
+    store.add('a@x.com', 'Alice Two');
     let list = store.load();
-    assert.equal(list.length, 1, 'dedup on email');
-    assert.equal(list[0].name, 'Alice', 'name upgraded on re-add');
+    assert.equal(list.length, 2, 'name-scoped: a new display name is a new entry');
 
     // add normalizes email (lowercase + trim)
     store.add('  B@X.com ');
@@ -1195,6 +1196,30 @@ test('senderList: factory load/save/add/remove/match contracts', async () => {
     store.save([{ email: 'r@x.com' }, { email: 'keep@x.com' }]);
     store.remove('r@x.com');
     assert.deepEqual(store.load().map(e => e.email), ['keep@x.com']);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── senderList: name-scoped add (OK/VIP button bug — same email, new display name) ───
+test('senderList: name-scoped add keeps same-email different-name variants', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-namescope-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
+    const store = senderList('list.json'); // default options, as the VIP/OK lists use
+    // Pre-existing entry under one display name (e.g. from a prior version of the app)
+    store.save([{ email: 'nytdirect@nytimes.com', name: 'Bake Time' }]);
+    // Action the same address under a different display name (e.g. "NYT Cooking")
+    store.add('nytdirect@nytimes.com', 'NYT Cooking');
+    assert.equal(store.load().length, 2, 'new name-variant is added, not a silent no-op');
+    assert.ok(store.match('nytdirect@nytimes.com', 'NYT Cooking'), 'new variant matches');
+    assert.ok(store.match('nytdirect@nytimes.com', 'Bake Time'), 'original variant still matches');
+    // An exact email+name pair is still a no-op (no duplicate rows)
+    store.add('nytdirect@nytimes.com', 'NYT Cooking');
+    assert.equal(store.load().length, 2, 'exact email+name re-add is a no-op');
   } finally {
     process.chdir(origCwd);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1280,21 +1305,27 @@ test('atomicWriteFileSync: falls back to direct write when rename throws EBUSY (
   }
 });
 
-test('senderList: dedupeOnLoad true drops dup emails; false keeps them', async () => {
+test('senderList: dedupeOnLoad true drops exact email+name dups, keeps name-variants; false keeps all', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-factory-dedup-'));
   const origCwd = process.cwd();
   process.chdir(dir);
   try {
     const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
-    const dupes = [{ email: 'a@x.com', name: 'One' }, { email: 'A@X.com', name: 'Two' }];
+    // Same email, DIFFERENT names → name-scoped, so both are kept even when deduping.
+    const variants = [{ email: 'a@x.com', name: 'One' }, { email: 'A@X.com', name: 'Two' }];
+    const kept = senderList('variants.json');
+    fs.writeFileSync(path.join(dir, 'variants.json'), JSON.stringify(variants));
+    assert.equal(kept.load().length, 2, 'dedupeOnLoad true → keeps same-email different-name variants');
 
+    // Exact email+name duplicates (email compared case-insensitively) ARE dropped on load.
+    const exact = [{ email: 'a@x.com', name: 'One' }, { email: 'A@X.com', name: 'One' }];
     const deduped = senderList('dedup.json');
-    fs.writeFileSync(path.join(dir, 'dedup.json'), JSON.stringify(dupes));
-    assert.equal(deduped.load().length, 1, 'dedupeOnLoad true → 1 (case-insensitive)');
+    fs.writeFileSync(path.join(dir, 'dedup.json'), JSON.stringify(exact));
+    assert.equal(deduped.load().length, 1, 'dedupeOnLoad true → exact email+name dup dropped');
 
     const raw = senderList('raw.json', { dedupeOnLoad: false });
-    fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify(dupes));
-    assert.equal(raw.load().length, 2, 'dedupeOnLoad false → keeps both (blocklist behavior)');
+    fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify(exact));
+    assert.equal(raw.load().length, 2, 'dedupeOnLoad false → keeps even exact dups');
   } finally {
     process.chdir(origCwd);
     fs.rmSync(dir, { recursive: true, force: true });

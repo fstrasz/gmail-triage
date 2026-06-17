@@ -7,13 +7,17 @@ import { atomicWriteFileSync } from "./atomicWrite.js";
 // builds a store with senderList(filename, options) and re-exports the pieces it needs
 // under its own public names (e.g. loadViplist, isBlocked).
 //
-// Options:
-//   dedupeOnLoad — drop duplicate emails (case-insensitive) when loading.
-//     VIP/OK dedupe on load; the Blocklist does not (it allows name-scoped duplicates).
+// Identity is name-scoped (email + display name), matching `match`: the same address
+// can be listed under multiple display names, and only an exact email+name pair counts
+// as a duplicate. This mirrors the Blocklist's long-standing behavior.
 //
-// `add` implements the VIP/OK "upgrade name on re-add" semantics. The Blocklist's add
-// is different (carries a `reason`, dedupes on email+name) and stays bespoke in
-// blocklist.js — that module uses the factory only for load/save/remove/match.
+// Options:
+//   dedupeOnLoad — drop exact (email+name) duplicates on load (email compared
+//     case-insensitively). VIP/OK dedupe on load; the Blocklist passes false.
+//
+// `add` pushes a new entry unless an exact email+name pair already exists. The Blocklist
+// keeps a bespoke `add` (it also carries a `reason`) and uses the factory only for
+// load/save/remove/match.
 export function senderList(filename, { dedupeOnLoad = true } = {}) {
   const filePath = path.join(process.cwd(), filename);
 
@@ -23,7 +27,7 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
       if (!dedupeOnLoad) return raw;
       const seen = new Set();
       return raw.filter(e => {
-        const k = e.email.toLowerCase();
+        const k = e.email.toLowerCase() + "\x00" + (e.name || "");
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
@@ -57,12 +61,10 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     const list = load();
     const key = email.toLowerCase().trim();
     const normName = name ? name.trim() : null;
-    const existing = list.find(e => e.email === key);
-    if (existing) {
-      if (normName && !existing.name) existing.name = normName;
-    } else {
+    // Name-scoped: only an exact email+name pair is a duplicate, so the same address
+    // can be added under multiple display names (matches `match` and the Blocklist).
+    if (!list.find(e => e.email === key && (normName ? e.name === normName : !e.name)))
       list.push({ email: key, name: normName, date: new Date().toISOString() });
-    }
     save(list);
   }
 
