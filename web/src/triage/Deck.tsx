@@ -22,12 +22,15 @@ export function Deck({
   cards,
   mode,
   onAction,
+  moreOpen,
+  onMoreOpenChange,
 }: {
   cards: TriageEmail[]
   mode: Mode
   onAction: (action: TriageAction) => void
+  moreOpen: boolean
+  onMoreOpenChange: (open: boolean) => void
 }) {
-  const [moreOpen, setMoreOpen] = useState(false)
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
 
@@ -119,13 +122,13 @@ export function Deck({
           aria-label="More actions"
           disabled={!top}
           className="rounded-xl border border-hairline px-4 py-3 text-lg font-semibold text-ink disabled:opacity-40"
-          onClick={() => setMoreOpen(true)}
+          onClick={() => onMoreOpenChange(true)}
         >
           ⋯
         </button>
       </div>
 
-      <MoreSheet actions={MORE[mode]} open={moreOpen} onOpenChange={setMoreOpen} onPick={onAction} />
+      <MoreSheet actions={MORE[mode]} open={moreOpen} onOpenChange={onMoreOpenChange} onPick={onAction} />
     </div>
   )
 }

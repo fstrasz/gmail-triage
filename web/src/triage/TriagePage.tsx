@@ -2,7 +2,8 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import type { TriageEmail, TriageAction, ActionResult, UndoDescriptor } from '../lib/api.ts'
 import { useQueue, useAction, useUndo } from '../lib/queries.ts'
 import { deckReducer } from './deckReducer.ts'
-import type { Mode } from './swipeMap.ts'
+import type { Mode, Dir } from './swipeMap.ts'
+import { swipeAction } from './swipeMap.ts'
 import { ACTION_LABEL } from './actionMeta.ts'
 import { Deck } from './Deck.tsx'
 import { GuardDialog } from './GuardDialog.tsx'
@@ -19,6 +20,14 @@ interface PendingAction {
   card: TriageEmail
 }
 
+// Arrow key → swipe direction mapping.
+const KEY_DIR: Record<string, Dir> = {
+  ArrowRight: 'right',
+  ArrowLeft: 'left',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+}
+
 export function TriagePage() {
   const [mode, setMode] = useState<Mode>('hidden') // FIX: filter default ON (hidden)
   const hideListed = mode === 'hidden'
@@ -33,6 +42,8 @@ export function TriagePage() {
   const [toast, setToast] = useState<ToastInfo | null>(null)
   const [authError, setAuthError] = useState(false)
   const [announce, setAnnounce] = useState('')
+  // Lifted from Deck so the keyboard handler can read whether More sheet is open.
+  const [moreOpen, setMoreOpen] = useState(false)
   const pending = useRef<PendingAction | null>(null)
   // DECK-2: action committed but not yet announced. The new-top card is read
   // from post-dispatch deck state (an effect), never a stale pre-dispatch
@@ -132,6 +143,48 @@ export function TriagePage() {
     pending.current = null
   }
 
+  // ---- Keyboard shortcuts ---------------------------------------------------
+  // Attach at document level; cleaned up on unmount. Only fires when no modal
+  // is open and no action is in flight (single-in-flight invariant).
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Never hijack keystrokes in text fields or contenteditable elements.
+      const target = e.target as Element | null
+      if (target instanceof HTMLInputElement) return
+      if (target instanceof HTMLTextAreaElement) return
+      if (target instanceof HTMLElement && target.isContentEditable) return
+
+      // Single-in-flight guard: ignore while an action mutation is pending, or
+      // while a modal (guard dialog or More sheet) is blocking interaction.
+      if (action.isPending) return
+      if (guard !== null) return
+      if (moreOpen) return
+
+      const dir = KEY_DIR[e.key]
+      if (dir) {
+        e.preventDefault()
+        commit(swipeAction(mode, dir))
+        return
+      }
+
+      if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault()
+        // Undo the last action using the toast descriptor (same path as clicking
+        // the Toast Undo button). No-op if there's no toast/descriptor.
+        if (toast?.undo) {
+          onUndo(toast.undo)
+        }
+        return
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+    // Rebuild the listener whenever any of the captured state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, action.isPending, guard, moreOpen, toast, deck.cards])
+
   // ---- States --------------------------------------------------------------
 
   // A genuine queue fetch failure has no deck data to show — full-screen state.
@@ -166,12 +219,47 @@ export function TriagePage() {
         </button>
       </header>
 
+      {/* Desktop 3-pane: on md+ show a queue-list sidebar beside the active card.
+          On small screens the existing single-column deck is unchanged. */}
       {queue.isPending ? (
         <DeckSkeleton />
       ) : deck.cards.length === 0 ? (
         <EmptyState mode={mode} hiddenCount={queue.data?.counts.left ?? 0} onShowAll={() => setMode('shown')} />
       ) : (
-        <Deck cards={deck.cards} mode={mode} onAction={(a) => commit(a)} />
+        <div className="flex flex-1 gap-4 overflow-hidden">
+          {/* Queue list pane — visible only on md+ (aria-hidden: purely visual,
+              the Card itself is the primary interactive element). */}
+          <aside
+            aria-hidden="true"
+            className="hidden md:flex md:w-56 md:flex-col md:overflow-y-auto md:rounded-2xl md:border md:border-hairline md:bg-white md:shadow-sm"
+          >
+            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">Up next</p>
+            <ul className="flex flex-col divide-y divide-hairline">
+              {deck.cards.map((card, i) => (
+                <li
+                  key={card.id}
+                  className={`px-3 py-2 text-sm ${i === 0 ? 'bg-hairline/30 font-semibold text-ink' : 'text-muted'}`}
+                >
+                  <p className="truncate">{card.fromName ?? card.fromEmail ?? 'Unknown'}</p>
+                  {card.fromEmail && i > 0 && (
+                    <p className="truncate text-xs">{card.fromEmail}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </aside>
+
+          {/* Active card + toolbar pane */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Deck
+              cards={deck.cards}
+              mode={mode}
+              onAction={(a) => commit(a)}
+              moreOpen={moreOpen}
+              onMoreOpenChange={setMoreOpen}
+            />
+          </div>
+        </div>
       )}
 
       <GuardDialog guard={guard} onConfirm={confirmGuard} onCancel={cancelGuard} />
