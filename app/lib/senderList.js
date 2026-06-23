@@ -42,8 +42,17 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     atomicWriteFileSync(getPath(), JSON.stringify(list, null, 2));
   }
 
-  function remove(email) {
-    save(load().filter(e => e.email !== email));
+  // Name-scoped when `name` is given: removes ONLY the exact email+name pair (so other
+  // name-variants for the address survive — the v1.2.05 name-scoping). When `name` is
+  // omitted/null, keeps the back-compat behavior of removing ALL entries for the email.
+  function remove(email, name) {
+    const key = email.toLowerCase().trim();
+    if (name == null) {
+      save(load().filter(e => e.email !== email));
+      return;
+    }
+    const normName = name.trim();
+    save(load().filter(e => !(e.email === key && (normName ? e.name === normName : !e.name))));
   }
 
   // Returns the matching entry (or undefined). `@domain` entries match any address in

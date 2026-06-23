@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import pathmod from "path";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, untrashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted } from "./lib/viplist.js";
 import { loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/oklist.js";
 import { isListedSender } from "./lib/listedSender.js";
@@ -11,7 +11,7 @@ import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
 import { getHealthReport, readHealthInputs } from "./lib/health.js";
-import { shapeTriageEmail, filterHidden } from "./lib/triageApi.js";
+import { shapeTriageEmail, filterHidden, normalizeGuard, ACTION_DISPATCH } from "./lib/triageApi.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
@@ -878,6 +878,145 @@ app.get("/api/triage/body", async (req, res) => {
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
     res.send("<pre style='color:red'>Error: "+e.message+"</pre>");
+  }
+});
+
+// ─── API: Unified triage action (React) ───────────────────────────────────────
+// Additive parallel surface to the old per-action routes (which stay byte-for-byte).
+// Dispatches on `action`, mirrors each old route's lib calls + guard query EXACTLY,
+// normalizes the guard shape, classifies auth → 503, and returns an UndoDescriptor.
+app.post("/api/triage/action", async (req, res) => {
+  const { action, id, threadId, fromEmail, fromName, subject, unsubUrl, unsubPost, confirmed } = req.body;
+  if (!ACTION_DISPATCH[action]) return res.status(400).json({ ok: false, error: "Invalid action" });
+  const name = fromName || null;
+  const undoBase = { action, id, threadId: threadId || null, fromEmail, fromName: name };
+  try {
+    const gmail = await getGmailClient();
+
+    if (action === "ok" || action === "vip") {
+      const isVip = action === "vip";
+      const alreadyListed = isVip ? isViplisted(fromEmail, name) : isOklisted(fromEmail, name);
+      let labeled = 0;
+      if (!alreadyListed) {
+        if (!confirmed) {
+          const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
+          const count = await countMatchingEmails(gmail, q);
+          if (count > BULK_GUARD_THRESHOLD)
+            return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will label ${count} emails from ${fromEmail}. Confirm?` }));
+        }
+        if (isVip) addToViplist(fromEmail, name); else addToOklist(fromEmail, name);
+        labeled = await labelSender(gmail, isVip ? "..VIP" : "..OK", fromEmail, name, []);
+        addToStats({ [isVip ? "vip" : "ok"]: labeled });
+      } else {
+        const r = await gmail.users.messages.list({ userId: "me", q: `from:${fromEmail} in:inbox -in:sent -in:trash`, maxResults: 500 });
+        labeled = (r.data.messages || []).length;
+      }
+      if (id) await gmail.users.messages.modify({ userId: "me", id, requestBody: { removeLabelIds: ["UNREAD"] } });
+      appendLog({ type: "triage", action, sender: fromEmail, senderName: name, count: labeled });
+      return res.json({ ok: true, labeled, undo: { ...undoBase, addedToList: !alreadyListed, listName: isVip ? "vip" : "ok" } });
+    }
+
+    if (action === "ok-clean" || action === "vip-clean") {
+      const isVip = action === "vip-clean";
+      if (!confirmed) {
+        const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
+        const count = await countMatchingEmails(gmail, q);
+        if (count > BULK_GUARD_THRESHOLD)
+          return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will clean ${count} emails from ${fromEmail}. Confirm?` }));
+      }
+      const alreadyListed = isVip ? isViplisted(fromEmail, name) : isOklisted(fromEmail, name);
+      const { cleaned } = await keepAndClean(gmail, id, fromEmail, name);
+      if (isVip) addToViplist(fromEmail, name); else addToOklist(fromEmail, name);
+      addToStats({ cleaned });
+      appendLog({ type: "triage", action, sender: fromEmail, senderName: name, count: cleaned });
+      return res.json({ ok: true, labeled: cleaned, undo: { ...undoBase, addedToList: !alreadyListed, listName: isVip ? "vip" : "ok" } });
+    }
+
+    if (action === "junk") {
+      if (!confirmed) {
+        const q = `from:"${fromEmail}" -in:sent -in:trash`;
+        const count = await countMatchingEmails(gmail, q);
+        if (count > BULK_GUARD_THRESHOLD)
+          return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?` }));
+      }
+      const alreadyListed = !!isBlocked(fromEmail, name);
+      addToBlocklist(fromEmail, "junk", name);
+      const moved = await blockSender(gmail, fromEmail, name);
+      addToStats({ junked: moved });
+      appendLog({ type: "triage", action, sender: fromEmail, senderName: name, count: moved });
+      return res.json({ ok: true, labeled: moved, undo: { ...undoBase, addedToList: !alreadyListed, listName: "blocklist" } });
+    }
+
+    if (action === "unsub") {
+      const alreadyListed = !!isBlocked(fromEmail, name);
+      const { result, openTab, openTabUrl } = await tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail);
+      addToBlocklist(fromEmail, "unsub", name);
+      const moved = await blockSender(gmail, fromEmail, name);
+      addToStats({ junked: moved, unsubbed: 1 });
+      appendLog({ type: "triage", action, sender: fromEmail, senderName: name, count: moved, unsubResult: result });
+      return res.json({ ok: true, labeled: moved, unsubResult: result, openTab, openTabUrl, undo: { ...undoBase, addedToList: !alreadyListed, listName: "blocklist" } });
+    }
+
+    if (action === "archive") {
+      if (threadId) await archiveThread(gmail, threadId); else await archiveMessage(gmail, id);
+      appendLog({ type: "triage", action, msgId: id });
+      return res.json({ ok: true, undo: { ...undoBase, addedToList: false } });
+    }
+
+    if (action === "delete") {
+      await trashMessage(gmail, id);
+      appendLog({ type: "triage", action, msgId: id });
+      return res.json({ ok: true, undo: { ...undoBase, addedToList: false } });
+    }
+
+    if (action === "review") {
+      const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+      const headers = msg.data.payload.headers;
+      const g = n => headers.find(x => x.name === n)?.value || "";
+      const plainRaw = findPart(msg.data.payload, "text/plain") || findPart(msg.data.payload, "text/html");
+      const body = plainRaw ? Buffer.from(plainRaw, "base64url").toString("utf8").replace(/<[^>]+>/g, " ") : "";
+      const from = g("From");
+      const analysis = await analyzeEmail(subject || g("Subject"), from, body);
+      const item = { id, subject: subject || g("Subject"), from, date: g("Date"), analysis, status: "pending", analyzedAt: new Date().toISOString() };
+      addToReview(item);
+      const labelId = await ensureLabel(gmail, "For_Review");
+      await gmail.users.messages.batchModify({ userId: "me", requestBody: { ids: [id], addLabelIds: [labelId] } });
+      return res.json({ ok: true, analysis, undo: { ...undoBase, addedToList: false } });
+    }
+  } catch(e) {
+    if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── API: Stateless triage undo (React) ────────────────────────────────────────
+// Consumes the UndoDescriptor from the body and applies the compensating call
+// per ACTION_DISPATCH[action].undo. The bulk .DelPend from clean/junk is NOT
+// reversed (slice scope); undo only reverses list membership + single-message moves.
+app.post("/api/triage/undo", async (req, res) => {
+  const d = req.body || {};
+  const spec = ACTION_DISPATCH[d.action];
+  if (!spec) return res.status(400).json({ ok: false, error: "Invalid action" });
+  try {
+    const gmail = await getGmailClient();
+    if (spec.undo === "untrash") {
+      await untrashMessage(gmail, d.id);
+    } else if (spec.undo === "addInbox") {
+      await gmail.users.messages.batchModify({ userId: "me", requestBody: { ids: [d.id], addLabelIds: ["INBOX"] } });
+    } else if (spec.undo === "removeListEntry" || spec.undo === "listOnly") {
+      // Idempotent-add guard (H2): only undo the list entry if THIS action added it.
+      if (d.addedToList) {
+        const ln = d.listName;
+        if (ln === "vip")      removeFromViplist(d.fromEmail, d.fromName || null);
+        else if (ln === "ok")  removeFromOklist(d.fromEmail, d.fromName || null);
+        else if (ln === "blocklist") removeFromBlocklist(d.fromEmail, d.fromName || null);
+      }
+    }
+    // spec.undo === "none" → no compensating action (unsub/review).
+    res.json({ ok: true });
+  } catch(e) {
+    if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

@@ -308,6 +308,17 @@ export async function trashMessage(gmail, id) {
   });
 }
 
+// ─── Undo a trash: restore the message to the inbox ────────────────────────────
+// untrash clears TRASH; batchModify then re-adds INBOX (trashMessage removed it).
+// UNREAD is NOT restored — the prior read state isn't tracked (best-effort undo).
+export async function untrashMessage(gmail, id) {
+  await gmail.users.messages.untrash({ userId: "me", id });
+  await gmail.users.messages.batchModify({
+    userId: "me",
+    requestBody: { ids: [id], addLabelIds: ["INBOX"] },
+  });
+}
+
 // ─── DelPend summary (total + per-sender counts) ───────────────────────────────
 // Paginates all DelPend IDs, fetches From headers in chunks, groups by sender.
 // Returns exact counts for every sender in DelPend regardless of blocklist.

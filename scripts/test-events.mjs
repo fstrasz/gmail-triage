@@ -1536,3 +1536,83 @@ test('setSchedulerLastRunAt: writes an ISO timestamp readable by loadSettings', 
   }
 });
 
+// ─── Task 4: Triage API (unified action + stateless undo) ──────────────────────
+
+test('ACTION_DISPATCH: has all nine actions, each with the correct undo kind', async () => {
+  const { ACTION_DISPATCH } = await import(triageApiModulePath);
+  const expected = {
+    'ok':        'removeListEntry',
+    'vip':       'removeListEntry',
+    'ok-clean':  'listOnly',
+    'vip-clean': 'listOnly',
+    'junk':      'listOnly',
+    'unsub':     'none',
+    'archive':   'addInbox',
+    'delete':    'untrash',
+    'review':    'none',
+  };
+  assert.deepEqual(Object.keys(ACTION_DISPATCH).sort(), Object.keys(expected).sort(),
+    'dispatch has exactly the nine action keys');
+  for (const [action, undo] of Object.entries(expected)) {
+    assert.equal(ACTION_DISPATCH[action].undo, undo, `${action} → undo ${undo}`);
+  }
+  // List actions carry their list name so undo knows which remover to call.
+  assert.equal(ACTION_DISPATCH['ok'].listName, 'ok');
+  assert.equal(ACTION_DISPATCH['vip'].listName, 'vip');
+  assert.equal(ACTION_DISPATCH['ok-clean'].listName, 'ok');
+  assert.equal(ACTION_DISPATCH['vip-clean'].listName, 'vip');
+  assert.equal(ACTION_DISPATCH['junk'].listName, 'blocklist');
+});
+
+test('normalizeGuard: flattens a guard response; passes success through unchanged', async () => {
+  const { normalizeGuard } = await import(triageApiModulePath);
+  const guarded = normalizeGuard({ ok: false, guard: true, count: 120, email: 'x@y.com', message: 'm' });
+  assert.deepEqual(guarded, { ok: false, guard: { count: 120, message: 'm' } });
+  // A success result (no guard:true) is returned untouched.
+  const success = { ok: true, labeled: 3, undo: { action: 'ok', id: 'i' } };
+  assert.equal(normalizeGuard(success), success);
+});
+
+test('senderList.remove: name-scoped removes only the exact pair; name-blind removes all', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-remove-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
+    // Name-scoped remove: drop only a@x / Two, keep a@x / One.
+    const store = senderList('namescope.json', { dedupeOnLoad: false });
+    fs.writeFileSync(path.join(dir, 'namescope.json'),
+      JSON.stringify([{ email: 'a@x', name: 'One' }, { email: 'a@x', name: 'Two' }]));
+    store.remove('a@x', 'Two');
+    let after = store.load();
+    assert.equal(after.length, 1, 'name-scoped remove drops only the matching pair');
+    assert.equal(after[0].name, 'One');
+
+    // Name-blind remove (back-compat): drop ALL entries for the address.
+    const store2 = senderList('blind.json', { dedupeOnLoad: false });
+    fs.writeFileSync(path.join(dir, 'blind.json'),
+      JSON.stringify([{ email: 'a@x', name: 'One' }, { email: 'a@x', name: 'Two' }]));
+    store2.remove('a@x');
+    assert.equal(store2.load().length, 0, 'name-blind remove drops all entries for the email');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('untrashMessage: untrashes then re-adds INBOX via batchModify', async () => {
+  const { untrashMessage } = await import(gmailModulePath);
+  const calls = [];
+  const gmail = { users: { messages: {
+    untrash:     async (a) => { calls.push(['untrash', a]); },
+    batchModify: async (a) => { calls.push(['batchModify', a]); },
+  } } };
+  await untrashMessage(gmail, 'msg123');
+  assert.equal(calls.length, 2, 'two Gmail calls');
+  assert.equal(calls[0][0], 'untrash', 'untrash is called first');
+  assert.equal(calls[0][1].id, 'msg123');
+  assert.equal(calls[1][0], 'batchModify', 'batchModify is called second');
+  assert.deepEqual(calls[1][1].requestBody.ids, ['msg123']);
+  assert.ok(calls[1][1].requestBody.addLabelIds.includes('INBOX'), 'batchModify re-adds INBOX');
+});
+
