@@ -1226,6 +1226,100 @@ test('senderList: name-scoped add keeps same-email different-name variants', asy
   }
 });
 
+// ─── triageApi: shapeTriageEmail + filterHidden ───────────────────────────────
+// NOTE: filterHidden's test MUST run before isListedSender's test so that canonical
+// viplist.js / oklist.js / listedSender.js / blocklist.js have not yet been loaded
+// (with a stale temp-dir path). triageApi.js uses static imports which resolve to
+// the canonical module URLs; cache-busting triageApi.js alone is only effective if
+// those canonical deps are loaded fresh from THIS test's temp dir.
+
+const triageApiModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'triageApi.js')
+).href;
+
+test('shapeTriageEmail: derives fromEmail/fromName from raw From header', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({
+    id: 'msg1',
+    from: 'NYT Cooking <nytdirect@nytimes.com>',
+    subject: 'Dinner ideas',
+    snippet: 'Try this tonight',
+    date: '2026-06-23',
+    tier: '..VIP',
+    ruleLabels: ['Food'],
+    listUnsubscribe: '<https://unsub.nytimes.com/u>',
+    listUnsubscribePost: 'List-Unsubscribe=One-Click',
+  });
+  assert.equal(shaped.fromEmail, 'nytdirect@nytimes.com', 'fromEmail extracted');
+  assert.equal(shaped.fromName, 'NYT Cooking', 'fromName extracted');
+  assert.equal(shaped.id, 'msg1');
+  assert.equal(shaped.subject, 'Dinner ideas');
+  assert.equal(shaped.snippet, 'Try this tonight');
+  assert.equal(shaped.date, '2026-06-23');
+  assert.equal(shaped.tier, '..VIP');
+  assert.deepEqual(shaped.ruleLabels, ['Food']);
+  assert.equal(shaped.hasUnsub, true, 'hasUnsub true when listUnsubscribe present');
+  assert.equal(shaped.unsubUrl, '<https://unsub.nytimes.com/u>', 'unsubUrl preserved');
+  assert.equal(shaped.unsubPost, 'List-Unsubscribe=One-Click', 'unsubPost preserved');
+});
+
+test('shapeTriageEmail: hasUnsub false when listUnsubscribe absent', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({ id: 'x', from: 'Bob <bob@example.com>', listUnsubscribe: '' });
+  assert.equal(shaped.hasUnsub, false, 'hasUnsub false for empty string');
+  assert.equal(shaped.unsubUrl, null, 'unsubUrl null when empty');
+  assert.equal(shaped.unsubPost, null, 'unsubPost null when absent');
+});
+
+test('shapeTriageEmail: defaults for missing optional fields', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({ id: 'y', from: 'plain@example.com' });
+  assert.equal(shaped.subject, '');
+  assert.equal(shaped.snippet, '');
+  assert.equal(shaped.date, '');
+  assert.equal(shaped.tier, null);
+  assert.deepEqual(shaped.ruleLabels, []);
+  assert.equal(shaped.fromEmail, 'plain@example.com');
+  assert.equal(shaped.fromName, 'plain@example.com', 'bare addr → name=addr');
+});
+
+test('filterHidden: hideListed:true drops VIP, OK, and blocklisted senders; hideListed:false drops only blocked', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-fh-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync(path.join(dir, 'viplist.json'),   JSON.stringify([{ email: 'vip@example.com' }]));
+    fs.writeFileSync(path.join(dir, 'oklist.json'),    JSON.stringify([{ email: 'ok@example.com' }]));
+    fs.writeFileSync(path.join(dir, 'blocklist.json'), JSON.stringify([{ email: 'blocked@example.com', reason: 'junk' }]));
+
+    const { filterHidden } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+
+    const emails = [
+      { from: 'VIP Sender <vip@example.com>',     id: 'a' },
+      { from: 'OK Sender <ok@example.com>',        id: 'b' },
+      { from: 'Spammer <blocked@example.com>',     id: 'c' },
+      { from: 'Normal Person <other@example.com>', id: 'd' },
+    ];
+
+    const withHide = filterHidden(emails, { hideListed: true });
+    const ids = withHide.map(e => e.id);
+    assert.ok(!ids.includes('a'), 'VIP dropped when hideListed:true');
+    assert.ok(!ids.includes('b'), 'OK dropped when hideListed:true');
+    assert.ok(!ids.includes('c'), 'blocked always dropped');
+    assert.ok(ids.includes('d'),  'unlisted kept');
+
+    const noHide = filterHidden(emails, { hideListed: false });
+    const ids2 = noHide.map(e => e.id);
+    assert.ok(ids2.includes('a'),  'VIP kept when hideListed:false');
+    assert.ok(ids2.includes('b'),  'OK kept when hideListed:false');
+    assert.ok(!ids2.includes('c'), 'blocked always dropped');
+    assert.ok(ids2.includes('d'),  'unlisted kept');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── isListedSender: VIP OR OK keep-list predicate (triage "hide VIP/OK" filter) ───
 test('isListedSender: true for VIP/OK/@domain listed senders, false otherwise', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-listed-'));
@@ -1441,3 +1535,4 @@ test('setSchedulerLastRunAt: writes an ISO timestamp readable by loadSettings', 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+

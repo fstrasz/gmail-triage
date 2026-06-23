@@ -11,6 +11,7 @@ import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
 import { getHealthReport, readHealthInputs } from "./lib/health.js";
+import { shapeTriageEmail, filterHidden } from "./lib/triageApi.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
@@ -244,44 +245,53 @@ app.post("/api/reapply/preview", async (req, res) => {
   }
 });
 
+// ─── Shared: select next triage message (throws on error; returns null if exhausted)
+// Returns { id, threadId, from, subject, date, snippet, listUnsubscribe, listUnsubscribePost,
+//           tier, senderKey, autoCleanedEntries } or null when the queue is exhausted.
+async function selectNextTriageMessage(gmail, { seenSenders, seenIds, hideListed }) {
+  const labelId = await ensureLabel(gmail, ".DelPend");
+  const vipId   = getLabelId("..VIP") || await ensureLabel(gmail, "..VIP");
+  const okId    = getLabelId("..OK")  || await ensureLabel(gmail, "..OK");
+  const autoCleanedEntries=[];
+  let pageToken=null;
+  do {
+    const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:.DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
+    const messages=result.data.messages||[];
+    pageToken=result.data.nextPageToken||null;
+    for(const msg of messages){
+      if(seenIds.has(msg.id))continue;
+      const d=await gmail.users.messages.get({userId:"me",id:msg.id,format:"metadata",metadataHeaders:["Subject","From","Date","List-Unsubscribe","List-Unsubscribe-Post"]});
+      const h=d.data.payload.headers;
+      const g=n=>h.find(x=>x.name===n)?.value||"";
+      const fromRaw=g("From"),fromEmail=extractEmail(fromRaw),fromName=extractName(fromRaw);
+      const senderKey=fromName+"<"+fromEmail+">";
+      if(isBlocked(fromEmail,fromName)){
+        try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1,latestEmailDate:new Date(g("Date")).getTime()||Date.now(),subjects:[g("Subject")||"(no subject)"],ts:Date.now()}); }catch(e){console.error("auto-clean failed:",e.message);}
+        continue;
+      }
+      if(seenSenders.has(senderKey))continue;
+      const lbls=d.data.labelIds||[];
+      const tier=lbls.includes(vipId)?"..VIP":lbls.includes(okId)?"..OK":null;
+      if(tier&&!lbls.includes("UNREAD"))continue;
+      if(hideListed&&isListedSender(fromEmail,fromName))continue;
+      return {id:msg.id,threadId:msg.threadId,from:fromRaw,subject:g("Subject"),date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier,senderKey,autoCleanedEntries};
+    }
+  } while(pageToken);
+  return null; // exhausted
+}
+
 // ─── API: Next ─────────────────────────────────────────────────────────────────
 app.get("/api/next", async (req, res) => {
   const seenSenders = new Set((req.query.seen||"").split(",").filter(Boolean));
   const seenIds     = new Set((req.query.seenIds||"").split(",").filter(Boolean));
   const hideListed  = req.query.hideListed === "1";
   try {
-    const gmail   = await getGmailClient();
-    const labelId = await ensureLabel(gmail, ".DelPend");
-    const vipId   = getLabelId("..VIP") || await ensureLabel(gmail, "..VIP");
-    const okId    = getLabelId("..OK")  || await ensureLabel(gmail, "..OK");
-    let autoCleaned=0; const autoCleanedEntries=[];
-    let pageToken=null;
-    do {
-      const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:.DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
-      const messages=result.data.messages||[];
-      pageToken=result.data.nextPageToken||null;
-      for(const msg of messages){
-        if(seenIds.has(msg.id))continue;
-        const d=await gmail.users.messages.get({userId:"me",id:msg.id,format:"metadata",metadataHeaders:["Subject","From","Date","List-Unsubscribe","List-Unsubscribe-Post"]});
-        const h=d.data.payload.headers;
-        const g=n=>h.find(x=>x.name===n)?.value||"";
-        const fromRaw=g("From"),fromEmail=extractEmail(fromRaw),fromName=extractName(fromRaw);
-        const senderKey=fromName+"<"+fromEmail+">";
-        if(isBlocked(fromEmail,fromName)){
-          try{ await gmail.users.messages.batchModify({userId:"me",requestBody:{ids:[msg.id],addLabelIds:[labelId],removeLabelIds:["INBOX","UNREAD"]}}); autoCleanedEntries.push({email:fromEmail,reason:"blocklist",moved:1,latestEmailDate:new Date(g("Date")).getTime()||Date.now(),subjects:[g("Subject")||"(no subject)"],ts:Date.now()}); autoCleaned++; }catch(e){console.error("auto-clean failed:",e.message);}
-          continue;
-        }
-        if(seenSenders.has(senderKey))continue;
-        const lbls=d.data.labelIds||[];
-        const tier=lbls.includes(vipId)?"..VIP":lbls.includes(okId)?"..OK":null;
-        // VIP/OK emails that are already read need no action — skip them
-        if(tier&&!lbls.includes("UNREAD"))continue;
-        // Triage "Hide VIP/OK senders" filter: skip senders already on the VIP/OK list.
-        if(hideListed&&isListedSender(fromEmail,fromName))continue;
-        return res.json({html:triageEmailRow({id:msg.id,subject:g("Subject"),from:fromRaw,date:g("Date"),snippet:d.data.snippet,listUnsubscribe:g("List-Unsubscribe"),listUnsubscribePost:g("List-Unsubscribe-Post"),tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:msg.id});
-      }
-    } while(pageToken);
-    return res.json({html:null,autoCleaned,autoCleanedEntries});
+    const gmail = await getGmailClient();
+    const result = await selectNextTriageMessage(gmail, { seenSenders, seenIds, hideListed });
+    if(!result) return res.json({html:null,autoCleaned:0,autoCleanedEntries:[]});
+    const {id,from,subject,date,snippet,listUnsubscribe,listUnsubscribePost,tier,senderKey,autoCleanedEntries}=result;
+    const autoCleaned=autoCleanedEntries.length;
+    return res.json({html:triageEmailRow({id,subject,from,date,snippet,listUnsubscribe,listUnsubscribePost,tier}),autoCleaned,autoCleanedEntries,senderKey,msgId:id});
   } catch(e){ console.error("Next error:",e.message); res.json({html:null,autoCleaned:0,autoCleanedEntries:[]}); }
 });
 
@@ -496,19 +506,24 @@ app.post("/api/conflict/remove-from-list", (req, res) => {
   res.redirect("/");
 });
 
+// ─── Shared: build the full preview HTML document for a message ───────────────
+async function buildPreviewDocument(gmail, id) {
+  const msg=await gmail.users.messages.get({userId:"me",id,format:"full"});
+  const headers=msg.data.payload.headers;
+  const g=n=>headers.find(x=>x.name===n)?.value||"";
+  const htmlData=findPart(msg.data.payload,"text/html");
+  const plainData=findPart(msg.data.payload,"text/plain");
+  const raw=htmlData||plainData;
+  const decoded=raw?Buffer.from(raw,"base64url").toString("utf8"):"<p>No content</p>";
+  const body=htmlData?decoded:"<pre style='white-space:pre-wrap;font-family:sans-serif;font-size:14px'>"+decoded.replace(/</g,"&lt;")+"</pre>";
+  return "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body><div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>"+body+"</body></html>";
+}
+
 // ─── API: Preview ──────────────────────────────────────────────────────────────
 app.get("/api/preview/:id", async (req, res) => {
   try{
     const gmail=await getGmailClient();
-    const msg=await gmail.users.messages.get({userId:"me",id:req.params.id,format:"full"});
-    const headers=msg.data.payload.headers;
-    const g=n=>headers.find(x=>x.name===n)?.value||"";
-    const htmlData=findPart(msg.data.payload,"text/html");
-    const plainData=findPart(msg.data.payload,"text/plain");
-    const raw=htmlData||plainData;
-    const decoded=raw?Buffer.from(raw,"base64url").toString("utf8"):"<p>No content</p>";
-    const body=htmlData?decoded:"<pre style='white-space:pre-wrap;font-family:sans-serif;font-size:14px'>"+decoded.replace(/</g,"&lt;")+"</pre>";
-    res.send("<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body><div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>"+body+"</body></html>");
+    res.send(await buildPreviewDocument(gmail, req.params.id));
   }catch(e){res.send("<pre style='color:red'>Error: "+e.message+"</pre>");}
 });
 
@@ -817,6 +832,53 @@ app.get("/health", (req, res) => {
     ...readHealthInputs(),
   });
   res.status(ok ? 200 : 503).json(body);
+});
+
+// ─── Auth error classifier ──────────────────────────────────────────────────────
+function isAuthError(e) { return e?.response?.status===401||/invalid_grant/i.test(e?.message||""); }
+
+// ─── API: Triage queue (React) ─────────────────────────────────────────────────
+app.get("/api/triage/queue", async (req, res) => {
+  const hideListed = req.query.hideListed === "1";
+  const limit = parseInt(req.query.limit, 10) || 25;
+  try {
+    const gmail = await getGmailClient();
+    const raw = await fetchEmails(gmail, limit);
+    const emails = filterHidden(raw, { hideListed }).map(shapeTriageEmail);
+    res.json({ emails, counts: { left: emails.length } });
+  } catch(e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── API: Triage next (React) ──────────────────────────────────────────────────
+app.get("/api/triage/next", async (req, res) => {
+  const seenSenders = new Set((req.query.seen||"").split(",").filter(Boolean));
+  const seenIds     = new Set((req.query.seenIds||"").split(",").filter(Boolean));
+  const hideListed  = req.query.hideListed === "1";
+  try {
+    const gmail = await getGmailClient();
+    const result = await selectNextTriageMessage(gmail, { seenSenders, seenIds, hideListed });
+    if (!result) return res.json({ email: null, autoCleaned: [] });
+    res.json({ email: shapeTriageEmail(result), autoCleaned: result.autoCleanedEntries });
+  } catch(e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── API: Triage body (React) ──────────────────────────────────────────────────
+app.get("/api/triage/body", async (req, res) => {
+  const { id } = req.query;
+  if (!id) return res.status(400).send("<pre>Missing id</pre>");
+  try {
+    const gmail = await getGmailClient();
+    res.type("html").send(await buildPreviewDocument(gmail, id));
+  } catch(e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    res.send("<pre style='color:red'>Error: "+e.message+"</pre>");
+  }
 });
 
 // ─── React app (/app) — served from web/dist, resolved relative to THIS module

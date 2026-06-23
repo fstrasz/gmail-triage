@@ -19,9 +19,12 @@ import { atomicWriteFileSync } from "./atomicWrite.js";
 // keeps a bespoke `add` (it also carries a `reason`) and uses the factory only for
 // load/save/remove/match.
 export function senderList(filename, { dedupeOnLoad = true } = {}) {
-  const filePath = path.join(process.cwd(), filename);
+  // filePath is computed lazily at each IO call so tests can chdir into a temp dir
+  // and import the module once; the correct path is resolved on every read/write.
+  const getPath = () => path.join(process.cwd(), filename);
 
   function load() {
+    const filePath = getPath();
     try {
       const raw = JSON.parse(fs.readFileSync(filePath));
       if (!dedupeOnLoad) return raw;
@@ -36,7 +39,7 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
   }
 
   function save(list) {
-    atomicWriteFileSync(filePath, JSON.stringify(list, null, 2));
+    atomicWriteFileSync(getPath(), JSON.stringify(list, null, 2));
   }
 
   function remove(email) {
@@ -68,5 +71,5 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     save(list);
   }
 
-  return { filePath, load, save, remove, match, add };
+  return { get filePath() { return getPath(); }, load, save, remove, match, add };
 }
