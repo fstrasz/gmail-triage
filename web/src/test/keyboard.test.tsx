@@ -26,9 +26,10 @@ const hookState: {
 const actionMutate = vi.fn(
   (
     _payload: unknown,
-    opts?: { onSuccess?: (r: ActionResult) => void; onError?: (e: unknown) => void },
+    opts?: { onSuccess?: (r: ActionResult) => void; onError?: (e: unknown) => void; onSettled?: () => void },
   ) => {
     opts?.onSuccess?.(hookState.actionResult)
+    opts?.onSettled?.()
   },
 )
 
@@ -151,6 +152,22 @@ describe('Keyboard shortcuts', () => {
     expect(actionMutate).not.toHaveBeenCalled()
   })
 
+  test('6b. ref-lock (FIX B): a second commit in the SAME tick is ignored before isPending flips', () => {
+    // Simulate an in-flight mutation: mutate does NOT settle synchronously, so
+    // action.isPending stays false in this render tick. Only the ref-lock can
+    // block the second synchronous gesture.
+    actionMutate.mockImplementationOnce(() => {
+      /* in-flight: no onSuccess/onSettled — lock stays held */
+    })
+    render(<TriagePage />)
+
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+
+    // Without the ref-lock both would fire (isPending only flips next render).
+    expect(actionMutate).toHaveBeenCalledTimes(1)
+  })
+
   test('7. keystroke ignored when target is an input element', () => {
     render(<TriagePage />)
 
@@ -176,6 +193,16 @@ describe('Keyboard shortcuts', () => {
     expect(actionMutate).not.toHaveBeenCalled()
 
     document.body.removeChild(textarea)
+  })
+
+  test('8b. arrow-focus guard (FIX F): arrow keys are ignored when focus is on a control', () => {
+    const { getByRole } = render(<TriagePage />)
+    // Focus a button row control (e.g. the "More actions" button) and fire an
+    // arrow keydown FROM it. The handler must not steal it into a triage action.
+    const more = getByRole('button', { name: /more actions/i })
+    more.focus()
+    fireEvent.keyDown(more, { key: 'ArrowRight' })
+    expect(actionMutate).not.toHaveBeenCalled()
   })
 
   test('9. u key is a no-op when there is no previous action (no undo descriptor)', () => {

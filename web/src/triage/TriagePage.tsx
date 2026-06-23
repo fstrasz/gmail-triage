@@ -4,7 +4,7 @@ import { useQueue, useAction, useUndo } from '../lib/queries.ts'
 import { deckReducer } from './deckReducer.ts'
 import type { Mode, Dir } from './swipeMap.ts'
 import { swipeAction } from './swipeMap.ts'
-import { ACTION_LABEL } from './actionMeta.ts'
+import { ACTION_LABEL, isUndoable } from './actionMeta.ts'
 import { Deck } from './Deck.tsx'
 import { GuardDialog } from './GuardDialog.tsx'
 import type { GuardInfo } from './GuardDialog.tsx'
@@ -47,8 +47,14 @@ export function TriagePage() {
   const pending = useRef<PendingAction | null>(null)
   // DECK-2: action committed but not yet announced. The new-top card is read
   // from post-dispatch deck state (an effect), never a stale pre-dispatch
-  // closure value like deck.cards[1].
+  // closure value like deck.cards[1]. (FIX G) Set only on the committed-success
+  // path so a guard/auth result never falsely announces "done".
   const pendingAnnounce = useRef<TriageAction | null>(null)
+  // FIX B — single-in-flight lock covering EVERY commit path (button taps,
+  // swipe onPointerUp, More sheet, keyboard). action.isPending only flips on the
+  // next render tick, so two synchronous commits in the same tick can both pass
+  // it; this synchronous ref closes that window.
+  const committing = useRef(false)
 
   // Sync deck cards from the query whenever data or mode changes. The reducer's
   // `load` reconciles against local optimistic state (it no longer clears
@@ -61,6 +67,14 @@ export function TriagePage() {
   useEffect(() => {
     dispatch({ type: 'setMode', mode })
   }, [mode])
+
+  // FIX E — a successful (re)fetch of the queue means Gmail is reachable again;
+  // clear any stale Reconnect banner. Keyed on the fetch timestamp so a
+  // post-reconnect refetch resets it.
+  const dataUpdatedAt = queue.dataUpdatedAt
+  useEffect(() => {
+    if (queue.isSuccess) setAuthError(false)
+  }, [dataUpdatedAt, queue.isSuccess])
 
   // DECK-2: announce after the deck advances, reading the CURRENT top card
   // (post-dispatch), for both the unconfirmed and confirmed-success paths.
@@ -78,7 +92,13 @@ export function TriagePage() {
 
   function handleResult(result: ActionResult, committed: TriageAction, card: TriageEmail, labeled?: number) {
     if (result.ok) {
+      // FIX E — a successful action proves the Gmail connection is live again;
+      // clear any stale Reconnect banner.
+      setAuthError(false)
       setToast({ undo: result.undo, labeled: result.labeled ?? labeled })
+      // FIX G — announce ONLY on the committed-success path, reading the new top
+      // post-dispatch (the effect below). A guard/auth result never announces.
+      pendingAnnounce.current = committed
       return
     }
     if ('error' in result) {
@@ -95,15 +115,20 @@ export function TriagePage() {
   }
 
   function commit(act: TriageAction, confirmed = false) {
+    // FIX B — single-in-flight guard at the TOP so EVERY path inherits it
+    // (button taps, swipe, More sheet, keyboard). The ref closes the same-tick
+    // double-fire window before action.isPending can flip.
+    if (committing.current || action.isPending) return
+
     const card = confirmed ? pending.current?.card : deck.cards[0]
     if (!card) return
+    committing.current = true
 
     // Dispatch exactly ONE `act` per user gesture and advance via the explicit
     // reducer contract — on the confirmed path too (the guard revert put the
     // card back, so we re-remove it here rather than relying on the cache→load
-    // effect). Announce on both paths (DECK-2), reading the new top post-dispatch.
+    // effect). The announce is set later, only on committed success (FIX G).
     dispatch({ type: 'act', action: act })
-    pendingAnnounce.current = act
 
     action.mutate(
       {
@@ -121,6 +146,10 @@ export function TriagePage() {
         onError: () => {
           // Unexpected failure: restore the card.
           dispatch({ type: 'undo' })
+        },
+        onSettled: () => {
+          // FIX B — release the lock once the mutation finishes (success or error).
+          committing.current = false
         },
       },
     )
@@ -163,6 +192,13 @@ export function TriagePage() {
 
       const dir = KEY_DIR[e.key]
       if (dir) {
+        // FIX F — don't steal arrow keys while focus is on an interactive control
+        // (button row / More sheet / links). Those controls have their own
+        // explicit Enter/Space activation, so dropping arrow handling is safe and
+        // avoids firing a triage action the user didn't intend.
+        if (target instanceof Element && target.closest('button, a, [role=button], [role=menuitem]')) {
+          return
+        }
         e.preventDefault()
         commit(swipeAction(mode, dir))
         return
@@ -171,8 +207,9 @@ export function TriagePage() {
       if (e.key === 'u' || e.key === 'U') {
         e.preventDefault()
         // Undo the last action using the toast descriptor (same path as clicking
-        // the Toast Undo button). No-op if there's no toast/descriptor.
-        if (toast?.undo) {
+        // the Toast Undo button). No-op if there's no toast/descriptor, or if the
+        // last action isn't undoable (unsub/review — FIX H3 honesty).
+        if (toast?.undo && isUndoable(toast.undo.action)) {
           onUndo(toast.undo)
         }
         return
@@ -224,7 +261,7 @@ export function TriagePage() {
       {queue.isPending ? (
         <DeckSkeleton />
       ) : deck.cards.length === 0 ? (
-        <EmptyState mode={mode} hiddenCount={queue.data?.counts.left ?? 0} onShowAll={() => setMode('shown')} />
+        <EmptyState mode={mode} onShowAll={() => setMode('shown')} />
       ) : (
         <div className="flex flex-1 gap-4 overflow-hidden">
           {/* Queue list pane — visible only on md+ (aria-hidden: purely visual,
@@ -278,12 +315,13 @@ function DeckSkeleton() {
   )
 }
 
-function EmptyState({ mode, hiddenCount, onShowAll }: { mode: Mode; hiddenCount: number; onShowAll: () => void }) {
+function EmptyState({ mode, onShowAll }: { mode: Mode; onShowAll: () => void }) {
   // DECK-4: in hidden mode an empty queue may just be filtered — offer Show all.
+  // FIX H — no real hidden-count is computed, so the copy makes no numeric claim.
   if (mode === 'hidden') {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted">
-        <p>{hiddenCount} listed sender{hiddenCount === 1 ? '' : 's'} hidden.</p>
+        <p>Senders already on a list are hidden.</p>
         <button
           type="button"
           className="rounded-xl border border-ink px-4 py-2 font-semibold text-ink"

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { TriageAction, UndoDescriptor } from '../lib/api.ts'
+import { isUndoable } from './actionMeta.ts'
 
 export interface ToastInfo {
   undo: UndoDescriptor
@@ -30,6 +31,11 @@ function toastMessage(info: ToastInfo): string {
     // Honest bulk copy: list-membership reverses, the bulk archive does not.
     return `Listed removed — ${n} stay archived`
   }
+  // FIX H3 — unsub/review have a no-op server undo; never promise undo for them.
+  if (!isUndoable(action)) {
+    if (action === 'unsub') return 'Unsubscribed — sender blocklisted (not reversible here)'
+    return 'Queued for review'
+  }
   return `${ACTION_VERB[action]} — undo available`
 }
 
@@ -49,6 +55,9 @@ export function Toast({
     return () => clearTimeout(t)
   }, [info, durationMs, onDismiss])
 
+  // FIX H3 — only render Undo for actions whose server undo actually does something.
+  const undoable = isUndoable(info.undo.action)
+
   return (
     <div
       role="status"
@@ -57,14 +66,16 @@ export function Toast({
       style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
     >
       <span>{toastMessage(info)}</span>
-      <button
-        type="button"
-        aria-label="Undo last action"
-        className="rounded-lg px-3 py-1 font-semibold underline underline-offset-2"
-        onClick={() => onUndo(info.undo)}
-      >
-        Undo
-      </button>
+      {undoable && (
+        <button
+          type="button"
+          aria-label="Undo last action"
+          className="rounded-lg px-3 py-1 font-semibold underline underline-offset-2"
+          onClick={() => onUndo(info.undo)}
+        >
+          Undo
+        </button>
+      )}
     </div>
   )
 }

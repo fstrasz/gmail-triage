@@ -35,3 +35,14 @@ export const DIR_ARROW: Record<Dir, string> = {
   up: '↑',
   down: '↓',
 }
+
+// Single source of truth for undoability, mirroring the backend
+// ACTION_DISPATCH[...].undo === 'none' (app/lib/triageApi.js). unsub/review have
+// no compensating server call, so the UI must NOT promise undo for them (FIX H3).
+// Everything else (ok/vip/archive/delete reversible; ok-clean/vip-clean/junk
+// reverse list membership only) IS undoable.
+const NON_UNDOABLE: ReadonlySet<TriageAction> = new Set<TriageAction>(['unsub', 'review'])
+
+export function isUndoable(action: TriageAction): boolean {
+  return !NON_UNDOABLE.has(action)
+}

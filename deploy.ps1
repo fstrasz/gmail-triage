@@ -40,17 +40,33 @@ if ($WhatIf) {
     Write-Host ""
 }
 
-# -- Build React web app -------------------------------------------------------
-Write-Host "Building web app..." -ForegroundColor Cyan
+# -- Run web test suite before building ---------------------------------------
+Write-Host "Running web test suite..." -ForegroundColor Cyan
 if ($WhatIf) {
     Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
     Write-Host ""
 } else {
     & npm --prefix "$Source\web" ci
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WEB BUILD FAILED (npm ci). Aborting." -ForegroundColor Red
+        Write-Host "WEB DEPS FAILED (npm ci). Aborting." -ForegroundColor Red
         exit 1
     }
+    & npm --prefix "$Source\web" run test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "WEB TESTS FAILED. Aborting." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host "  Web tests passed." -ForegroundColor Green
+    Write-Host ""
+}
+
+# -- Build React web app -------------------------------------------------------
+Write-Host "Building web app..." -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
+    Write-Host ""
+} else {
     & npm --prefix "$Source\web" run build
     if ($LASTEXITCODE -ne 0) {
         Write-Host "WEB BUILD FAILED (vite build). Aborting." -ForegroundColor Red

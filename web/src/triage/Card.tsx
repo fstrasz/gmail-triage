@@ -7,9 +7,13 @@ import { ACTION_LABEL, DIR_ARROW } from './actionMeta.ts'
 
 const DIRS: Dir[] = ['right', 'left', 'up', 'down']
 
-function senderQuery(email: TriageEmail): string {
-  // Mirror the old UI's /sender reach. Prefer email, fall back to name.
-  return encodeURIComponent(email.fromEmail ?? email.fromName ?? '')
+function senderHref(email: TriageEmail): string {
+  // FIX D — match the live /sender route contract (?email=&name=) and the old
+  // UI (app/lib/html.js). The previous ?q= param always bounced home because the
+  // route reads req.query.email and redirects to / when it's absent.
+  const e = encodeURIComponent(email.fromEmail ?? '')
+  const n = encodeURIComponent(email.fromName ?? '')
+  return `/sender?email=${e}&name=${n}`
 }
 
 export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
@@ -53,7 +57,7 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
           {expanded ? 'Hide body' : 'Show body'}
         </button>
         <a
-          href={`/sender?q=${senderQuery(email)}`}
+          href={senderHref(email)}
           aria-label={`View all from this sender (${email.fromEmail ?? email.fromName ?? ''})`}
           className="text-muted underline underline-offset-2"
         >

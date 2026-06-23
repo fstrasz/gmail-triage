@@ -24,10 +24,13 @@ const hookState: {
 const actionMutate = vi.fn(
   (
     _payload: unknown,
-    opts?: { onSuccess?: (r: ActionResult) => void; onError?: (e: unknown) => void },
+    opts?: { onSuccess?: (r: ActionResult) => void; onError?: (e: unknown) => void; onSettled?: () => void },
   ) => {
     // Resolve synchronously with the configured result so tests are deterministic.
+    // Mirror react-query's settle order: onSuccess/onError then onSettled (the
+    // FIX-B single-in-flight lock releases in onSettled).
     opts?.onSuccess?.(hookState.actionResult)
+    opts?.onSettled?.()
   },
 )
 
@@ -199,6 +202,17 @@ describe('TriagePage / Deck UI', () => {
     expect(within(toast).getByText(/7.*stay archived/i)).toBeInTheDocument()
   })
 
+  test('7c. honest unsub copy (FIX H3): toast does NOT claim "undo available" and renders NO Undo button', () => {
+    hookState.actionResult = { ok: true, undo: stubUndo('unsub') }
+    render(<TriagePage />)
+    // Unsub is in the hidden-mode button row.
+    fireEvent.click(screen.getByRole('button', { name: ACTION_LABELS.unsub }))
+    const toast = screen.getByRole('status')
+    expect(within(toast).queryByText(/undo available/i)).not.toBeInTheDocument()
+    expect(within(toast).queryByRole('button', { name: /undo/i })).not.toBeInTheDocument()
+    expect(within(toast).getByText(/not reversible here/i)).toBeInTheDocument()
+  })
+
   test('8. committing an action writes the new top card sender + subject into the aria-live region (DECK-2)', () => {
     loadedQueue([makeEmail('e1'), makeEmail('e2')], 2)
     render(<TriagePage />)
@@ -218,7 +232,26 @@ describe('TriagePage / Deck UI', () => {
     expect(iframe).not.toBeNull()
     expect(iframe!.getAttribute('sandbox')).toBe('allow-popups')
     expect(iframe!.getAttribute('src')).toContain('/api/triage/body?id=e1')
-    expect(screen.getByRole('link', { name: /view all from .*sender/i })).toBeInTheDocument()
+    const senderLink = screen.getByRole('link', { name: /view all from .*sender/i })
+    expect(senderLink).toBeInTheDocument()
+    // FIX D — the link must hit the live /sender route contract (?email=&name=),
+    // not the broken ?q= that always redirects home.
+    expect(senderLink.getAttribute('href')).toContain('email=')
+    expect(senderLink.getAttribute('href')).toContain('e1%40example.com')
+  })
+
+  test('9b. peek (background) cards are inert (FIX C, WCAG 4.1.2) while the top card is not', () => {
+    loadedQueue([makeEmail('e1'), makeEmail('e2'), makeEmail('e3')], 3)
+    render(<TriagePage />)
+    // Peek wrappers carry the `inert` attribute (out of tab order + a11y tree).
+    const inertWrappers = document.querySelectorAll('[inert]')
+    expect(inertWrappers.length).toBeGreaterThan(0)
+    // The top card's "View all" link must NOT live inside an inert subtree.
+    const topLink = screen.getAllByRole('link', { name: /view all from .*sender/i }).find(
+      (a) => a.closest('[inert]') === null,
+    )
+    expect(topLink).toBeTruthy()
+    expect(topLink!.getAttribute('href')).toContain('e1%40example.com')
   })
 
   test('10. loading state shows a skeleton', () => {

@@ -77,6 +77,7 @@ export function Deck({
             return (
               <div
                 key={c.id}
+                inert
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
                 style={{ transform: `scale(${1 - depth * 0.04}) translateY(${depth * 10}px)`, opacity: 0.6 }}
