@@ -1,12 +1,9 @@
 import { Routes, Route } from 'react-router-dom'
 import { AppShell } from './shell/AppShell.tsx'
+import { TriagePage } from './triage/TriagePage.tsx'
 
 function ComingSoon({ name }: { name: string }) {
   return <div>Coming soon — {name}</div>
-}
-
-function TriagePage() {
-  return <div>Triage</div>
 }
 
 export function AppRoutes() {
