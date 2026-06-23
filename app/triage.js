@@ -10,7 +10,7 @@ import { isListedSender } from "./lib/listedSender.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
-import { getHealthReport, readHealthInputs } from "./lib/health.js";
+import { getHealthReport, readHealthInputs, readWebAsset } from "./lib/health.js";
 import { shapeTriageEmail, filterHidden, normalizeGuard, ACTION_DISPATCH } from "./lib/triageApi.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
@@ -825,9 +825,7 @@ app.post("/settings/events-search", (req, res) => {
 
 // ─── Health (unauthenticated; cheap signals, no Gmail API call) ──────────────────
 app.get("/health", (req, res) => {
-  const webAsset = process.env.WEB_APP_ENABLED === "0"
-    ? "disabled"
-    : (fs.existsSync(pathmod.join(WEB_DIST, "index.html")) ? "ok" : "missing");
+  const webAsset = readWebAsset(WEB_DIST, process.env.WEB_APP_ENABLED !== "0");
   const { ok, body } = getHealthReport({
     version: APP_VERSION,
     uptimeSec: process.uptime(),

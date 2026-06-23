@@ -29,6 +29,14 @@ export function readHealthInputs() {
   return { settings, tokenState, configState };
 }
 
+// Edge I/O: does the built web bundle exist? Returns the webAsset verdict string
+// consumed by getHealthReport. Kept here (with the other edge I/O) so the /health
+// route stays import-light and this fs call is unit-testable.
+export function readWebAsset(webDist, webEnabled) {
+  if (!webEnabled) return "disabled";
+  return fs.existsSync(path.join(webDist, "index.html")) ? "ok" : "missing";
+}
+
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
 // webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
 export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset }) {

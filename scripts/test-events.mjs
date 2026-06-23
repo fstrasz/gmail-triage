@@ -1656,3 +1656,31 @@ test('getHealthReport: webAsset disabled → not degraded by web check', async (
   assert.equal(r.body.checks.web, 'disabled');
 });
 
+// ─── readWebAsset: edge I/O — fs check extracted from /health route ───────────
+test('readWebAsset: returns "ok" when index.html exists in webDist', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-wa-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html>');
+    const { readWebAsset } = await import(healthModulePath + '?wa1=' + Date.now());
+    assert.equal(readWebAsset(dir, true), 'ok');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readWebAsset: returns "missing" when index.html absent from webDist', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-wa-'));
+  try {
+    const { readWebAsset } = await import(healthModulePath + '?wa2=' + Date.now());
+    assert.equal(readWebAsset(dir, true), 'missing');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readWebAsset: returns "disabled" without touching fs when webEnabled is false', async () => {
+  const { readWebAsset } = await import(healthModulePath + '?wa3=' + Date.now());
+  // Pass a non-existent path — would throw if fs were called
+  assert.equal(readWebAsset('/nonexistent/path/that/does/not/exist', false), 'disabled');
+});
+
