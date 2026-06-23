@@ -28,8 +28,26 @@ export type DeckEvent =
 
 export function deckReducer(state: DeckState, event: DeckEvent): DeckState {
   switch (event.type) {
-    case 'load':
-      return { ...state, cards: event.cards, removed: [] }
+    case 'load': {
+      // Reconcile incoming server data with local optimistic state instead of
+      // clobbering it. The React Query cache mutates on every optimistic action
+      // (useAction.onMutate) which re-fires the load effect mid-action; a plain
+      // replace-and-clear would wipe `removed[]` and turn a subsequent `undo`
+      // (the guard/auth revert) into a no-op, losing the just-acted card.
+      //
+      // Rules:
+      //  - A `removed` card whose id is back in the incoming queue was restored
+      //    server-side (e.g. an undo refetch) — drop it from `removed` and let
+      //    it reappear in the visible deck.
+      //  - A `removed` card still absent from the incoming queue is an in-flight
+      //    or confirmed optimistic removal — keep it in `removed` and filtered
+      //    out of the visible deck.
+      const incomingIds = new Set(event.cards.map((c) => c.id))
+      const removed = state.removed.filter((c) => !incomingIds.has(c.id))
+      const removedIds = new Set(removed.map((c) => c.id))
+      const cards = event.cards.filter((c) => !removedIds.has(c.id))
+      return { ...state, cards, removed }
+    }
 
     case 'setMode':
       return { ...state, mode: event.mode }

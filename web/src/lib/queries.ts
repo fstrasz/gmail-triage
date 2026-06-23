@@ -76,16 +76,26 @@ export function useAction() {
     },
 
     onError: (_err, _vars, context) => {
-      // Roll back to snapshot on error
+      // Roll back to snapshot on a thrown error.
       if (context?.snapshot !== undefined) {
         queryClient.setQueryData(context.key, context.snapshot)
       }
     },
 
-    // Guard and auth-error results arrive here (they are resolved values, not errors).
-    // The caller receives them via mutation.data and can inspect result.ok / result.guard / result.error.
-    // No action needed in onSuccess — the optimistic removal already stands.
-    // We don't force-invalidate here so the deck doesn't jump while the user is reading a guard dialog.
+    // Guard and auth-error results arrive here as RESOLVED values (ok:false),
+    // not thrown errors — so onError never fires for them. The optimistic
+    // removal must be rolled back here, exactly like onError does, so the
+    // cache (which seeds the deck's `load` reconcile) puts the card back. The
+    // caller still receives the typed result via mutation.data / its own
+    // onSuccess to drive the guard dialog or auth state. Only a genuine
+    // ok:true result leaves the optimistic removal standing.
+    onSuccess: (result, _vars, context) => {
+      if (!result.ok && context?.snapshot !== undefined) {
+        queryClient.setQueryData(context.key, context.snapshot)
+      }
+    },
+    // We don't force-invalidate on success so the deck doesn't jump while the
+    // user is reading a guard dialog.
   })
 }
 

@@ -34,8 +34,15 @@ export function TriagePage() {
   const [authError, setAuthError] = useState(false)
   const [announce, setAnnounce] = useState('')
   const pending = useRef<PendingAction | null>(null)
+  // DECK-2: action committed but not yet announced. The new-top card is read
+  // from post-dispatch deck state (an effect), never a stale pre-dispatch
+  // closure value like deck.cards[1].
+  const pendingAnnounce = useRef<TriageAction | null>(null)
 
-  // Sync deck cards from the query whenever data or mode changes.
+  // Sync deck cards from the query whenever data or mode changes. The reducer's
+  // `load` reconciles against local optimistic state (it no longer clears
+  // removed[]), so this firing mid-action — including from useAction.onMutate's
+  // cache filter — won't strand the just-acted card.
   const emails = queue.data?.emails
   useEffect(() => {
     if (emails) dispatch({ type: 'load', cards: emails })
@@ -44,13 +51,19 @@ export function TriagePage() {
     dispatch({ type: 'setMode', mode })
   }, [mode])
 
-  function announceAfterAdvance(committed: TriageAction, nextTop: TriageEmail | undefined) {
+  // DECK-2: announce after the deck advances, reading the CURRENT top card
+  // (post-dispatch), for both the unconfirmed and confirmed-success paths.
+  const top = deck.cards[0]
+  useEffect(() => {
+    const committed = pendingAnnounce.current
+    if (!committed) return
+    pendingAnnounce.current = null
     const verb = ACTION_LABEL[committed]
-    const next = nextTop
-      ? `Next: ${nextTop.fromName ?? nextTop.fromEmail ?? 'Unknown'} — ${nextTop.subject}`
+    const next = top
+      ? `Next: ${top.fromName ?? top.fromEmail ?? 'Unknown'} — ${top.subject}`
       : 'Queue empty'
     setAnnounce(`${verb} done. ${next}`)
-  }
+  }, [deck.cards, top])
 
   function handleResult(result: ActionResult, committed: TriageAction, card: TriageEmail, labeled?: number) {
     if (result.ok) {
@@ -74,12 +87,12 @@ export function TriagePage() {
     const card = confirmed ? pending.current?.card : deck.cards[0]
     if (!card) return
 
-    // Dispatch exactly ONE of {act, advance}: act removes the top card and
-    // pairs with the API call.
-    if (!confirmed) {
-      dispatch({ type: 'act', action: act })
-      announceAfterAdvance(act, deck.cards[1])
-    }
+    // Dispatch exactly ONE `act` per user gesture and advance via the explicit
+    // reducer contract — on the confirmed path too (the guard revert put the
+    // card back, so we re-remove it here rather than relying on the cache→load
+    // effect). Announce on both paths (DECK-2), reading the new top post-dispatch.
+    dispatch({ type: 'act', action: act })
+    pendingAnnounce.current = act
 
     action.mutate(
       {
@@ -96,7 +109,7 @@ export function TriagePage() {
         onSuccess: (result: ActionResult) => handleResult(result, act, card),
         onError: () => {
           // Unexpected failure: restore the card.
-          if (!confirmed) dispatch({ type: 'undo' })
+          dispatch({ type: 'undo' })
         },
       },
     )
@@ -121,7 +134,8 @@ export function TriagePage() {
 
   // ---- States --------------------------------------------------------------
 
-  if (authError || queue.isError) {
+  // A genuine queue fetch failure has no deck data to show — full-screen state.
+  if (queue.isError) {
     return <ReconnectGmail />
   }
 
@@ -129,6 +143,11 @@ export function TriagePage() {
     <div className="flex h-full flex-col p-4">
       {/* Visually-hidden live region (DECK-2). */}
       <div aria-live="polite" className="sr-only">{announce}</div>
+
+      {/* M1 — an action hit an expired Gmail token: distinct Reconnect state,
+          shown as a banner ABOVE the deck so the just-acted card (restored by
+          handleResult's `undo`) stays visible and is not lost. */}
+      {authError && <ReconnectGmail banner />}
 
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-ink">
@@ -195,7 +214,18 @@ function EmptyState({ mode, hiddenCount, onShowAll }: { mode: Mode; hiddenCount:
   )
 }
 
-function ReconnectGmail() {
+function ReconnectGmail({ banner = false }: { banner?: boolean }) {
+  if (banner) {
+    // Compact variant: sits above the deck so the restored card stays visible.
+    return (
+      <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-junk/40 bg-junk/5 px-4 py-3 text-sm">
+        <span className="font-semibold text-ink">Reconnect Gmail</span>
+        <a href="/auth" className="rounded-lg bg-ink px-3 py-1.5 font-semibold text-white">
+          Reconnect
+        </a>
+      </div>
+    )
+  }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
       <p className="text-lg font-semibold text-ink">Reconnect Gmail</p>

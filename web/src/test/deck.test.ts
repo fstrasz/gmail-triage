@@ -114,11 +114,31 @@ describe('deckReducer', () => {
     expect(state.removed).toEqual(init.removed)
   })
 
-  test('load on populated state resets removed[] to empty', () => {
+  // NOTE: `load` no longer replace-and-clears. It RECONCILES incoming server
+  // data with the local optimistic `removed[]` stack so a load firing mid-action
+  // (React Query's onMutate cache filter re-fires the load effect) can't strand
+  // the just-acted card. A removed card whose id is back in the incoming queue
+  // was restored server-side → dropped from removed and shown; a removed card
+  // still absent from incoming stays optimistically removed.
+  test('load reconciles: drops removed cards that reappear in incoming, keeps those still absent', () => {
     const init = { cards: [e1], removed: [e2, e3], mode: 'shown' as const }
     const state = deckReducer(init, { type: 'load', cards: [e3] })
+    // e3 is back in the incoming queue → no longer optimistically removed.
+    // e2 is still absent from incoming → stays removed and filtered from cards.
     expect(state.cards).toEqual([e3])
-    expect(state.removed).toEqual([])
+    expect(state.removed).toEqual([e2])
+  })
+
+  test('load preserves removed[] when the acted card is absent from incoming (in-flight removal)', () => {
+    // Coordinated flow: useAction.onMutate filters the acted card (e1) from the
+    // cache at the same time the deck `act` pushes it to removed[]. The load
+    // effect fires from that cache change with incoming = [e2]. e1 must stay
+    // removed (a no-op reconcile), NOT reappear — this is the load-mid-action
+    // case that previously clobbered removed[] and stranded the card.
+    const init = { cards: [e2], removed: [e1], mode: 'hidden' as const }
+    const state = deckReducer(init, { type: 'load', cards: [e2] })
+    expect(state.cards).toEqual([e2])
+    expect(state.removed).toEqual([e1])
   })
 
   test('reducer is immutable — original state untouched after act', () => {
