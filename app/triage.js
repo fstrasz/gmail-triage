@@ -825,11 +825,15 @@ app.post("/settings/events-search", (req, res) => {
 
 // ─── Health (unauthenticated; cheap signals, no Gmail API call) ──────────────────
 app.get("/health", (req, res) => {
+  const webAsset = process.env.WEB_APP_ENABLED === "0"
+    ? "disabled"
+    : (fs.existsSync(pathmod.join(WEB_DIST, "index.html")) ? "ok" : "missing");
   const { ok, body } = getHealthReport({
     version: APP_VERSION,
     uptimeSec: process.uptime(),
     now: Date.now(),
     ...readHealthInputs(),
+    webAsset,
   });
   res.status(ok ? 200 : 503).json(body);
 });

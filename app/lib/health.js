@@ -30,7 +30,8 @@ export function readHealthInputs() {
 }
 
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
-export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState }) {
+// webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
+export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset }) {
   const checks = {};
   let ok = true;
 
@@ -57,6 +58,11 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
     checks.staleness = "stale"; ok = false;
   } else {
     checks.staleness = "ok";
+  }
+
+  if (webAsset !== undefined) {
+    checks.web = webAsset;
+    if (webAsset === "missing") ok = false;
   }
 
   return {

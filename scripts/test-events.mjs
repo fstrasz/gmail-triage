@@ -1616,3 +1616,43 @@ test('untrashMessage: untrashes then re-adds INBOX via batchModify', async () =>
   assert.ok(calls[1][1].requestBody.addLabelIds.includes('INBOX'), 'batchModify re-adds INBOX');
 });
 
+// ─── getHealthReport: web-asset check (Task 9) ───────────────────────────────
+test('getHealthReport: webAsset missing → degraded, checks.web = missing', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset1=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'missing',
+  });
+  assert.equal(r.ok, false, 'missing web asset degrades health');
+  assert.equal(r.body.checks.web, 'missing');
+});
+
+test('getHealthReport: webAsset ok → not degraded by web check', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset2=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'ok',
+  });
+  assert.equal(r.ok, true, 'web asset ok → health not degraded');
+  assert.equal(r.body.checks.web, 'ok');
+});
+
+test('getHealthReport: webAsset disabled → not degraded by web check', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset3=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'disabled',
+  });
+  assert.equal(r.ok, true, 'disabled rollback → health not degraded');
+  assert.equal(r.body.checks.web, 'disabled');
+});
+
