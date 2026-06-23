@@ -1,0 +1,29 @@
+/* Tailwind v4 entry + design tokens.
+ * v4 is CSS-first: `@import "tailwindcss"` replaces the old @tailwind
+ * base/components/utilities directives, and content sources are auto-detected
+ * (no tailwind.config.ts content globs required). */
+@import "tailwindcss";
+
+/* Semantic palette from the Triage Deck mockup. Components reference these
+ * tokens (via var(--…) or the @theme utility colors) rather than raw hexes. */
+:root {
+  --color-vip: #d97706;
+  --color-ok: #0f766e;
+  --color-junk: #dc2626;
+  --color-review: #7c3aed;
+  --color-ink: #0e1726;
+  --color-muted: #64748b;
+  --color-hairline: #e6eaf1;
+}
+
+/* Expose the same tokens to Tailwind's theme so `text-vip`, `bg-ok`, etc.
+ * resolve to the semantic colors. */
+@theme {
+  --color-vip: #d97706;
+  --color-ok: #0f766e;
+  --color-junk: #dc2626;
+  --color-review: #7c3aed;
+  --color-ink: #0e1726;
+  --color-muted: #64748b;
+  --color-hairline: #e6eaf1;
+}

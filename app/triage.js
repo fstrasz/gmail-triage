@@ -1,4 +1,6 @@
 import express from "express";
+import { fileURLToPath } from "url";
+import pathmod from "path";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
 import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
@@ -816,6 +818,15 @@ app.get("/health", (req, res) => {
   });
   res.status(ok ? 200 : 503).json(body);
 });
+
+// ─── React app (/app) — served from web/dist, resolved relative to THIS module
+// (not process.cwd(), since the server runs from app/). Registered last, after
+// all /api/* routes. Set WEB_APP_ENABLED=0 to disable and fall back to the old UI.
+const WEB_DIST = pathmod.join(pathmod.dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
+if (process.env.WEB_APP_ENABLED !== "0") {
+  app.use("/app", express.static(WEB_DIST));
+  app.get(/^\/app(\/.*)?$/, (req, res) => res.sendFile(pathmod.join(WEB_DIST, "index.html")));
+}
 
 app.listen(PORT, () => {
   console.log("Gmail triage server on http://localhost:" + PORT);

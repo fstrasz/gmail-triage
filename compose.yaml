@@ -15,6 +15,10 @@ services:
       # without editing this list. A missing per-file mount was silently crashing
       # the app on every deploy that added a lib module.
       - ./app/lib:/app/lib
+      # Built React app (gitignored; built on deploy). Bind-mounted so the
+      # running container actually contains it — a deploy must force-recreate
+      # to pick up this mount (the F24 lesson).
+      - ./web/dist:/app/web/dist
       - ./config/activity-log.json:/app/activity-log.json
       - ./config/found-events.json:/app/found-events.json
       # Config & data
