@@ -96,6 +96,9 @@ describe('TriagePage / real React-Query interleave', () => {
     expect(screen.getByText('Subject e1')).toBeInTheDocument()
 
     // Confirming re-posts for THAT SAME card with confirmed:true.
+    // After confirmed success the queue refetches (invalidateQueries); mock it to
+    // return [e2] — in real usage e1 is now labeled/filtered out by skipSender.
+    api.getQueue.mockResolvedValueOnce({ emails: [makeEmail('e2')], counts: { left: 1 } })
     api.postAction.mockResolvedValueOnce({ ok: true, undo: stubUndo('archive') })
     fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
 

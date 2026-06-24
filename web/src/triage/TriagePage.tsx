@@ -1,10 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { TriageEmail, TriageAction, ActionResult, UndoDescriptor } from '../lib/api.ts'
+import { getBodyUrl } from '../lib/api.ts'
+import { useMediaQuery } from '../lib/useMediaQuery.ts'
 import { useQueue, useAction, useUndo } from '../lib/queries.ts'
 import { deckReducer } from './deckReducer.ts'
 import type { Mode, Dir } from './swipeMap.ts'
 import { swipeAction } from './swipeMap.ts'
-import { ACTION_LABEL, isUndoable } from './actionMeta.ts'
+import { ACTION_LABEL, ACTION_BG, isUndoable } from './actionMeta.ts'
 import { Deck } from './Deck.tsx'
 import { GuardDialog } from './GuardDialog.tsx'
 import type { GuardInfo } from './GuardDialog.tsx'
@@ -12,6 +14,16 @@ import { Toast } from './Toast.tsx'
 import type { ToastInfo } from './Toast.tsx'
 
 const QUEUE_LIMIT = 25
+
+// Desktop action column order. 'gap' renders a small visual divider between
+// groups; 'spacer' pushes Junk/Delete to the bottom.
+type ColItem = TriageAction | 'gap' | 'spacer'
+const DESKTOP_COL: ColItem[] = [
+  'vip', 'ok', 'gap',
+  'vip-clean', 'ok-clean', 'gap',
+  'archive', 'review', 'unsub', 'spacer',
+  'junk', 'delete',
+]
 
 // A pending action: the payload we'd re-send on guard-confirm, kept so the
 // confirm path re-calls the mutation with confirmed:true for the same card.
@@ -37,6 +49,7 @@ export function TriagePage() {
   const action = useAction()
   const undo = useUndo(queueParams)
 
+  const desktop = useMediaQuery('(hover: hover) and (pointer: fine)')
   const [deck, dispatch] = useReducer(deckReducer, { cards: [], removed: [], mode })
   const [guard, setGuard] = useState<GuardInfo | null>(null)
   const [toast, setToast] = useState<ToastInfo | null>(null)
@@ -155,6 +168,13 @@ export function TriagePage() {
     )
   }
 
+  // Jump to a queue item: move it to the front; defer skipped items to the back.
+  function selectCard(index: number) {
+    if (index === 0) return
+    const c = deck.cards
+    dispatch({ type: 'load', cards: [c[index], ...c.slice(index + 1), ...c.slice(0, index)] })
+  }
+
   function onUndo(descriptor: UndoDescriptor) {
     setToast(null)
     undo.mutate(descriptor)
@@ -256,16 +276,93 @@ export function TriagePage() {
         </button>
       </header>
 
-      {/* Desktop 3-pane: on md+ show a queue-list sidebar beside the active card.
-          On small screens the existing single-column deck is unchanged. */}
       {queue.isPending ? (
         <DeckSkeleton />
       ) : deck.cards.length === 0 ? (
         <EmptyState mode={mode} onShowAll={() => setMode('shown')} />
+      ) : desktop ? (
+        /* ── Desktop 4-pane: queue | action column | preview ── */
+        <div className="flex flex-1 overflow-hidden rounded-2xl border border-hairline">
+          {/* Pane 1 — clickable queue */}
+          <aside className="flex w-48 flex-shrink-0 flex-col overflow-y-auto border-r border-hairline bg-tint">
+            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">Queue</p>
+            <ul className="flex flex-col divide-y divide-hairline">
+              {deck.cards.map((card, i) => (
+                <li key={card.id}>
+                  <button
+                    type="button"
+                    onClick={() => selectCard(i)}
+                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                      i === 0
+                        ? 'bg-hairline/40 font-semibold text-ink'
+                        : 'text-muted hover:bg-hairline/20'
+                    }`}
+                  >
+                    <p className="truncate">{card.fromName ?? card.fromEmail ?? 'Unknown'}</p>
+                    {i > 0 && card.fromEmail && (
+                      <p className="truncate text-xs">{card.fromEmail}</p>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </aside>
+
+          {/* Pane 2 — action column */}
+          <div className="flex w-[72px] flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-hairline bg-tint p-1.5">
+            {DESKTOP_COL.map((item, i) => {
+              if (item === 'gap') return <div key={`gap-${i}`} className="h-1.5" />
+              if (item === 'spacer') return <div key="spacer" className="flex-1" />
+              const a = item
+              return (
+                <button
+                  key={a}
+                  type="button"
+                  aria-label={ACTION_LABEL[a]}
+                  disabled={action.isPending || !top}
+                  onClick={() => commit(a)}
+                  className={`w-full rounded-lg py-2 text-center text-xs font-semibold leading-tight text-white disabled:opacity-40 ${ACTION_BG[a]}`}
+                >
+                  {ACTION_LABEL[a]}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Pane 3 — preview: card header (sender/subject/badge) + iframe body */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {top && (
+              <>
+                <div className="flex-shrink-0 border-b border-hairline bg-white px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-ink">
+                      {top.fromName ?? top.fromEmail ?? 'Unknown sender'}
+                    </span>
+                    {top.tier === '..VIP' && (
+                      <span className="rounded bg-vip px-1.5 py-0.5 text-xs font-bold text-white">VIP</span>
+                    )}
+                    {top.tier === '..OK' && (
+                      <span className="rounded bg-ok px-1.5 py-0.5 text-xs font-bold text-white">OK</span>
+                    )}
+                  </div>
+                  <p className="mt-1 font-semibold text-ink">{top.subject}</p>
+                  {top.fromEmail && (
+                    <p className="mt-0.5 text-xs text-muted">{top.fromEmail}</p>
+                  )}
+                </div>
+                <iframe
+                  title="Email body"
+                  sandbox="allow-popups"
+                  src={getBodyUrl(top.id)}
+                  className="min-h-0 flex-1 w-full border-0"
+                />
+              </>
+            )}
+          </div>
+        </div>
       ) : (
+        /* ── Mobile: existing card-stack + Deck ── */
         <div className="flex flex-1 gap-4 overflow-hidden">
-          {/* Queue list pane — visible only on md+ (aria-hidden: purely visual,
-              the Card itself is the primary interactive element). */}
           <aside
             aria-hidden="true"
             className="hidden md:flex md:w-56 md:flex-col md:overflow-y-auto md:rounded-2xl md:border md:border-hairline md:bg-white md:shadow-sm"
@@ -285,8 +382,6 @@ export function TriagePage() {
               ))}
             </ul>
           </aside>
-
-          {/* Active card + toolbar pane */}
           <div className="flex flex-1 flex-col overflow-hidden">
             <Deck
               cards={deck.cards}

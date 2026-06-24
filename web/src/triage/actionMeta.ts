@@ -16,6 +16,20 @@ export const ACTION_LABEL: Record<TriageAction, string> = {
   review: 'Review',
 }
 
+// Tailwind bg-color utility per action — for the desktop action column where
+// each button's background IS the action color (white text over color).
+export const ACTION_BG: Record<TriageAction, string> = {
+  ok: 'bg-ok',
+  vip: 'bg-vip',
+  'ok-clean': 'bg-ok',
+  'vip-clean': 'bg-vip',
+  junk: 'bg-junk',
+  unsub: 'bg-muted',
+  archive: 'bg-ink',
+  delete: 'bg-junk',
+  review: 'bg-review',
+}
+
 // Tailwind text-color utility token per action (references semantic tokens).
 export const ACTION_COLOR: Record<TriageAction, string> = {
   ok: 'text-ok',

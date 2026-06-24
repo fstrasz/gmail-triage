@@ -507,7 +507,9 @@ app.post("/api/conflict/remove-from-list", (req, res) => {
 });
 
 // ─── Shared: build the full preview HTML document for a message ───────────────
-async function buildPreviewDocument(gmail, id) {
+// noMeta=true omits the From/Subject/Date header — used by the React deck which
+// shows that info in the card header and would otherwise repeat it in the iframe.
+async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
   const msg=await gmail.users.messages.get({userId:"me",id,format:"full"});
   const headers=msg.data.payload.headers;
   const g=n=>headers.find(x=>x.name===n)?.value||"";
@@ -516,7 +518,8 @@ async function buildPreviewDocument(gmail, id) {
   const raw=htmlData||plainData;
   const decoded=raw?Buffer.from(raw,"base64url").toString("utf8"):"<p>No content</p>";
   const body=htmlData?decoded:"<pre style='white-space:pre-wrap;font-family:sans-serif;font-size:14px'>"+decoded.replace(/</g,"&lt;")+"</pre>";
-  return "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body><div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>"+body+"</body></html>";
+  const meta=noMeta?"":"<div class='meta'><div><strong>From:</strong> "+g("From").replace(/</g,"&lt;")+"</div><div><strong>Subject:</strong> "+g("Subject").replace(/</g,"&lt;")+"</div><div><strong>Date:</strong> "+g("Date")+"</div></div>";
+  return "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body>"+meta+body+"</body></html>";
 }
 
 // ─── API: Preview ──────────────────────────────────────────────────────────────
@@ -881,7 +884,7 @@ app.get("/api/triage/body", async (req, res) => {
   if (!id) return res.status(400).send("<pre>Missing id</pre>");
   try {
     const gmail = await getGmailClient();
-    res.type("html").send(await buildPreviewDocument(gmail, id));
+    res.type("html").send(await buildPreviewDocument(gmail, id, { noMeta: true }));
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
     res.send("<pre style='color:red'>Error: "+e.message+"</pre>");

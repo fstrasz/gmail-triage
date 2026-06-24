@@ -91,11 +91,13 @@ export function useAction() {
     // ok:true result leaves the optimistic removal standing.
     onSuccess: (result, _vars, context) => {
       if (!result.ok && context?.snapshot !== undefined) {
+        // Guard / auth: roll back optimistic removal so the card stays visible.
         queryClient.setQueryData(context.key, context.snapshot)
+      } else if (result.ok) {
+        // Successful action: refetch the queue so new mail fills in immediately.
+        void queryClient.invalidateQueries({ queryKey: context?.key })
       }
     },
-    // We don't force-invalidate on success so the deck doesn't jump while the
-    // user is reading a guard dialog.
   })
 }
 
