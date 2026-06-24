@@ -10,7 +10,7 @@ import { ACTION_LABEL, ACTION_BG, isUndoable } from './actionMeta.ts'
 import { Deck } from './Deck.tsx'
 import { GuardDialog } from './GuardDialog.tsx'
 import type { GuardInfo } from './GuardDialog.tsx'
-import { Toast } from './Toast.tsx'
+import { toastMessage } from './toastMessage.ts'
 import type { ToastInfo } from './Toast.tsx'
 
 const QUEUE_LIMIT = 25
@@ -21,7 +21,7 @@ type ColItem = TriageAction | 'gap' | 'spacer'
 const DESKTOP_COL: ColItem[] = [
   'vip', 'ok', 'gap',
   'vip-clean', 'ok-clean', 'gap',
-  'archive', 'review', 'unsub', 'spacer',
+  'archive', 'review', 'unsub', 'gap',
   'junk', 'delete',
 ]
 
@@ -193,6 +193,13 @@ export function TriagePage() {
     pending.current = null
   }
 
+  // Auto-dismiss the inline header toast after 6 s.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
+
   // ---- Keyboard shortcuts ---------------------------------------------------
   // Attach at document level; cleaned up on unmount. Only fires when no modal
   // is open and no action is in flight (single-in-flight invariant).
@@ -260,16 +267,34 @@ export function TriagePage() {
           handleResult's `undo`) stays visible and is not lost. */}
       {authError && <ReconnectGmail banner />}
 
-      <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-ink">
+      <header className="mb-4 flex items-center gap-3">
+        <h1 className="shrink-0 text-lg font-semibold text-ink">
           Triage <span className="font-mono text-muted">{queue.data?.counts.left ?? 0}</span>
         </h1>
+        {/* Inline feedback — centered between title and chip */}
+        <div className="flex flex-1 justify-center">
+          {toast && (
+            <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm">
+              <span className="text-muted">{toastMessage(toast)}</span>
+              {isUndoable(toast.undo.action) && (
+                <button
+                  type="button"
+                  aria-label="Undo last action"
+                  className="font-semibold text-ink underline underline-offset-2"
+                  onClick={() => onUndo(toast.undo)}
+                >
+                  Undo
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           aria-label="Hide VIP/OK listed senders"
           aria-pressed={hideListed}
           onClick={() => setMode(hideListed ? 'shown' : 'hidden')}
-          className={`rounded-full border px-3 py-1 text-sm font-medium ${
+          className={`shrink-0 rounded-full border px-3 py-1 text-sm font-medium ${
             hideListed ? 'border-ink bg-ink text-white' : 'border-hairline text-muted'
           }`}
         >
@@ -396,7 +421,6 @@ export function TriagePage() {
       )}
 
       <GuardDialog guard={guard} onConfirm={confirmGuard} onCancel={cancelGuard} />
-      {toast && <Toast info={toast} onUndo={onUndo} onDismiss={() => setToast(null)} />}
     </div>
   )
 }

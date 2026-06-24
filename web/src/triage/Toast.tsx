@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import type { TriageAction, UndoDescriptor } from '../lib/api.ts'
+import type { UndoDescriptor } from '../lib/api.ts'
 import { isUndoable } from './actionMeta.ts'
+import { toastMessage } from './toastMessage.ts'
 
 export interface ToastInfo {
   undo: UndoDescriptor
@@ -8,36 +9,6 @@ export interface ToastInfo {
   labeled?: number
 }
 
-// Bulk actions .DelPend many messages and return only a count; undo reverses
-// list membership only (FIX H3 — never claim a full undo we can't honor).
-const BULK_ACTIONS: ReadonlySet<TriageAction> = new Set<TriageAction>(['ok-clean', 'vip-clean', 'junk'])
-
-const ACTION_VERB: Record<TriageAction, string> = {
-  ok: 'Marked OK',
-  vip: 'Marked VIP',
-  'ok-clean': 'OK & Clean',
-  'vip-clean': 'VIP & Clean',
-  junk: 'Junked',
-  unsub: 'Unsubscribed',
-  archive: 'Archived',
-  delete: 'Deleted',
-  review: 'Queued for review',
-}
-
-function toastMessage(info: ToastInfo): string {
-  const { action } = info.undo
-  if (BULK_ACTIONS.has(action)) {
-    const n = info.labeled ?? 0
-    // Honest bulk copy: list-membership reverses, the bulk archive does not.
-    return `Listed removed — ${n} stay archived`
-  }
-  // FIX H3 — unsub/review have a no-op server undo; never promise undo for them.
-  if (!isUndoable(action)) {
-    if (action === 'unsub') return 'Unsubscribed — sender blocklisted (not reversible here)'
-    return 'Queued for review'
-  }
-  return `${ACTION_VERB[action]} — undo available`
-}
 
 export function Toast({
   info,
