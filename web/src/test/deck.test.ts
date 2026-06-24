@@ -14,8 +14,9 @@ test('hidden', () => {
   expect(swipeAction('hidden','left')).toBe('junk')
   expect(swipeAction('hidden','up')).toBe('vip')
   expect(swipeAction('hidden','down')).toBe('delete')
-  expect(BUTTONS.hidden).toEqual(['vip-clean','archive','unsub'])
-  expect(MORE.hidden).toEqual(['ok','vip','ok-clean','junk','delete','review'])
+  // Operator-chosen tap row; ⋯ holds only the actions no button/swipe covers.
+  expect(BUTTONS.hidden).toEqual(['ok','archive','review'])
+  expect(MORE.hidden).toEqual(['vip-clean','unsub'])
 })
 
 test('shown', () => {
@@ -27,11 +28,19 @@ test('shown', () => {
   expect(MORE.shown).toEqual(['ok','ok-clean','junk','archive','delete','review'])
 })
 
-test('a11y parity: buttons ∪ More = all 9; every swipe is reachable as a control (DECK-3)', () => {
+test('a11y parity: every action reachable via button ∪ swipe ∪ More (DECK-3)', () => {
   for (const m of ['hidden','shown'] as const) {
-    const tap = new Set([...BUTTONS[m], ...MORE[m]])
-    expect(tap).toEqual(new Set(ALL9))
-    for (const d of ['left','right','up','down'] as const) expect(tap.has(swipeAction(m,d))).toBe(true)
+    const swipes = (['left','right','up','down'] as const).map(d => swipeAction(m,d))
+    expect(new Set([...BUTTONS[m], ...swipes, ...MORE[m]])).toEqual(new Set(ALL9))
+  }
+})
+
+test('hidden ⋯ is lean: exactly the 2 actions no button or swipe covers', () => {
+  const swipes = (['left','right','up','down'] as const).map(d => swipeAction('hidden',d))
+  expect(MORE.hidden).toEqual(['vip-clean','unsub'])
+  for (const a of MORE.hidden) {
+    expect(BUTTONS.hidden).not.toContain(a)
+    expect(swipes).not.toContain(a)
   }
 })
 

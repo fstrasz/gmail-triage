@@ -106,33 +106,37 @@ describe('TriagePage / Deck UI', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('2. clicking "OK" in the opened More sheet calls action.mutate with {action:"ok"} for the TOP card', () => {
+  test('2. clicking the "OK" button calls action.mutate with {action:"ok"} for the TOP card', () => {
     render(<TriagePage />)
-    fireEvent.click(screen.getByRole('button', { name: /more actions/i }))
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('menuitem', { name: ACTION_LABELS.ok }))
+    fireEvent.click(screen.getByRole('button', { name: ACTION_LABELS.ok }))
     expect(actionMutate).toHaveBeenCalledTimes(1)
     const payload = actionMutate.mock.calls[0][0] as { action: string; id: string }
     expect(payload.action).toBe('ok')
     expect(payload.id).toBe('e1')
   })
 
-  test('3. a11y parity (DECK-3): every one of the 9 actions is a labeled control across button row + More, no gesture', () => {
+  test('3. action surface (DECK-3, hidden): OK/Archive/Review are buttons, VIP&Clean/Unsub in More, the 4 swipe actions on the card legend', () => {
     render(<TriagePage />)
-    const reachable = new Set<string>()
 
-    // Button row (sheet closed): record every action-named button.
-    for (const [action, label] of Object.entries(ACTION_LABELS)) {
-      if (screen.queryByRole('button', { name: label })) reachable.add(action)
+    // Button row = the three tap actions.
+    for (const a of ['ok', 'archive', 'review']) {
+      expect(screen.queryByRole('button', { name: ACTION_LABELS[a] })).not.toBeNull()
     }
-
-    // Full overflow sheet (open): record every action-named menuitem.
+    // The four swipe actions are intentionally NOT tap buttons (swipe/keyboard only).
+    for (const a of ['ok-clean', 'vip', 'junk', 'delete']) {
+      expect(screen.queryByRole('button', { name: ACTION_LABELS[a] })).toBeNull()
+    }
+    // ...but they ARE surfaced on the top card's swipe legend (DECK-1), so every
+    // action stays discoverable (button ∪ swipe-legend ∪ More = all 9).
+    const legend = screen.getAllByRole('list', { name: 'Swipe legend' })[0]
+    for (const a of ['ok-clean', 'vip', 'junk', 'delete']) {
+      expect(within(legend).getByText(ACTION_LABELS[a])).toBeInTheDocument()
+    }
+    // The ⋯ sheet holds exactly the two leftover actions.
     fireEvent.click(screen.getByRole('button', { name: /more actions/i }))
-    for (const [action, label] of Object.entries(ACTION_LABELS)) {
-      if (screen.queryByRole('menuitem', { name: label })) reachable.add(action)
-    }
-
-    expect(reachable).toEqual(new Set(Object.keys(ACTION_LABELS)))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByRole('menuitem', { name: ACTION_LABELS['vip-clean'] })).not.toBeNull()
+    expect(within(dialog).queryByRole('menuitem', { name: ACTION_LABELS.unsub })).not.toBeNull()
   })
 
   test('4. a guard result opens GuardDialog; confirming re-calls the action with confirmed:true', () => {
@@ -190,13 +194,13 @@ describe('TriagePage / Deck UI', () => {
     expect(undoMutate.mock.calls[0][0]).toEqual(desc)
   })
 
-  test('7b. honest bulk copy: ok-clean toast says listed removed + N stay archived', () => {
-    hookState.actionResult = { ok: true, labeled: 7, undo: stubUndo('ok-clean') }
+  test('7b. honest bulk copy: vip-clean toast says listed removed + N stay archived', () => {
+    hookState.actionResult = { ok: true, labeled: 7, undo: stubUndo('vip-clean') }
     render(<TriagePage />)
-    // ok-clean lives in the More sheet (hidden mode).
+    // vip-clean lives in the More sheet (hidden mode); ok-clean/junk are swipe-only.
     fireEvent.click(screen.getByRole('button', { name: /more actions/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('menuitem', { name: ACTION_LABELS['ok-clean'] }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: ACTION_LABELS['vip-clean'] }))
     const toast = screen.getByRole('status')
     expect(within(toast).getByText(/listed removed/i)).toBeInTheDocument()
     expect(within(toast).getByText(/7.*stay archived/i)).toBeInTheDocument()
@@ -205,8 +209,10 @@ describe('TriagePage / Deck UI', () => {
   test('7c. honest unsub copy (FIX H3): toast does NOT claim "undo available" and renders NO Undo button', () => {
     hookState.actionResult = { ok: true, undo: stubUndo('unsub') }
     render(<TriagePage />)
-    // Unsub is in the hidden-mode button row.
-    fireEvent.click(screen.getByRole('button', { name: ACTION_LABELS.unsub }))
+    // Unsub now lives in the More sheet (hidden mode).
+    fireEvent.click(screen.getByRole('button', { name: /more actions/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: ACTION_LABELS.unsub }))
     const toast = screen.getByRole('status')
     expect(within(toast).queryByText(/undo available/i)).not.toBeInTheDocument()
     expect(within(toast).queryByRole('button', { name: /undo/i })).not.toBeInTheDocument()

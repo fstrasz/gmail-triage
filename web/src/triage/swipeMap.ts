@@ -20,13 +20,20 @@ export function swipeAction(mode: Mode, dir: Dir): TriageAction {
 
 // Primary buttons visible per mode (3 each)
 export const BUTTONS: Record<Mode, TriageAction[]> = {
-  hidden: ['vip-clean', 'archive', 'unsub'],
+  hidden: ['ok', 'archive', 'review'],   // operator-chosen tap row; swipes cover OK&Clean/Junk/VIP/Delete
   shown:  ['vip', 'vip-clean', 'unsub'],
 }
 
-// Full overflow = every action NOT in BUTTONS[mode].
-// Derived structurally so buttons ∪ MORE = ALL9 by construction (DECK-3).
+// Actions reachable by a swipe gesture in a given mode (the four directions).
+const swipeCovered = (m: Mode): TriageAction[] =>
+  (['left', 'right', 'up', 'down'] as Dir[]).map(d => SWIPE_MAP[m][d])
+
+// MORE = the `⋯` overflow tap menu.
+//  - hidden: ONLY actions not already covered by a button OR a swipe (VIP & Clean,
+//    Unsub) — the menu never duplicates a gesture, so it stays a lean 2 items.
+//  - shown: unchanged — full overflow of everything not in the button row.
+// Every action stays reachable via button ∪ swipe ∪ MORE in each mode (DECK-3).
 export const MORE: Record<Mode, TriageAction[]> = {
-  hidden: ALL9.filter(a => !BUTTONS.hidden.includes(a)),
+  hidden: ALL9.filter(a => !BUTTONS.hidden.includes(a) && !swipeCovered('hidden').includes(a)),
   shown:  ALL9.filter(a => !BUTTONS.shown.includes(a)),
 }
