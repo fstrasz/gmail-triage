@@ -168,11 +168,12 @@ export function TriagePage() {
     )
   }
 
-  // Jump to a queue item: move it to the front; defer skipped items to the back.
+  // Jump to a queue item: move it to the front; everything else keeps its order
+  // so items above the selection remain reachable in the queue.
   function selectCard(index: number) {
     if (index === 0) return
     const c = deck.cards
-    dispatch({ type: 'load', cards: [c[index], ...c.slice(index + 1), ...c.slice(0, index)] })
+    dispatch({ type: 'load', cards: [c[index], ...c.slice(0, index), ...c.slice(index + 1)] })
   }
 
   function onUndo(descriptor: UndoDescriptor) {
