@@ -194,7 +194,7 @@ describe('TriagePage / Deck UI', () => {
     expect(undoMutate.mock.calls[0][0]).toEqual(desc)
   })
 
-  test('7b. honest bulk copy: vip-clean toast says listed removed + N stay archived', () => {
+  test('7b. honest bulk copy: vip-clean toast says N archived + undo removes from list', () => {
     hookState.actionResult = { ok: true, labeled: 7, undo: stubUndo('vip-clean') }
     render(<TriagePage />)
     // vip-clean lives in the More sheet (hidden mode); ok-clean/junk are swipe-only.
@@ -202,8 +202,8 @@ describe('TriagePage / Deck UI', () => {
     const dialog = screen.getByRole('dialog')
     fireEvent.click(within(dialog).getByRole('menuitem', { name: ACTION_LABELS['vip-clean'] }))
     const toast = screen.getByRole('status')
-    expect(within(toast).getByText(/listed removed/i)).toBeInTheDocument()
-    expect(within(toast).getByText(/7.*stay archived/i)).toBeInTheDocument()
+    expect(within(toast).getByText(/7 archived/i)).toBeInTheDocument()
+    expect(within(toast).getByText(/undo removes from list/i)).toBeInTheDocument()
   })
 
   test('7c. honest unsub copy (FIX H3): toast does NOT claim "undo available" and renders NO Undo button', () => {
