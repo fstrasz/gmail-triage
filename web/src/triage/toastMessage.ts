@@ -20,7 +20,8 @@ export function toastMessage(info: ToastInfo): string {
   const { action } = info.undo
   if (BULK_ACTIONS.has(action)) {
     const n = info.labeled ?? 0
-    return `${ACTION_VERB[action]} — ${n} archived. Undo removes from list.`
+    const listName = action === 'junk' ? 'blocklist' : 'list'
+    return `${ACTION_VERB[action]} — ${n} archived. Undo removes from ${listName}.`
   }
   if (!isUndoable(action)) {
     if (action === 'unsub') return 'Unsubscribed — sender blocklisted (not reversible here)'
