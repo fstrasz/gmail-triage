@@ -265,6 +265,27 @@ describe('TriagePage / Deck UI', () => {
     render(<TriagePage />)
     expect(screen.getByTestId('deck-skeleton')).toBeInTheDocument()
   })
+
+  test('11. desktop (mouse, no swipe): every action is a visible button, no ⋯ menu', () => {
+    const orig = window.matchMedia
+    // Desktop capability: hover + fine pointer → useMediaQuery returns true.
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true, media: '', onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    }) as unknown as typeof window.matchMedia
+    try {
+      render(<TriagePage />)
+      // All nine actions are visible, labeled buttons (no gesture needed).
+      for (const a of Object.keys(ACTION_LABELS)) {
+        expect(screen.getByRole('button', { name: ACTION_LABELS[a] })).toBeInTheDocument()
+      }
+      // No ⋯ overflow on desktop — everything is already a button.
+      expect(screen.queryByRole('button', { name: /more actions/i })).toBeNull()
+    } finally {
+      window.matchMedia = orig
+    }
+  })
 })
 
 // keep `act` referenced for potential async flushes without unused-import error
