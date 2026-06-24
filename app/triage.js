@@ -845,7 +845,12 @@ app.get("/api/triage/queue", async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 25;
   try {
     const gmail = await getGmailClient();
-    const raw = await fetchEmails(gmail, limit);
+    // Skip listed senders DURING fetch (draw from the larger pool until `limit`
+    // unlisted are found), exactly like the live /triage. A post-fetch filter alone
+    // returned an EMPTY queue whenever the newest `limit` messages were all VIP/OK-
+    // listed — leaving no card to advance to. filterHidden still drops blocked mail.
+    const skipSender = hideListed ? isListedSender : null;
+    const raw = await fetchEmails(gmail, limit, { skipSender });
     const emails = filterHidden(raw, { hideListed }).map(shapeTriageEmail);
     res.json({ emails, counts: { left: emails.length } });
   } catch(e) {
