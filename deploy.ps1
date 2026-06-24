@@ -199,9 +199,9 @@ if (-not $WhatIf) {
     try {
         $health = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/health" -TimeoutSec 15 -ErrorAction Stop
         if ($health.StatusCode -eq 200) {
-            Write-Host "  /health probe OK (HTTP 200 — healthy)." -ForegroundColor Green
+            Write-Host "  /health probe OK (HTTP 200 - healthy)." -ForegroundColor Green
         } elseif ($health.StatusCode -eq 503) {
-            Write-Host "  /health probe WARN (HTTP 503 — degraded; deploy continues)." -ForegroundColor Yellow
+            Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
         } else {
             Write-Host "HEALTH PROBE FAILED: unexpected status $($health.StatusCode)." -ForegroundColor Red
             exit 1
@@ -209,7 +209,7 @@ if (-not $WhatIf) {
     } catch {
         $sc = $_.Exception.Response.StatusCode.value__
         if ($sc -eq 503) {
-            Write-Host "  /health probe WARN (HTTP 503 — degraded; deploy continues)." -ForegroundColor Yellow
+            Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
         } else {
             Write-Host "HEALTH PROBE FAILED: $_" -ForegroundColor Red
             exit 1
