@@ -37,6 +37,20 @@ export function readWebAsset(webDist, webEnabled) {
   return fs.existsSync(path.join(webDist, "index.html")) ? "ok" : "missing";
 }
 
+// web/dist sits at a different depth relative to triage.js depending on layout:
+// locally triage.js is in app/ so the build is at ../web/dist; in the container
+// triage.js is at /app/triage.js and the bundle is bind-mounted at /app/web/dist
+// (a child — no "..").  Probe both and pick whichever actually holds index.html so
+// /app resolves in BOTH environments. (A module-relative "../web/dist" alone was
+// cwd-independent but not layout-independent — it overshot to /web/dist in prod.)
+export function resolveWebDist(moduleDir) {
+  const candidates = [
+    path.join(moduleDir, "..", "web", "dist"), // local:     <repo>/app/triage.js -> <repo>/web/dist
+    path.join(moduleDir, "web", "dist"),        // container: /app/triage.js       -> /app/web/dist
+  ];
+  return candidates.find((p) => fs.existsSync(path.join(p, "index.html"))) || candidates[0];
+}
+
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
 // webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
 export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset }) {

@@ -10,7 +10,7 @@ import { isListedSender } from "./lib/listedSender.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
-import { getHealthReport, readHealthInputs, readWebAsset } from "./lib/health.js";
+import { getHealthReport, readHealthInputs, readWebAsset, resolveWebDist } from "./lib/health.js";
 import { shapeTriageEmail, filterHidden, normalizeGuard, ACTION_DISPATCH } from "./lib/triageApi.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
@@ -1023,9 +1023,10 @@ app.post("/api/triage/undo", async (req, res) => {
 });
 
 // ─── React app (/app) — served from web/dist, resolved relative to THIS module
-// (not process.cwd(), since the server runs from app/). Registered last, after
-// all /api/* routes. Set WEB_APP_ENABLED=0 to disable and fall back to the old UI.
-const WEB_DIST = pathmod.join(pathmod.dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
+// (not process.cwd(), since the server runs from app/). resolveWebDist probes both
+// the local (../web/dist) and container (/app/web/dist) layouts so /app works in
+// both. Registered last, after all /api/* routes. Set WEB_APP_ENABLED=0 to disable.
+const WEB_DIST = resolveWebDist(pathmod.dirname(fileURLToPath(import.meta.url)));
 if (process.env.WEB_APP_ENABLED !== "0") {
   app.use("/app", express.static(WEB_DIST));
   app.get(/^\/app(\/.*)?$/, (req, res) => res.sendFile(pathmod.join(WEB_DIST, "index.html")));

@@ -1684,3 +1684,47 @@ test('readWebAsset: returns "disabled" without touching fs when webEnabled is fa
   assert.equal(readWebAsset('/nonexistent/path/that/does/not/exist', false), 'disabled');
 });
 
+// ─── resolveWebDist: picks the right web/dist for local vs container layout ──
+test('resolveWebDist: LOCAL layout — triage.js in app/, bundle at ../web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd1=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-local-'));
+  try {
+    const moduleDir = path.join(root, 'app');          // <repo>/app/triage.js
+    const expected = path.join(root, 'web', 'dist');   // <repo>/web/dist
+    fs.mkdirSync(moduleDir, { recursive: true });
+    fs.mkdirSync(expected, { recursive: true });
+    fs.writeFileSync(path.join(expected, 'index.html'), '<!doctype html>');
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(expected));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveWebDist: CONTAINER layout — triage.js at /app, bundle at /app/web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd2=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-container-'));
+  try {
+    const moduleDir = path.join(root, 'app');                  // /app/triage.js
+    const expected = path.join(moduleDir, 'web', 'dist');      // /app/web/dist (child, no "..")
+    fs.mkdirSync(expected, { recursive: true });
+    fs.writeFileSync(path.join(expected, 'index.html'), '<!doctype html>');
+    // The local-layout candidate (root/web/dist) must NOT exist, so the child wins.
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(expected));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveWebDist: neither candidate has index.html → falls back to ../web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd3=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-none-'));
+  try {
+    const moduleDir = path.join(root, 'app');
+    fs.mkdirSync(moduleDir, { recursive: true });
+    const fallback = path.join(moduleDir, '..', 'web', 'dist');
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(fallback));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
