@@ -46,12 +46,33 @@ if ($WhatIf) {
     Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
     Write-Host ""
 } else {
-    & npm --prefix "$Source\web" ci
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "WEB DEPS FAILED (npm ci). Aborting." -ForegroundColor Red
-        exit 1
+    # Skip the slow 'npm ci' (wipes + reinstalls web/node_modules, 2-5 min) when the
+    # lockfile is unchanged since the last successful install. The hash marker lives inside
+    # node_modules, so deleting node_modules (or npm ci itself) invalidates it automatically.
+    $webDir     = "$Source\web"
+    $webModules = "$webDir\node_modules"
+    $lockMarker = "$webModules\.deploy-lockhash"
+    $lockHash   = (Get-FileHash "$webDir\package-lock.json" -Algorithm SHA256).Hash
+
+    $needCi = $true
+    if ((Test-Path $webModules) -and (Test-Path $lockMarker)) {
+        if ((Get-Content $lockMarker -Raw).Trim() -eq $lockHash) {
+            $needCi = $false
+        }
     }
-    & npm --prefix "$Source\web" run test
+
+    if ($needCi) {
+        & npm --prefix $webDir ci
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "WEB DEPS FAILED (npm ci). Aborting." -ForegroundColor Red
+            exit 1
+        }
+        Set-Content $lockMarker $lockHash -NoNewline
+    } else {
+        Write-Host "  web deps unchanged (lockfile hash match) -- skipping npm ci." -ForegroundColor Gray
+    }
+
+    & npm --prefix $webDir run test
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "WEB TESTS FAILED. Aborting." -ForegroundColor Red
