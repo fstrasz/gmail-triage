@@ -52,6 +52,19 @@ export async function ensureLabel(gmail, name) {
 }
 export function getLabelId(name) { return labelCache[name] || null; }
 
+// ─── Triage queue query builder ───────────────────────────────────────────────
+// One source of truth for the inbox triage-queue query, used by fetchEmails (the
+// /triage + /api/triage/queue pool) and selectNextTriageMessage (/api/next +
+// /api/triage/next). Excludes .DelPend (blocklist-bound) and For_Review (already
+// queued for Claude review) — without the For_Review exclusion a reviewed-but-
+// still-in-inbox message reappears in the triage stream on every refetch. Hidden
+// mode additionally drops already-labeled ..VIP/..OK at the query level.
+export function buildQueueQuery({ excludeListedLabels = false } = {}) {
+  let q = "in:inbox -label:.DelPend -label:For_Review";
+  if (excludeListedLabels) q += " -label:..VIP -label:..OK";
+  return q;
+}
+
 // ─── Reapply query builder ────────────────────────────────────────────────────
 // Builds the Gmail search query used by /api/reapply guard, /api/reapply/preview, and
 // internally inside reapplyTier/reapplyBlocklist/reapplyRules. One source of truth so
@@ -220,8 +233,7 @@ export async function fetchEmails(gmail, max = 25, { skipSender = null, maxPages
     if (id) ruleLabelMap[id] = r.label;
   }
 
-  let q = "in:inbox -label:.DelPend";
-  if (excludeListedLabels) q += " -label:..VIP -label:..OK";
+  const q = buildQueueQuery({ excludeListedLabels });
 
   const vipId = labelCache["..VIP"] || "";
   const okId  = labelCache["..OK"]  || "";

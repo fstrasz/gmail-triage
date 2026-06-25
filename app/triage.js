@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import pathmod from "path";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, untrashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, untrashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery, buildQueueQuery } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted } from "./lib/viplist.js";
 import { loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/oklist.js";
 import { isListedSender } from "./lib/listedSender.js";
@@ -255,7 +255,7 @@ async function selectNextTriageMessage(gmail, { seenSenders, seenIds, hideListed
   const autoCleanedEntries=[];
   let pageToken=null;
   do {
-    const result=await gmail.users.messages.list({userId:"me",q:"in:inbox -label:.DelPend",maxResults:50,...(pageToken?{pageToken}:{})});
+    const result=await gmail.users.messages.list({userId:"me",q:buildQueueQuery(),maxResults:50,...(pageToken?{pageToken}:{})});
     const messages=result.data.messages||[];
     pageToken=result.data.nextPageToken||null;
     for(const msg of messages){
