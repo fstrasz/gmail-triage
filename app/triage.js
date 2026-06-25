@@ -842,6 +842,14 @@ app.get("/health", (req, res) => {
 // ─── Auth error classifier ──────────────────────────────────────────────────────
 function isAuthError(e) { return e?.response?.status===401||/invalid_grant/i.test(e?.message||""); }
 
+// Log the real error server-side, return a generic message to the client. Keeps internal
+// detail (paths, library internals, stack hints) out of the JSON API responses while
+// preserving debuggability in the container logs.
+function triageServerError(res, e, label, withOk = false) {
+  console.error(`[${label}] error:`, e?.stack || e?.message || e);
+  res.status(500).json(withOk ? { ok: false, error: "Internal server error" } : { error: "Internal server error" });
+}
+
 // ─── API: Triage queue (React) ─────────────────────────────────────────────────
 app.get("/api/triage/queue", async (req, res) => {
   const hideListed = req.query.hideListed === "1";
@@ -862,7 +870,7 @@ app.get("/api/triage/queue", async (req, res) => {
     res.json({ emails, counts: { left: emails.length } });
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
-    res.status(500).json({ error: e.message });
+    triageServerError(res, e, "/api/triage/queue");
   }
 });
 
@@ -878,7 +886,7 @@ app.get("/api/triage/next", async (req, res) => {
     res.json({ email: shapeTriageEmail(result), autoCleaned: result.autoCleanedEntries });
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
-    res.status(500).json({ error: e.message });
+    triageServerError(res, e, "/api/triage/next");
   }
 });
 
@@ -891,7 +899,8 @@ app.get("/api/triage/body", async (req, res) => {
     res.type("html").send(await buildPreviewDocument(gmail, id, { noMeta: true }));
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
-    res.send("<pre style='color:red'>Error: "+e.message+"</pre>");
+    console.error("[/api/triage/body] error:", e?.stack || e?.message || e);
+    res.status(500).send("<pre style='color:red'>Error loading message.</pre>");
   }
 });
 
@@ -999,7 +1008,7 @@ app.post("/api/triage/action", async (req, res) => {
     }
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
-    res.status(500).json({ ok: false, error: e.message });
+    triageServerError(res, e, "/api/triage/action", true);
   }
 });
 
@@ -1030,7 +1039,7 @@ app.post("/api/triage/undo", async (req, res) => {
     res.json({ ok: true });
   } catch(e) {
     if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
-    res.status(500).json({ ok: false, error: e.message });
+    triageServerError(res, e, "/api/triage/undo", true);
   }
 });
 
