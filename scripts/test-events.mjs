@@ -218,9 +218,12 @@ test('noise filter: rejects unsubscribe + social hosts', () => {
 const eventSearchModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'eventSearch.js')
 ).href;
+const claudeUtilsModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'claudeUtils.js')
+).href;
 
 test('estimateTokens: ~chars/4 rounded up', async () => {
-  const { estimateTokens } = await import(eventSearchModulePath);
+  const { estimateTokens } = await import(claudeUtilsModulePath);
   assert.equal(estimateTokens(''), 0);
   assert.equal(estimateTokens('1234'), 1);
   assert.equal(estimateTokens('12345'), 2);
@@ -228,7 +231,7 @@ test('estimateTokens: ~chars/4 rounded up', async () => {
 });
 
 test('batchByTokenBudget: packs greedily, opens new batch when budget would be exceeded', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   const items = [
     { id: 'a', tokens: 4000 },
     { id: 'b', tokens: 4000 },
@@ -243,7 +246,7 @@ test('batchByTokenBudget: packs greedily, opens new batch when budget would be e
 });
 
 test('batchByTokenBudget: single oversized item gets its own batch', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   const items = [
     { id: 'huge', tokens: 50_000 },
     { id: 'small', tokens: 100 },
@@ -257,12 +260,12 @@ test('batchByTokenBudget: single oversized item gets its own batch', async () =>
 });
 
 test('batchByTokenBudget: empty input → empty batches', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   assert.deepEqual(batchByTokenBudget([], i => i.tokens, 10_000), []);
 });
 
 test('batchByTokenBudget: everything fits in one batch', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   const items = [{ id: 'a', t: 100 }, { id: 'b', t: 100 }, { id: 'c', t: 100 }];
   const batches = batchByTokenBudget(items, i => i.t, 10_000);
   assert.equal(batches.length, 1);
@@ -270,7 +273,7 @@ test('batchByTokenBudget: everything fits in one batch', async () => {
 });
 
 test('batchByTokenBudget: max-count cap triggers new batch even when tokens fit', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   // 5 items, each 100 tokens. Budget 10k (plenty). maxCount 2.
   const items = Array.from({ length: 5 }, (_, i) => ({ id: `i${i}`, t: 100 }));
   const batches = batchByTokenBudget(items, i => i.t, 10_000, 2);
@@ -281,7 +284,7 @@ test('batchByTokenBudget: max-count cap triggers new batch even when tokens fit'
 });
 
 test('batchByTokenBudget: max-count Infinity (default) keeps old behavior', async () => {
-  const { batchByTokenBudget } = await import(eventSearchModulePath);
+  const { batchByTokenBudget } = await import(claudeUtilsModulePath);
   const items = Array.from({ length: 50 }, (_, i) => ({ id: `i${i}`, t: 10 }));
   const batches = batchByTokenBudget(items, i => i.t, 10_000);
   assert.equal(batches.length, 1, '50 items × 10 tokens = 500 tokens, all fit, default no-count-cap');
@@ -525,43 +528,43 @@ test('getEmailBodyText: neither part → empty string', async () => {
 });
 
 test('extractJsonArray: clean array', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   assert.equal(extractJsonArray('[1,2,3]'), '[1,2,3]');
   assert.equal(extractJsonArray('[]'), '[]');
 });
 
 test('extractJsonArray: array with preamble and postamble', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   assert.equal(extractJsonArray('Here you go: [1,2,3] hope that helps'), '[1,2,3]');
   assert.equal(extractJsonArray('Sure!\n[]\n'), '[]');
 });
 
 test('extractJsonArray: bracket inside string literal does not confuse', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   const s = 'reply: [{"url":"https://a.b/[xyz]","title":"hi"}]';
   assert.equal(extractJsonArray(s), '[{"url":"https://a.b/[xyz]","title":"hi"}]');
 });
 
 test('extractJsonArray: escaped quote in string', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   const s = '[{"title":"He said \\"hi\\"","date":"2026-05-15"}]';
   assert.equal(extractJsonArray(s), s);
 });
 
 test('extractJsonArray: nested arrays', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   assert.equal(extractJsonArray('intro [[1,2],[3,4]] outro'), '[[1,2],[3,4]]');
 });
 
 test('extractJsonArray: returns null when no array', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   assert.equal(extractJsonArray('no array here'), null);
   assert.equal(extractJsonArray(''), null);
   assert.equal(extractJsonArray(null), null);
 });
 
 test('extractJsonArray: returns null when unbalanced', async () => {
-  const { extractJsonArray } = await import(eventSearchModulePath);
+  const { extractJsonArray } = await import(claudeUtilsModulePath);
   assert.equal(extractJsonArray('start [1,2 no close'), null);
 });
 
@@ -974,14 +977,14 @@ test('extractName: bare address returns the address (no name to extract)', async
 // ─── mapWithConcurrency: bounded parallel mapper ─────────────────────────────
 
 test('mapWithConcurrency: runs all items, preserves order', async () => {
-  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const { mapWithConcurrency } = await import(claudeUtilsModulePath);
   const items = [1, 2, 3, 4, 5];
   const out = await mapWithConcurrency(items, 2, async (n) => n * 10);
   assert.deepEqual(out, [10, 20, 30, 40, 50]);
 });
 
 test('mapWithConcurrency: respects concurrency cap', async () => {
-  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const { mapWithConcurrency } = await import(claudeUtilsModulePath);
   let inflight = 0;
   let maxInflight = 0;
   const items = Array.from({ length: 10 }, (_, i) => i);
@@ -996,7 +999,7 @@ test('mapWithConcurrency: respects concurrency cap', async () => {
 });
 
 test('mapWithConcurrency: per-item errors return undefined; does not throw', async () => {
-  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const { mapWithConcurrency } = await import(claudeUtilsModulePath);
   const items = [1, 2, 3];
   const out = await mapWithConcurrency(items, 2, async (n) => {
     if (n === 2) throw new Error('boom');
@@ -1008,7 +1011,7 @@ test('mapWithConcurrency: per-item errors return undefined; does not throw', asy
 });
 
 test('mapWithConcurrency: empty input → empty output', async () => {
-  const { mapWithConcurrency } = await import(eventSearchModulePath);
+  const { mapWithConcurrency } = await import(claudeUtilsModulePath);
   const out = await mapWithConcurrency([], 5, async () => 1);
   assert.deepEqual(out, []);
 });
