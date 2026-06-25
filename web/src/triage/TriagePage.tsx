@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import type { TriageEmail, TriageAction, ActionResult, UndoDescriptor } from '../lib/api.ts'
 import { getBodyUrl } from '../lib/api.ts'
 import { useMediaQuery } from '../lib/useMediaQuery.ts'
+import { loadMode, saveMode } from '../lib/persistMode.ts'
 import { useQueue, useAction, useUndo } from '../lib/queries.ts'
 import { deckReducer } from './deckReducer.ts'
 import type { Mode, Dir } from './swipeMap.ts'
@@ -41,7 +42,7 @@ const KEY_DIR: Record<string, Dir> = {
 }
 
 export function TriagePage() {
-  const [mode, setMode] = useState<Mode>('hidden') // FIX: filter default ON (hidden)
+  const [mode, setMode] = useState<Mode>(loadMode) // filter default ON (hidden); persisted across visits (#28)
   const hideListed = mode === 'hidden'
   const queueParams = { hideListed, limit: QUEUE_LIMIT }
 
@@ -79,6 +80,7 @@ export function TriagePage() {
   }, [emails])
   useEffect(() => {
     dispatch({ type: 'setMode', mode })
+    saveMode(mode)
   }, [mode])
 
   // FIX E — a successful (re)fetch of the queue means Gmail is reachable again;
