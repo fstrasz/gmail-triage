@@ -1,0 +1,18 @@
+# Build context excludes. The Dockerfile only COPYs app/ + web/dist; everything
+# else (esp. config/ with secrets, and node_modules) stays out of the daemon context.
+node_modules
+app/node_modules
+web/node_modules
+config
+.git
+.claude
+docs
+memory
+scripts
+deploy.ps1
+deploy.log
+deploy-history.ndjson
+*.env
+*.json.bak
+README.md
+CLAUDE.md

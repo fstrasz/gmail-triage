@@ -98,6 +98,7 @@ if ($WhatIf) {
 }
 
 # -- Auto-increment version in pages.js and commit locally (no push) -----------
+$newVersion = "unknown"   # sentinel if APP_VERSION isn't found, so the deploy NDJSON never records null
 $pagesFile = "$Source\app\lib\pages.js"
 $content = Get-Content $pagesFile -Raw
 if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
@@ -140,7 +141,7 @@ $robocopyArgs = @(
     "/TEE",
     "/LOG+:$Log",
     "/XD", "node_modules", "config", ".git", ".claude",
-    "/XF", "*.env", "*.json.bak", "deploy.*"
+    "/XF", "*.env", "*.json.bak", "deploy.*", "deploy-history.ndjson"
 )
 
 if ($WhatIf) {
@@ -191,7 +192,9 @@ if (-not $WhatIf) {
     Write-Host ""
     Write-Host "Recreating container on NAS..." -ForegroundColor Cyan
     $sshKey = "$env:USERPROFILE\.ssh\id_ed25519"
-    $sshCmd = 'cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose up -d --force-recreate'
+    # --build rebuilds the image from the just-robocopied source (incl. web/dist) so
+    # prod runs the baked artifact, not host files; --force-recreate swaps the container.
+    $sshCmd = 'cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose up -d --build --force-recreate'
     ssh -i $sshKey fstrasz_admin@192.168.20.10 $sshCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Host "CONTAINER RECREATE FAILED (ssh exit $LASTEXITCODE). Check NAS manually." -ForegroundColor Red
@@ -217,12 +220,15 @@ if (-not $WhatIf) {
     }
 
     Write-Host "Probing /health..." -ForegroundColor Cyan
+    $healthState = "unknown"
     try {
         $health = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/health" -TimeoutSec 15 -ErrorAction Stop
         if ($health.StatusCode -eq 200) {
             Write-Host "  /health probe OK (HTTP 200 - healthy)." -ForegroundColor Green
+            $healthState = "ok"
         } elseif ($health.StatusCode -eq 503) {
             Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+            $healthState = "degraded"
         } else {
             Write-Host "HEALTH PROBE FAILED: unexpected status $($health.StatusCode)." -ForegroundColor Red
             exit 1
@@ -231,9 +237,28 @@ if (-not $WhatIf) {
         $sc = $_.Exception.Response.StatusCode.value__
         if ($sc -eq 503) {
             Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+            $healthState = "degraded"
         } else {
             Write-Host "HEALTH PROBE FAILED: $_" -ForegroundColor Red
             exit 1
         }
     }
+
+    # -- Append a deploy record (NDJSON). Only reached when BOTH probes pass (every
+    # failure path above exits 1), so a line here = a verified-healthy deploy. One
+    # JSON object per line, UTF-8 no-BOM, append-only -- unlocks DORA deploy metrics.
+    $deployLog = "$Source\deploy-history.ndjson"
+    $gitSha = (git -C $Source rev-parse --short HEAD 2>$null)
+    $record = [ordered]@{
+        ts       = (Get-Date).ToUniversalTime().ToString("o")
+        version  = $newVersion
+        gitSha   = "$gitSha"
+        host     = $env:COMPUTERNAME
+        appProbe = "ok"
+        health   = $healthState
+        result   = "success"
+    }
+    $line = ($record | ConvertTo-Json -Compress)
+    [System.IO.File]::AppendAllText($deployLog, $line + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "Deploy recorded: $deployLog" -ForegroundColor Gray
 }
