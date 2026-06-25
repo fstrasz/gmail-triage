@@ -104,6 +104,27 @@ export async function countMatchingEmails(gmail, query) {
   return count;
 }
 
+// ─── Paginate a query and harvest matching message IDs ──────────────────────────
+// Shared by reapplyRules + scanAndApplyRules (the rules pair) — their pagination loops
+// were byte-identical. The caller builds and OWNS the query string, so the scan-vs-
+// reapply exclusion semantics stay divergent at the call site (master-design invariant:
+// never merge scan and reapply into one function — this only collapses the shared loop).
+// Read-only: it never labels. Tier/blocklist intentionally keep their inline loops —
+// their bodies do per-message gets + filtering that don't reduce to a pure harvest
+// without a side-effecting predicate (lateral churn; left as-is per Session 7 review).
+export async function collectMatchingIds(gmail, query, { maxResults = 500 } = {}) {
+  const ids = [];
+  let pageToken = null;
+  do {
+    const params = { userId: "me", q: query, maxResults };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await gmail.users.messages.list(params);
+    for (const m of res.data.messages || []) ids.push(m.id);
+    pageToken = res.data.nextPageToken || null;
+  } while (pageToken);
+  return ids;
+}
+
 // ─── Label all sender emails ───────────────────────────────────────────────────
 export async function labelSender(gmail, labelName, fromEmail, fromName = null, removeLabels = []) {
   const labelId = await ensureLabel(gmail, labelName);
@@ -627,15 +648,7 @@ export async function reapplyRules(gmail, rules, onProgress = null) {
         : '';
       const labelQ = rule.label.includes(' ') ? `"${rule.label}"` : rule.label;
       const q = [fromPart, subjectPart].filter(Boolean).join(' ') + ` -label:${labelQ} -in:sent -in:trash`;
-      const ids = [];
-      let pageToken;
-      do {
-        const p = { userId: 'me', q, maxResults: 500 };
-        if (pageToken) p.pageToken = pageToken;
-        const r = await gmail.users.messages.list(p);
-        if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
-        pageToken = r.data.nextPageToken;
-      } while (pageToken);
+      const ids = await collectMatchingIds(gmail, q);
       if (!ids.length) continue;
       const labelId = await ensureLabel(gmail, rule.label);
       const removeLabels = rule.skipInbox ? ['INBOX', 'UNREAD'] : [];
@@ -670,15 +683,7 @@ export async function scanAndApplyRules(gmail, rules) {
     const labelQ = rule.label.includes(' ') ? `"${rule.label}"` : rule.label;
     const q = [fromPart, subjectPart].filter(Boolean).join(' ')
       + ` in:inbox -label:${labelQ} -in:sent -in:trash`;
-    const ids = [];
-    let pageToken;
-    do {
-      const p = { userId: 'me', q, maxResults: 500 };
-      if (pageToken) p.pageToken = pageToken;
-      const r = await gmail.users.messages.list(p);
-      if (r.data.messages) ids.push(...r.data.messages.map(m => m.id));
-      pageToken = r.data.nextPageToken;
-    } while (pageToken);
+    const ids = await collectMatchingIds(gmail, q);
     if (!ids.length) continue;
     const labelId = await ensureLabel(gmail, rule.label);
     const firstMsg = await gmail.users.messages.get({ userId: 'me', id: ids[0], format: 'minimal' });
