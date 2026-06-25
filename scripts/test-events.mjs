@@ -880,6 +880,34 @@ test('buildReapplyQuery: returns null when nothing to query', async () => {
   assert.equal(empty, null);
 });
 
+// ─── buildQueueQuery: shared by /triage, /api/triage/queue, /api/next, /api/triage/next ─
+// Regression guard for the "reviewed item reappears on refetch" bug (item 42):
+// the queue query MUST exclude For_Review (mirroring .DelPend), else a reviewed
+// message left in the inbox is re-fetched on every queue refresh.
+test('buildQueueQuery: shown mode excludes .DelPend and For_Review, not VIP/OK', async () => {
+  const { buildQueueQuery } = await import(gmailModulePath);
+  const q = buildQueueQuery({ excludeListedLabels: false });
+  assert.ok(q.includes('in:inbox'));
+  assert.ok(q.includes('-label:.DelPend'));
+  assert.ok(q.includes('-label:For_Review'));
+  assert.ok(!q.includes('-label:..VIP'));
+  assert.ok(!q.includes('-label:..OK'));
+});
+
+test('buildQueueQuery: hidden mode also excludes VIP/OK', async () => {
+  const { buildQueueQuery } = await import(gmailModulePath);
+  const q = buildQueueQuery({ excludeListedLabels: true });
+  assert.ok(q.includes('-label:.DelPend'));
+  assert.ok(q.includes('-label:For_Review'));
+  assert.ok(q.includes('-label:..VIP'));
+  assert.ok(q.includes('-label:..OK'));
+});
+
+test('buildQueueQuery: default (no args) excludes For_Review', async () => {
+  const { buildQueueQuery } = await import(gmailModulePath);
+  assert.ok(buildQueueQuery().includes('-label:For_Review'));
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {
