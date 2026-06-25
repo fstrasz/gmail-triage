@@ -28,6 +28,7 @@ const DEFAULTS = {
   eventsSearchLastRunAt: null,
   schedulerLastRunAt: null,
   scannedEmailIds: [],
+  lastReapply: {},
 };
 
 export function loadSettings() {
@@ -101,6 +102,16 @@ export function clearScannedEmailIds() {
   const s = loadSettings();
   s.scannedEmailIds = [];
   saveSettings(s);
+}
+// Reapply-undo record (#6): one entry per list, overwritten on each reapply run.
+export function setLastReapply(list, record) {
+  const s = loadSettings();
+  s.lastReapply = { ...(s.lastReapply || {}), [list]: record };
+  saveSettings(s);
+}
+export function clearLastReapply(list) {
+  const s = loadSettings();
+  if (s.lastReapply && list in s.lastReapply) { delete s.lastReapply[list]; saveSettings(s); }
 }
 export function setWebSearchLastRunAt() {
   const s = loadSettings();

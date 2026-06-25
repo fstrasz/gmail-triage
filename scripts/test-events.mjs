@@ -942,6 +942,92 @@ test('collectMatchingIds: list API error propagates to the caller', async () => 
   await assert.rejects(() => collectMatchingIds(gmail, 'q'), /rate limit/);
 });
 
+// ─── reapply-undo (#6): capture ids on reapply + invert via undoReapply ───────
+// Shared mock: labels.list resolves custom names→ids; batchModify captures requestBodies.
+function reapplyMockGmail() {
+  const calls = [];
+  return {
+    _calls: calls,
+    users: {
+      labels: { list: async () => ({ data: { labels: [
+        { name: '..VIP', id: 'LBL_VIP' }, { name: '..OK', id: 'LBL_OK' },
+        { name: '.DelPend', id: 'LBL_DEL' }, { name: 'MyRule', id: 'LBL_RULE' },
+      ] } }) },
+      messages: {
+        list: async () => ({ data: { messages: [{ id: 'm1' }, { id: 'm2' }] } }),
+        batchModify: async (p) => { calls.push(p.requestBody); },
+      },
+    },
+  };
+}
+
+test('reapplyTier captures the modified message IDs (for undo)', async () => {
+  const { reapplyTier } = await import(gmailModulePath);
+  const g = reapplyMockGmail();
+  const results = await reapplyTier(g, [{ email: 'a@b.com' }], '..VIP');
+  assert.deepEqual(results[0].ids, ['m1', 'm2']);
+  assert.equal(results[0].labeled, 2);
+});
+
+test('undoReapply (tier): strips the tier label, re-adds nothing, markedUnread false', async () => {
+  const { undoReapply } = await import(gmailModulePath);
+  const g = reapplyMockGmail();
+  const { reversed, markedUnread } = await undoReapply(g, { batches: [{ addLabelIds: ['..VIP'], removeLabelIds: [], ids: ['m1', 'm2'] }] });
+  assert.equal(reversed, 2);
+  assert.equal(markedUnread, false);
+  assert.deepEqual(g._calls[0].addLabelIds, []);
+  assert.deepEqual(g._calls[0].removeLabelIds, ['LBL_VIP']);
+});
+
+test('undoReapply (blocklist): re-adds INBOX+UNREAD, strips .DelPend, flags markedUnread', async () => {
+  const { undoReapply } = await import(gmailModulePath);
+  const g = reapplyMockGmail();
+  const { markedUnread } = await undoReapply(g, { batches: [{ addLabelIds: ['.DelPend'], removeLabelIds: ['INBOX', 'UNREAD'], ids: ['m1'] }] });
+  assert.equal(markedUnread, true);
+  assert.deepEqual(g._calls[0].addLabelIds, ['INBOX', 'UNREAD']);
+  assert.deepEqual(g._calls[0].removeLabelIds, ['LBL_DEL']);
+});
+
+test('undoReapply (rules): skipInbox=false strips label only; skipInbox=true re-adds INBOX/UNREAD', async () => {
+  const { undoReapply } = await import(gmailModulePath);
+  const g1 = reapplyMockGmail();
+  await undoReapply(g1, { batches: [{ addLabelIds: ['MyRule'], removeLabelIds: [], ids: ['m1'] }] });
+  assert.deepEqual(g1._calls[0].addLabelIds, []);
+  assert.deepEqual(g1._calls[0].removeLabelIds, ['LBL_RULE']);
+  const g2 = reapplyMockGmail();
+  await undoReapply(g2, { batches: [{ addLabelIds: ['MyRule'], removeLabelIds: ['INBOX', 'UNREAD'], ids: ['m1'] }] });
+  assert.deepEqual(g2._calls[0].addLabelIds, ['INBOX', 'UNREAD']);
+  assert.deepEqual(g2._calls[0].removeLabelIds, ['LBL_RULE']);
+});
+
+test('undoReapply chunks ids at <=1000 per batchModify call', async () => {
+  const { undoReapply } = await import(gmailModulePath);
+  const g = reapplyMockGmail();
+  const ids = Array.from({ length: 1500 }, (_, i) => 'm' + i);
+  await undoReapply(g, { batches: [{ addLabelIds: ['..VIP'], removeLabelIds: [], ids }] });
+  assert.equal(g._calls.length, 2);
+  assert.equal(g._calls[0].ids.length, 1000);
+  assert.equal(g._calls[1].ids.length, 500);
+});
+
+test('setLastReapply / clearLastReapply round-trip through settings.json', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-reapply-undo-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setLastReapply, clearLastReapply, loadSettings } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.deepEqual(loadSettings().lastReapply, {}, 'defaults to {}');
+    const rec = { list: 'vip', ts: 'x', batches: [{ addLabelIds: ['..VIP'], removeLabelIds: [], ids: ['m1'] }] };
+    setLastReapply('vip', rec);
+    assert.deepEqual(loadSettings().lastReapply.vip, rec);
+    clearLastReapply('vip');
+    assert.equal(loadSettings().lastReapply.vip, undefined);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {

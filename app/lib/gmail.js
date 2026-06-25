@@ -567,7 +567,7 @@ export async function reapplyTier(gmail, list, tierName, onProgress = null) {
           requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId] },
         });
       }
-      results.push({ email: entry.email, labeled: ids.length });
+      results.push({ email: entry.email, labeled: ids.length, ids });
     } catch (e) {
       console.error(`reapplyTier failed for ${entry.email}:`, e.message);
       if (onProgress) onProgress({ current: idx + 1, total: list.length, email: entry.email, error: e.message });
@@ -620,7 +620,7 @@ export async function reapplyBlocklist(gmail, blocklist, onProgress = null) {
           requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: ["INBOX", "UNREAD"] },
         });
       }
-      results.push({ email: entry.email, labeled: ids.length });
+      results.push({ email: entry.email, labeled: ids.length, ids });
     } catch (e) {
       console.error(`reapplyBlocklist failed for ${entry.email}:`, e.message);
       if (onProgress) onProgress({ current: idx + 1, total: blocklist.length, email: entry.email, error: e.message });
@@ -658,7 +658,7 @@ export async function reapplyRules(gmail, rules, onProgress = null) {
           requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [labelId], removeLabelIds: removeLabels },
         });
       }
-      results.push({ ruleName: rule.name, label: rule.label, labeled: ids.length });
+      results.push({ ruleName: rule.name, label: rule.label, labeled: ids.length, ids, skipInbox: !!rule.skipInbox });
     } catch (e) {
       console.error(`reapplyRules failed for ${rule.name}:`, e.message);
       if (onProgress) onProgress({ current: idx, total: rules.length, email: rule.name, error: e.message });
@@ -666,6 +666,45 @@ export async function reapplyRules(gmail, rules, onProgress = null) {
     }
   }
   return results;
+}
+
+// Resolve label NAMES to the IDs batchModify needs. INBOX/UNREAD are system labels
+// (their own ids); custom labels resolve via the cache or ensureLabel.
+async function resolveLabelIds(gmail, names) {
+  const out = [];
+  for (const n of names) {
+    if (n === "INBOX" || n === "UNREAD") out.push(n);
+    else out.push(getLabelId(n) || await ensureLabel(gmail, n));
+  }
+  return out;
+}
+
+// ─── Undo a captured reapply run (#6) ─────────────────────────────────────────
+// Inverts each stored batch: re-adds what reapply removed (INBOX/UNREAD for the
+// blocklist + skipInbox rules) and strips the label reapply added, in <=1000-id
+// chunks. One bad batch doesn't kill the run. Returns { reversed, markedUnread } —
+// markedUnread flags that UNREAD was re-added wholesale (read state is NOT restored,
+// matching the untrashMessage best-effort precedent).
+export async function undoReapply(gmail, record) {
+  let reversed = 0, markedUnread = false;
+  for (const batch of record?.batches || []) {
+    try {
+      const addIds = await resolveLabelIds(gmail, batch.removeLabelIds || []);
+      const removeIds = await resolveLabelIds(gmail, batch.addLabelIds || []);
+      if ((batch.removeLabelIds || []).includes("UNREAD")) markedUnread = true;
+      const ids = batch.ids || [];
+      for (let i = 0; i < ids.length; i += 1000) {
+        await gmail.users.messages.batchModify({
+          userId: "me",
+          requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: addIds, removeLabelIds: removeIds },
+        });
+      }
+      reversed += ids.length;
+    } catch (e) {
+      console.error("undoReapply batch failed:", e.message);
+    }
+  }
+  return { reversed, markedUnread };
 }
 
 // ─── Apply custom label rules ──────────────────────────────────────────────────

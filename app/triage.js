@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import pathmod from "path";
 import { loadStats, addToStats, resetStats } from "./lib/stats.js";
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, resetBlocklist, isBlocked, backupBlocklist, loadBlocklistBackup, restoreBlocklistBackup, loadNamedBackups, createNamedBackup, restoreNamedBackup, deleteNamedBackup } from "./lib/blocklist.js";
-import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, untrashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, buildReapplyQuery, buildQueueQuery } from "./lib/gmail.js";
+import { getGmailClient, fetchEmails, fetchSenderEmails, fetchLabeledEmails, blockSender, labelSender, scanAndCleanBlocklist, scanAndLabelTier, scanAndApplyRules, snapshotInboxSize, ensureLabel, getLabelId, extractEmail, extractName, trashMessage, untrashMessage, archiveMessage, archiveThread, getDelPendSummary, trashDelPend, countMatchingEmails, BULK_GUARD_THRESHOLD, reapplyTier, reapplyBlocklist, reapplyRules, undoReapply, buildReapplyQuery, buildQueueQuery } from "./lib/gmail.js";
 import { loadViplist, addToViplist, removeFromViplist, isViplisted } from "./lib/viplist.js";
 import { loadOklist, addToOklist, removeFromOklist, isOklisted } from "./lib/oklist.js";
 import { isListedSender } from "./lib/listedSender.js";
@@ -16,7 +16,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt, setLastReapply, clearLastReapply } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, scanAll, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { sendEventsEmail } from "./lib/eventSearch.js";
@@ -201,7 +201,25 @@ app.post("/api/reapply", async (req, res) => {
     }
 
     const totalLabeled = results.reduce((sum, r) => sum + r.labeled, 0);
-    res.write(`data: ${JSON.stringify({ type: 'done', ok: true, list, totalLabeled, results })}\n\n`);
+
+    // Capture an undo record (#6): per-entry batches of the exact message IDs
+    // modified + the label add/remove sets reapply applied, so /api/reapply/undo
+    // can invert them. Last-run-per-list; cap total IDs to bound settings.json.
+    const REAPPLY_UNDO_CAP = 5000;
+    const batches = results.filter(r => r.ids?.length).map(r => {
+      if (list === "blocklist") return { addLabelIds: [".DelPend"], removeLabelIds: ["INBOX", "UNREAD"], ids: r.ids };
+      if (list === "rules")     return { addLabelIds: [r.label], removeLabelIds: r.skipInbox ? ["INBOX", "UNREAD"] : [], ids: r.ids };
+      return { addLabelIds: [list === "vip" ? "..VIP" : "..OK"], removeLabelIds: [], ids: r.ids }; // tier (vip/ok)
+    });
+    const undoTotal = batches.reduce((n, b) => n + b.ids.length, 0);
+    let undoable = null;
+    if (undoTotal > 0 && undoTotal <= REAPPLY_UNDO_CAP) {
+      setLastReapply(list, { list, ts: new Date().toISOString(), batches });
+      undoable = { list, count: undoTotal };
+    } else if (undoTotal > REAPPLY_UNDO_CAP) {
+      clearLastReapply(list); // too large to retain a record; don't offer a stale undo
+    }
+    res.write(`data: ${JSON.stringify({ type: 'done', ok: true, list, totalLabeled, results, undoable })}\n\n`);
     res.end();
   } catch (e) {
     if (res.headersSent) {
@@ -210,6 +228,26 @@ app.post("/api/reapply", async (req, res) => {
     } else {
       res.status(500).json({ ok: false, error: e.message });
     }
+  }
+});
+
+// ─── API: Undo the last reapply for a list (#6) ───────────────────────────────
+// Backend capability for the future React Lists port (the old /lists UI is retiring).
+// Inverts the captured batches via undoReapply; the record is cleared on success so a
+// second undo is a no-op 404. UNREAD is re-added wholesale (read state is not restored)
+// — surfaced honestly in the response caveat.
+app.post("/api/reapply/undo", async (req, res) => {
+  const { list } = req.body || {};
+  try {
+    const record = loadSettings().lastReapply?.[list];
+    if (!record?.batches?.length) return res.status(404).json({ ok: false, error: "no_undo_record" });
+    const gmail = await getGmailClient();
+    const { reversed, markedUnread } = await undoReapply(gmail, record);
+    clearLastReapply(list);
+    res.json({ ok: true, list, reversed, caveat: markedUnread ? "Some previously-read mail was marked unread (read state is not restored)." : null });
+  } catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
+    triageServerError(res, e, "/api/reapply/undo", true);
   }
 });
 
