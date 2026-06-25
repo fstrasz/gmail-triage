@@ -8,6 +8,7 @@ config/
 .claude/
 .cline/
 deploy.log
+deploy-history.ndjson
 scripts/session-*
 web/dist
 web/node_modules
