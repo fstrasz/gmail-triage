@@ -893,6 +893,9 @@ app.get("/api/triage/next", async (req, res) => {
 // ─── API: Triage body (React) ──────────────────────────────────────────────────
 app.get("/api/triage/body", async (req, res) => {
   const { id } = req.query;
+  // Defense-in-depth (item 40): sandbox the response so a direct top-level open of the
+  // body URL is isolated (unique origin, no scripts), mirroring the allow-popups iframe.
+  res.set("Content-Security-Policy", "sandbox allow-popups");
   if (!id) return res.status(400).send("<pre>Missing id</pre>");
   try {
     const gmail = await getGmailClient();
