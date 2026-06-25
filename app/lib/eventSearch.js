@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { loadSettings, addScannedEmailIds } from './settings.js';
+import { extractJsonArray, estimateTokens, batchByTokenBudget, mapWithConcurrency } from './claudeUtils.js';
 
 function searchHorizon() {
   const now = new Date();
@@ -66,7 +67,6 @@ const BODY_TOKEN_BUDGET = 180_000;          // Sonnet 4.6 context is 200k; leave
 const BODY_PROMPT_OVERHEAD_TOKENS = 800;    // fixed prompt template
 const BODY_MAX_EMAILS_PER_BATCH = 20;       // attention cap — even if tokens fit, smaller batches enumerate better
 const BODY_RESPONSE_MAX_TOKENS = 16384;     // headroom for 50+ events JSON
-const CHARS_PER_TOKEN = 4;                  // rough English approximation
 
 // Structured-output tool for body-scan extraction. Forcing this tool via tool_choice
 // makes Claude return validated structured data instead of free text we have to parse
@@ -116,31 +116,6 @@ const INTERPRETATION_RULES = `INTERPRETATION RULES (apply liberally):
 - Location matching is REGIONAL. "Las Vegas, NV" includes Henderson, North Las Vegas, Boulder City, and the greater Las Vegas metro. "Temecula, CA" includes the Temecula Valley wine country, Murrieta, Wildomar, Fallbrook, and adjacent wine-country communities. Include events at venues in those regions even if the address is in a different listed city.
 - When in doubt, INCLUDE. Better to surface a borderline match than miss a real one.`;
 
-// Robust JSON-array extraction: walk the text tracking bracket depth, accounting for
-// strings and escapes. Returns the first complete top-level [ ... ] substring, or null.
-export function extractJsonArray(text) {
-  if (!text) return null;
-  const i0 = text.indexOf('[');
-  if (i0 < 0) return null;
-  let depth = 0, inStr = false, esc = false;
-  for (let i = i0; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) {
-      if (esc) { esc = false; continue; }
-      if (c === '\\') { esc = true; continue; }
-      if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') { inStr = true; continue; }
-    if (c === '[') depth++;
-    else if (c === ']') {
-      depth--;
-      if (depth === 0) return text.slice(i0, i + 1);
-    }
-  }
-  return null;
-}
-
 // Pull the events array out of a body-scan response. Prefers the structured
 // record_events tool_use block; falls back to parsing a JSON array out of any
 // text content (the rare case where the model emits prose instead of the tool).
@@ -160,33 +135,6 @@ export function extractBodyScanEvents(response) {
   } catch (e) {
     return { events: null, source: 'text', text, parseError: e.message };
   }
-}
-
-export function estimateTokens(text) {
-  return Math.ceil((text || '').length / CHARS_PER_TOKEN);
-}
-
-// Greedy pack items into batches under a token budget AND (optionally) a max-count cap.
-// Either limit triggers a new batch. The max-count cap improves per-item attention in
-// long Claude contexts, which falls off well before raw token limits are hit.
-export function batchByTokenBudget(items, getTokens, budget, maxCount = Infinity) {
-  const batches = [];
-  let current = [];
-  let currentTokens = 0;
-  for (const it of items) {
-    const t = getTokens(it);
-    const wouldExceedTokens = current.length > 0 && currentTokens + t > budget;
-    const wouldExceedCount = current.length >= maxCount;
-    if (wouldExceedTokens || wouldExceedCount) {
-      batches.push(current);
-      current = [];
-      currentTokens = 0;
-    }
-    current.push(it);
-    currentTokens += t;
-  }
-  if (current.length) batches.push(current);
-  return batches;
 }
 
 function htmlToText(html) {
@@ -403,24 +351,6 @@ async function extractCanonicalLink(gmail, messageId, eventTitle, client, getFul
     console.error(`extractCanonicalLink failed for "${eventTitle}":`, e.message);
     return null;
   }
-}
-
-// Bounded-concurrency mapper. Runs at most `concurrency` workers; ignores per-item errors
-// (logged by callers via their own try/catch). Preserves input order in returned array.
-export async function mapWithConcurrency(items, concurrency, fn) {
-  const results = new Array(items.length);
-  let idx = 0;
-  async function worker() {
-    while (true) {
-      const i = idx++;
-      if (i >= items.length) return;
-      try { results[i] = await fn(items[i], i); }
-      catch (e) { results[i] = undefined; }
-    }
-  }
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
-  await Promise.all(workers);
-  return results;
 }
 
 async function enrichCanonicalLinks(gmail, events, getFullMessage) {
