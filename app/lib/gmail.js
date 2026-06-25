@@ -202,21 +202,17 @@ export async function scanAndCleanBlocklist(gmail, blocklist) {
 }
 
 // ─── Fetch emails for triage ───────────────────────────────────────────────────
-export async function fetchEmails(gmail, max = 25, { skipSender = null } = {}) {
+// maxPages: how many 100-message inbox pages to walk while collecting up to
+//   `max` actionable emails. Default 1 = single page (legacy behavior; the old
+//   /triage UI relies on it). The React queue passes a higher cap so it can
+//   reach unprocessed mail buried past the newest 100 (FIX b).
+// excludeListedLabels: drop already-labeled ..VIP/..OK mail at the QUERY level
+//   (hidden mode). Most listed mail IS labeled, so this thins the pool at the
+//   source and the deep walk rarely needs more than a page (FIX a).
+export async function fetchEmails(gmail, max = 25, { skipSender = null, maxPages = 1, excludeListedLabels = false } = {}) {
   await Promise.all(["..VIP", "..OK", ".DelPend"].map(n => ensureLabel(gmail, n).catch(() => {})));
 
-  const res = await gmail.users.messages.list({
-    userId: "me", q: "in:inbox -label:.DelPend", maxResults: 100,
-  });
-  const messages = res.data.messages || [];
-  const details = await Promise.all(messages.map(msg =>
-    gmail.users.messages.get({
-      userId: "me", id: msg.id, format: "metadata",
-      metadataHeaders: ["Subject", "From", "Date", "List-Unsubscribe", "List-Unsubscribe-Post"],
-    })
-  ));
-
-  // Build rule label ID → name map for badge display
+  // Build rule label ID → name map for badge display (once, before the walk).
   const ruleLabelMap = {};
   for (const r of loadRules()) {
     if (r.enabled === false || !r.label) continue;
@@ -224,37 +220,61 @@ export async function fetchEmails(gmail, max = 25, { skipSender = null } = {}) {
     if (id) ruleLabelMap[id] = r.label;
   }
 
+  let q = "in:inbox -label:.DelPend";
+  if (excludeListedLabels) q += " -label:..VIP -label:..OK";
+
+  const vipId = labelCache["..VIP"] || "";
+  const okId  = labelCache["..OK"]  || "";
   const emails = [];
-  for (const d of details) {
-    if (emails.length >= max) break;
-    const h = d.data.payload.headers;
-    const g = n => h.find(x => x.name === n)?.value || "";
-    const fromRaw   = g("From");
-    const fromEmail = extractEmail(fromRaw);
-    const fromName  = extractName(fromRaw);
+  let pageToken = null;
+  let pages = 0;
 
-    // Skip senders the caller wants hidden (e.g. VIP/OK-listed when the triage filter is on).
-    // Done here (inside the 100-message pool) so the queue still fills up to `max` unlisted emails.
-    if (skipSender && skipSender(fromEmail, fromName)) continue;
-
-    const lbls  = d.data.labelIds || [];
-    const vipId = labelCache["..VIP"] || "";
-    const okId  = labelCache["..OK"]  || "";
-    const tier  = lbls.includes(vipId) ? "..VIP" : lbls.includes(okId) ? "..OK" : null;
-
-    // VIP/OK emails that are already read need no action — skip them
-    if (tier && !lbls.includes("UNREAD")) continue;
-
-    const ruleLabels = lbls.map(id => ruleLabelMap[id]).filter(Boolean);
-
-    emails.push({
-      id: d.data.id, threadId: d.data.threadId, subject: g("Subject"), from: fromRaw,
-      date: g("Date"), snippet: d.data.snippet,
-      listUnsubscribe: g("List-Unsubscribe"),
-      listUnsubscribePost: g("List-Unsubscribe-Post"),
-      tier, ruleLabels,
+  do {
+    const res = await gmail.users.messages.list({
+      userId: "me", q, maxResults: 100, ...(pageToken ? { pageToken } : {}),
     });
-  }
+    const messages = res.data.messages || [];
+    pageToken = res.data.nextPageToken || null;
+    pages += 1;
+
+    const details = await Promise.all(messages.map(msg =>
+      gmail.users.messages.get({
+        userId: "me", id: msg.id, format: "metadata",
+        metadataHeaders: ["Subject", "From", "Date", "List-Unsubscribe", "List-Unsubscribe-Post"],
+      })
+    ));
+
+    for (const d of details) {
+      if (emails.length >= max) break;
+      const h = d.data.payload.headers;
+      const g = n => h.find(x => x.name === n)?.value || "";
+      const fromRaw   = g("From");
+      const fromEmail = extractEmail(fromRaw);
+      const fromName  = extractName(fromRaw);
+
+      // Skip senders the caller wants hidden (e.g. VIP/OK-listed when the triage
+      // filter is on) — catches listed-but-not-yet-labeled stragglers that the
+      // query exclusion misses.
+      if (skipSender && skipSender(fromEmail, fromName)) continue;
+
+      const lbls = d.data.labelIds || [];
+      const tier = lbls.includes(vipId) ? "..VIP" : lbls.includes(okId) ? "..OK" : null;
+
+      // VIP/OK emails that are already read need no action — skip them
+      if (tier && !lbls.includes("UNREAD")) continue;
+
+      const ruleLabels = lbls.map(id => ruleLabelMap[id]).filter(Boolean);
+
+      emails.push({
+        id: d.data.id, threadId: d.data.threadId, subject: g("Subject"), from: fromRaw,
+        date: g("Date"), snippet: d.data.snippet,
+        listUnsubscribe: g("List-Unsubscribe"),
+        listUnsubscribePost: g("List-Unsubscribe-Post"),
+        tier, ruleLabels,
+      });
+    }
+  } while (emails.length < max && pageToken && pages < maxPages);
+
   return emails;
 }
 

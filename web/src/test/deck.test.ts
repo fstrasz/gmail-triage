@@ -69,91 +69,107 @@ const e1 = makeEmail('e1')
 const e2 = makeEmail('e2')
 const e3 = makeEmail('e3')
 
+const base = (over: Partial<import('../triage/deckReducer.ts').DeckState> = {}) => ({
+  cards: [] as TriageEmail[],
+  removed: [] as { card: TriageEmail; index: number }[],
+  mode: 'hidden' as const,
+  selectedId: null as string | null,
+  ...over,
+})
+
 describe('deckReducer', () => {
-  test('load initialises cards and resets removed stack', () => {
-    const state = deckReducer(
-      { cards: [], removed: [], mode: 'hidden' },
-      { type: 'load', cards: [e1, e2, e3] }
-    )
+  test('load initialises cards, empty removed, selects the first card', () => {
+    const state = deckReducer(base(), { type: 'load', cards: [e1, e2, e3] })
     expect(state.cards).toEqual([e1, e2, e3])
     expect(state.removed).toEqual([])
+    expect(state.selectedId).toBe('e1')
     expect(state.mode).toBe('hidden')
   })
 
-  test('act removes the top card and pushes it onto removed[]', () => {
-    const init = { cards: [e1, e2, e3], removed: [], mode: 'hidden' as const }
-    const state = deckReducer(init, { type: 'act', action: 'ok' as const })
-    expect(state.cards).toEqual([e2, e3])
-    expect(state.removed).toEqual([e1])
+  test('select highlights in place — does NOT reorder the queue', () => {
+    const init = base({ cards: [e1, e2, e3], selectedId: 'e1' })
+    const state = deckReducer(init, { type: 'select', id: 'e3' })
+    expect(state.cards).toEqual([e1, e2, e3]) // unchanged order
+    expect(state.selectedId).toBe('e3')
   })
 
-  test('advance removes the top card (no action stored) and pushes it onto removed[]', () => {
-    const init = { cards: [e1, e2, e3], removed: [], mode: 'hidden' as const }
-    const state = deckReducer(init, { type: 'advance' })
-    expect(state.cards).toEqual([e2, e3])
-    expect(state.removed).toEqual([e1])
+  test('act removes the active (selected) card and keeps the cursor at that position', () => {
+    // Select the middle card, act on it → it's removed, the one below shifts up
+    // into its slot and becomes selected ("queue moves up").
+    const init = base({ cards: [e1, e2, e3], selectedId: 'e2' })
+    const state = deckReducer(init, { type: 'act', action: 'ok', id: 'e2' })
+    expect(state.cards).toEqual([e1, e3])
+    expect(state.removed).toEqual([{ card: e2, index: 1 }])
+    expect(state.selectedId).toBe('e3') // position 1, now e3
   })
 
-  test('undo pops removed[] and restores the card to the top', () => {
-    const init = { cards: [e2, e3], removed: [e1], mode: 'hidden' as const }
-    const state = deckReducer(init, { type: 'undo' })
-    expect(state.cards[0]).toEqual(e1)
+  test('act without id removes the selected card (defaults to selection, then top)', () => {
+    const init = base({ cards: [e1, e2, e3], selectedId: 'e1' })
+    const state = deckReducer(init, { type: 'act', action: 'ok' })
+    expect(state.cards).toEqual([e2, e3])
+    expect(state.removed).toEqual([{ card: e1, index: 0 }])
+    expect(state.selectedId).toBe('e2')
+  })
+
+  test('act on the last card clamps the selection to the new last', () => {
+    const init = base({ cards: [e1, e2, e3], selectedId: 'e3' })
+    const state = deckReducer(init, { type: 'act', action: 'ok', id: 'e3' })
+    expect(state.cards).toEqual([e1, e2])
+    expect(state.selectedId).toBe('e2')
+  })
+
+  test('undo restores the removed card to its ORIGINAL position and reselects it', () => {
+    // Remove the middle card, then undo: it returns to index 1, selected.
+    const acted = deckReducer(base({ cards: [e1, e2, e3], selectedId: 'e2' }), { type: 'act', action: 'ok', id: 'e2' })
+    const state = deckReducer(acted, { type: 'undo' })
     expect(state.cards).toEqual([e1, e2, e3])
+    expect(state.selectedId).toBe('e2')
     expect(state.removed).toEqual([])
   })
 
   test('undo is a no-op when removed[] is empty', () => {
-    const init = { cards: [e1, e2], removed: [], mode: 'hidden' as const }
-    const state = deckReducer(init, { type: 'undo' })
-    expect(state).toEqual(init)
+    const init = base({ cards: [e1, e2], selectedId: 'e1' })
+    expect(deckReducer(init, { type: 'undo' })).toEqual(init)
   })
 
-  test('act on empty queue leaves queue empty and pushes to removed[]', () => {
-    const init = { cards: [e1], removed: [], mode: 'hidden' as const }
-    const state = deckReducer(init, { type: 'act', action: 'vip' as const })
+  test('act on a single-card queue empties it and clears selection', () => {
+    const init = base({ cards: [e1], selectedId: 'e1' })
+    const state = deckReducer(init, { type: 'act', action: 'vip', id: 'e1' })
     expect(state.cards).toEqual([])
-    expect(state.removed).toEqual([e1])
+    expect(state.selectedId).toBeNull()
+    expect(state.removed).toEqual([{ card: e1, index: 0 }])
   })
 
-  test('setMode switches mode and leaves cards/removed unchanged', () => {
-    const init = { cards: [e1, e2], removed: [e3], mode: 'hidden' as const }
+  test('setMode switches mode and leaves cards/removed/selection unchanged', () => {
+    const init = base({ cards: [e1, e2], selectedId: 'e2' })
     const state = deckReducer(init, { type: 'setMode', mode: 'shown' })
     expect(state.mode).toBe('shown')
     expect(state.cards).toEqual(init.cards)
-    expect(state.removed).toEqual(init.removed)
+    expect(state.selectedId).toBe('e2')
   })
 
-  // NOTE: `load` no longer replace-and-clears. It RECONCILES incoming server
-  // data with the local optimistic `removed[]` stack so a load firing mid-action
-  // (React Query's onMutate cache filter re-fires the load effect) can't strand
-  // the just-acted card. A removed card whose id is back in the incoming queue
-  // was restored server-side → dropped from removed and shown; a removed card
-  // still absent from incoming stays optimistically removed.
-  test('load reconciles: drops removed cards that reappear in incoming, keeps those still absent', () => {
-    const init = { cards: [e1], removed: [e2, e3], mode: 'shown' as const }
+  // `load` RECONCILES incoming server data with the local optimistic removed[]
+  // stack (it re-fires mid-action from useAction.onMutate's cache filter). A
+  // removed card back in the incoming queue was restored server-side → drop it;
+  // one still absent stays optimistically removed.
+  test('load reconciles: drops removed cards that reappear, keeps those still absent', () => {
+    const init = base({ cards: [e1], removed: [{ card: e2, index: 0 }, { card: e3, index: 1 }], selectedId: 'e1' })
     const state = deckReducer(init, { type: 'load', cards: [e3] })
-    // e3 is back in the incoming queue → no longer optimistically removed.
-    // e2 is still absent from incoming → stays removed and filtered from cards.
-    expect(state.cards).toEqual([e3])
-    expect(state.removed).toEqual([e2])
+    expect(state.cards).toEqual([e3]) // e3 reappeared, e2 still filtered
+    expect(state.removed).toEqual([{ card: e2, index: 0 }])
   })
 
-  test('load preserves removed[] when the acted card is absent from incoming (in-flight removal)', () => {
-    // Coordinated flow: useAction.onMutate filters the acted card (e1) from the
-    // cache at the same time the deck `act` pushes it to removed[]. The load
-    // effect fires from that cache change with incoming = [e2]. e1 must stay
-    // removed (a no-op reconcile), NOT reappear — this is the load-mid-action
-    // case that previously clobbered removed[] and stranded the card.
-    const init = { cards: [e2], removed: [e1], mode: 'hidden' as const }
+  test('load preserves removed[] when the acted card is absent (in-flight removal)', () => {
+    const init = base({ cards: [e2], removed: [{ card: e1, index: 0 }], selectedId: 'e2' })
     const state = deckReducer(init, { type: 'load', cards: [e2] })
     expect(state.cards).toEqual([e2])
-    expect(state.removed).toEqual([e1])
+    expect(state.removed).toEqual([{ card: e1, index: 0 }])
   })
 
   test('reducer is immutable — original state untouched after act', () => {
-    const init = { cards: [e1, e2], removed: [], mode: 'hidden' as const }
+    const init = base({ cards: [e1, e2], selectedId: 'e1' })
     const origCards = init.cards
-    deckReducer(init, { type: 'act', action: 'archive' as const })
+    deckReducer(init, { type: 'act', action: 'archive', id: 'e1' })
     expect(init.cards).toBe(origCards)
     expect(init.cards.length).toBe(2)
   })

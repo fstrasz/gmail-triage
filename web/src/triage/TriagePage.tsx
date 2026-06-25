@@ -50,7 +50,7 @@ export function TriagePage() {
   const undo = useUndo(queueParams)
 
   const desktop = useMediaQuery('(hover: hover) and (pointer: fine)')
-  const [deck, dispatch] = useReducer(deckReducer, { cards: [], removed: [], mode })
+  const [deck, dispatch] = useReducer(deckReducer, { cards: [], removed: [], mode, selectedId: null })
   const [guard, setGuard] = useState<GuardInfo | null>(null)
   const [toast, setToast] = useState<ToastInfo | null>(null)
   const [authError, setAuthError] = useState(false)
@@ -89,19 +89,23 @@ export function TriagePage() {
     if (queue.isSuccess) setAuthError(false)
   }, [dataUpdatedAt, queue.isSuccess])
 
-  // DECK-2: announce after the deck advances, reading the CURRENT top card
+  // The active card = the selected one (highlighted in the queue, shown in the
+  // preview), falling back to the top. Actions operate on it; the deck reducer
+  // keeps the selection in place (clicking the queue does NOT reorder).
+  const active = deck.cards.find((c) => c.id === deck.selectedId) ?? deck.cards[0]
+
+  // DECK-2: announce after the deck advances, reading the CURRENT active card
   // (post-dispatch), for both the unconfirmed and confirmed-success paths.
-  const top = deck.cards[0]
   useEffect(() => {
     const committed = pendingAnnounce.current
     if (!committed) return
     pendingAnnounce.current = null
     const verb = ACTION_LABEL[committed]
-    const next = top
-      ? `Next: ${top.fromName ?? top.fromEmail ?? 'Unknown'} — ${top.subject}`
+    const next = active
+      ? `Next: ${active.fromName ?? active.fromEmail ?? 'Unknown'} — ${active.subject}`
       : 'Queue empty'
     setAnnounce(`${verb} done. ${next}`)
-  }, [deck.cards, top])
+  }, [deck.cards, deck.selectedId, active])
 
   function handleResult(result: ActionResult, committed: TriageAction, card: TriageEmail, labeled?: number) {
     if (result.ok) {
@@ -133,15 +137,15 @@ export function TriagePage() {
     // double-fire window before action.isPending can flip.
     if (committing.current || action.isPending) return
 
-    const card = confirmed ? pending.current?.card : deck.cards[0]
+    const card = confirmed ? pending.current?.card : active
     if (!card) return
     committing.current = true
 
-    // Dispatch exactly ONE `act` per user gesture and advance via the explicit
-    // reducer contract — on the confirmed path too (the guard revert put the
-    // card back, so we re-remove it here rather than relying on the cache→load
-    // effect). The announce is set later, only on committed success (FIX G).
-    dispatch({ type: 'act', action: act })
+    // Dispatch exactly ONE `act` per user gesture for the ACTIVE card (by id, so
+    // it works regardless of position). The reducer removes it, keeps the cursor
+    // at that position, and advances. On the confirmed path the guard revert put
+    // the card back, so we re-remove it here. Announce set later, on success only.
+    dispatch({ type: 'act', action: act, id: card.id })
 
     action.mutate(
       {
@@ -168,12 +172,11 @@ export function TriagePage() {
     )
   }
 
-  // Jump to a queue item: move it to the front; everything else keeps its order
-  // so items above the selection remain reachable in the queue.
-  function selectCard(index: number) {
-    if (index === 0) return
-    const c = deck.cards
-    dispatch({ type: 'load', cards: [c[index], ...c.slice(0, index), ...c.slice(index + 1)] })
+  // Select a queue item in place (highlight it) — no reorder. The active card
+  // moves to this row; the queue keeps its order. Acting on it removes it and
+  // the queue closes up (handled by the reducer's `act`).
+  function selectCard(id: string) {
+    dispatch({ type: 'select', id })
   }
 
   function onUndo(descriptor: UndoDescriptor) {
@@ -313,24 +316,26 @@ export function TriagePage() {
           <aside className="flex w-48 flex-shrink-0 flex-col overflow-y-auto border-r border-hairline bg-tint">
             <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">Queue</p>
             <ul className="flex flex-col divide-y divide-hairline">
-              {deck.cards.map((card, i) => (
-                <li key={card.id}>
-                  <button
-                    type="button"
-                    onClick={() => selectCard(i)}
-                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                      i === 0
-                        ? 'bg-hairline/40 font-semibold text-ink'
-                        : 'text-muted hover:bg-hairline/20'
-                    }`}
-                  >
-                    <p className="truncate">{card.fromName ?? card.fromEmail ?? 'Unknown'}</p>
-                    {i > 0 && card.fromEmail && (
-                      <p className="truncate text-xs">{card.fromEmail}</p>
-                    )}
-                  </button>
-                </li>
-              ))}
+              {deck.cards.map((card) => {
+                const selected = card.id === active?.id
+                return (
+                  <li key={card.id}>
+                    <button
+                      type="button"
+                      aria-current={selected ? 'true' : undefined}
+                      onClick={() => selectCard(card.id)}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        selected
+                          ? 'bg-ink/5 font-semibold text-ink shadow-[inset_3px_0_0] shadow-ink'
+                          : 'text-muted hover:bg-hairline/30'
+                      }`}
+                    >
+                      <p className="truncate">{card.fromName ?? card.fromEmail ?? 'Unknown'}</p>
+                      <p className="truncate text-xs">{card.subject}</p>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </aside>
 
@@ -345,7 +350,7 @@ export function TriagePage() {
                   key={a}
                   type="button"
                   aria-label={ACTION_LABEL[a]}
-                  disabled={action.isPending || !top}
+                  disabled={action.isPending || !active}
                   onClick={() => commit(a)}
                   className={`w-full rounded-lg py-2 text-center text-xs font-semibold leading-tight text-white disabled:opacity-40 ${ACTION_BG[a]}`}
                 >
@@ -357,29 +362,29 @@ export function TriagePage() {
 
           {/* Pane 3 — preview: card header (sender/subject/badge) + iframe body */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            {top && (
+            {active && (
               <>
                 <div className="flex-shrink-0 border-b border-hairline bg-white px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-ink">
-                      {top.fromName ?? top.fromEmail ?? 'Unknown sender'}
+                      {active.fromName ?? active.fromEmail ?? 'Unknown sender'}
                     </span>
-                    {top.tier === '..VIP' && (
+                    {active.tier === '..VIP' && (
                       <span className="rounded bg-vip px-1.5 py-0.5 text-xs font-bold text-white">VIP</span>
                     )}
-                    {top.tier === '..OK' && (
+                    {active.tier === '..OK' && (
                       <span className="rounded bg-ok px-1.5 py-0.5 text-xs font-bold text-white">OK</span>
                     )}
                   </div>
-                  <p className="mt-1 font-semibold text-ink">{top.subject}</p>
-                  {top.fromEmail && (
-                    <p className="mt-0.5 text-xs text-muted">{top.fromEmail}</p>
+                  <p className="mt-1 font-semibold text-ink">{active.subject}</p>
+                  {active.fromEmail && (
+                    <p className="mt-0.5 text-xs text-muted">{active.fromEmail}</p>
                   )}
                 </div>
                 <iframe
                   title="Email body"
                   sandbox="allow-popups"
-                  src={getBodyUrl(top.id)}
+                  src={getBodyUrl(active.id)}
                   className="min-h-0 flex-1 w-full border-0"
                 />
               </>

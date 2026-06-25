@@ -853,7 +853,11 @@ app.get("/api/triage/queue", async (req, res) => {
     // returned an EMPTY queue whenever the newest `limit` messages were all VIP/OK-
     // listed — leaving no card to advance to. filterHidden still drops blocked mail.
     const skipSender = hideListed ? isListedSender : null;
-    const raw = await fetchEmails(gmail, limit, { skipSender });
+    // FIX a — exclude already-labeled ..VIP/..OK at the query level in hidden mode.
+    // FIX b — walk up to 10 inbox pages so the queue reaches unprocessed mail
+    // buried past the newest 100 (the deck refills, so it surfaces deeper batches
+    // as you triage). 10 pages ≈ 1000 messages bounds worst-case API cost.
+    const raw = await fetchEmails(gmail, limit, { skipSender, maxPages: 10, excludeListedLabels: hideListed });
     const emails = filterHidden(raw, { hideListed }).map(shapeTriageEmail);
     res.json({ emails, counts: { left: emails.length } });
   } catch(e) {
