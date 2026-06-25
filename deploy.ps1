@@ -40,6 +40,42 @@ if ($WhatIf) {
     Write-Host ""
 }
 
+# -- Run web test suite before building ---------------------------------------
+Write-Host "Running web test suite..." -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
+    Write-Host ""
+} else {
+    & npm --prefix "$Source\web" ci
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WEB DEPS FAILED (npm ci). Aborting." -ForegroundColor Red
+        exit 1
+    }
+    & npm --prefix "$Source\web" run test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "WEB TESTS FAILED. Aborting." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host "  Web tests passed." -ForegroundColor Green
+    Write-Host ""
+}
+
+# -- Build React web app -------------------------------------------------------
+Write-Host "Building web app..." -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "  (skipped in dry run)" -ForegroundColor Yellow
+    Write-Host ""
+} else {
+    & npm --prefix "$Source\web" run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WEB BUILD FAILED (vite build). Aborting." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  Web build complete." -ForegroundColor Green
+    Write-Host ""
+}
+
 # -- Auto-increment version in pages.js and commit locally (no push) -----------
 $pagesFile = "$Source\app\lib\pages.js"
 $content = Get-Content $pagesFile -Raw
@@ -128,3 +164,55 @@ if ($rc -eq 0 -and $rcConfig -eq 0) {
 }
 
 Write-Host "Log saved to: $Log" -ForegroundColor Gray
+
+# -- Recreate container + probe /app (skip in dry run) -------------------------
+if (-not $WhatIf) {
+    Write-Host ""
+    Write-Host "Recreating container on NAS..." -ForegroundColor Cyan
+    $sshKey = "$env:USERPROFILE\.ssh\id_ed25519"
+    $sshCmd = 'cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose up -d --force-recreate'
+    ssh -i $sshKey fstrasz_admin@192.168.20.10 $sshCmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CONTAINER RECREATE FAILED (ssh exit $LASTEXITCODE). Check NAS manually." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host "  Container recreated." -ForegroundColor Green
+
+    # Give the container a moment to start serving before probing.
+    Start-Sleep -Seconds 5
+
+    Write-Host "Probing /app/..." -ForegroundColor Cyan
+    try {
+        $probe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/app/" -TimeoutSec 15 -ErrorAction Stop
+        if ($probe.StatusCode -eq 200 -and $probe.Content -match 'Triage') {
+            Write-Host "  /app/ probe OK (HTTP $($probe.StatusCode), content contains 'Triage')." -ForegroundColor Green
+        } else {
+            Write-Host "PROBE FAILED: status=$($probe.StatusCode), content did not contain 'Triage'." -ForegroundColor Red
+            exit 1
+        }
+    } catch {
+        Write-Host "PROBE FAILED: $_" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Probing /health..." -ForegroundColor Cyan
+    try {
+        $health = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/health" -TimeoutSec 15 -ErrorAction Stop
+        if ($health.StatusCode -eq 200) {
+            Write-Host "  /health probe OK (HTTP 200 - healthy)." -ForegroundColor Green
+        } elseif ($health.StatusCode -eq 503) {
+            Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+        } else {
+            Write-Host "HEALTH PROBE FAILED: unexpected status $($health.StatusCode)." -ForegroundColor Red
+            exit 1
+        }
+    } catch {
+        $sc = $_.Exception.Response.StatusCode.value__
+        if ($sc -eq 503) {
+            Write-Host "  /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+        } else {
+            Write-Host "HEALTH PROBE FAILED: $_" -ForegroundColor Red
+            exit 1
+        }
+    }
+}

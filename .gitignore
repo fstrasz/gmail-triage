@@ -9,3 +9,5 @@ config/
 .cline/
 deploy.log
 scripts/session-*
+web/dist
+web/node_modules

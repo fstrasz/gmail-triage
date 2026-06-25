@@ -19,9 +19,12 @@ import { atomicWriteFileSync } from "./atomicWrite.js";
 // keeps a bespoke `add` (it also carries a `reason`) and uses the factory only for
 // load/save/remove/match.
 export function senderList(filename, { dedupeOnLoad = true } = {}) {
-  const filePath = path.join(process.cwd(), filename);
+  // filePath is computed lazily at each IO call so tests can chdir into a temp dir
+  // and import the module once; the correct path is resolved on every read/write.
+  const getPath = () => path.join(process.cwd(), filename);
 
   function load() {
+    const filePath = getPath();
     try {
       const raw = JSON.parse(fs.readFileSync(filePath));
       if (!dedupeOnLoad) return raw;
@@ -36,11 +39,20 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
   }
 
   function save(list) {
-    atomicWriteFileSync(filePath, JSON.stringify(list, null, 2));
+    atomicWriteFileSync(getPath(), JSON.stringify(list, null, 2));
   }
 
-  function remove(email) {
-    save(load().filter(e => e.email !== email));
+  // Name-scoped when `name` is given: removes ONLY the exact email+name pair (so other
+  // name-variants for the address survive — the v1.2.05 name-scoping). When `name` is
+  // omitted/null, keeps the back-compat behavior of removing ALL entries for the email.
+  function remove(email, name) {
+    const key = email.toLowerCase().trim();
+    if (name == null) {
+      save(load().filter(e => e.email !== email));
+      return;
+    }
+    const normName = name.trim();
+    save(load().filter(e => !(e.email === key && (normName ? e.name === normName : !e.name))));
   }
 
   // Returns the matching entry (or undefined). `@domain` entries match any address in
@@ -68,5 +80,5 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     save(list);
   }
 
-  return { filePath, load, save, remove, match, add };
+  return { get filePath() { return getPath(); }, load, save, remove, match, add };
 }

@@ -29,8 +29,31 @@ export function readHealthInputs() {
   return { settings, tokenState, configState };
 }
 
+// Edge I/O: does the built web bundle exist? Returns the webAsset verdict string
+// consumed by getHealthReport. Kept here (with the other edge I/O) so the /health
+// route stays import-light and this fs call is unit-testable.
+export function readWebAsset(webDist, webEnabled) {
+  if (!webEnabled) return "disabled";
+  return fs.existsSync(path.join(webDist, "index.html")) ? "ok" : "missing";
+}
+
+// web/dist sits at a different depth relative to triage.js depending on layout:
+// locally triage.js is in app/ so the build is at ../web/dist; in the container
+// triage.js is at /app/triage.js and the bundle is bind-mounted at /app/web/dist
+// (a child — no "..").  Probe both and pick whichever actually holds index.html so
+// /app resolves in BOTH environments. (A module-relative "../web/dist" alone was
+// cwd-independent but not layout-independent — it overshot to /web/dist in prod.)
+export function resolveWebDist(moduleDir) {
+  const candidates = [
+    path.join(moduleDir, "..", "web", "dist"), // local:     <repo>/app/triage.js -> <repo>/web/dist
+    path.join(moduleDir, "web", "dist"),        // container: /app/triage.js       -> /app/web/dist
+  ];
+  return candidates.find((p) => fs.existsSync(path.join(p, "index.html"))) || candidates[0];
+}
+
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
-export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState }) {
+// webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
+export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset }) {
   const checks = {};
   let ok = true;
 
@@ -57,6 +80,11 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
     checks.staleness = "stale"; ok = false;
   } else {
     checks.staleness = "ok";
+  }
+
+  if (webAsset !== undefined) {
+    checks.web = webAsset;
+    if (webAsset === "missing") ok = false;
   }
 
   return {

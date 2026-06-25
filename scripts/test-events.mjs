@@ -1226,6 +1226,100 @@ test('senderList: name-scoped add keeps same-email different-name variants', asy
   }
 });
 
+// ─── triageApi: shapeTriageEmail + filterHidden ───────────────────────────────
+// NOTE: filterHidden's test MUST run before isListedSender's test so that canonical
+// viplist.js / oklist.js / listedSender.js / blocklist.js have not yet been loaded
+// (with a stale temp-dir path). triageApi.js uses static imports which resolve to
+// the canonical module URLs; cache-busting triageApi.js alone is only effective if
+// those canonical deps are loaded fresh from THIS test's temp dir.
+
+const triageApiModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'triageApi.js')
+).href;
+
+test('shapeTriageEmail: derives fromEmail/fromName from raw From header', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({
+    id: 'msg1',
+    from: 'NYT Cooking <nytdirect@nytimes.com>',
+    subject: 'Dinner ideas',
+    snippet: 'Try this tonight',
+    date: '2026-06-23',
+    tier: '..VIP',
+    ruleLabels: ['Food'],
+    listUnsubscribe: '<https://unsub.nytimes.com/u>',
+    listUnsubscribePost: 'List-Unsubscribe=One-Click',
+  });
+  assert.equal(shaped.fromEmail, 'nytdirect@nytimes.com', 'fromEmail extracted');
+  assert.equal(shaped.fromName, 'NYT Cooking', 'fromName extracted');
+  assert.equal(shaped.id, 'msg1');
+  assert.equal(shaped.subject, 'Dinner ideas');
+  assert.equal(shaped.snippet, 'Try this tonight');
+  assert.equal(shaped.date, '2026-06-23');
+  assert.equal(shaped.tier, '..VIP');
+  assert.deepEqual(shaped.ruleLabels, ['Food']);
+  assert.equal(shaped.hasUnsub, true, 'hasUnsub true when listUnsubscribe present');
+  assert.equal(shaped.unsubUrl, '<https://unsub.nytimes.com/u>', 'unsubUrl preserved');
+  assert.equal(shaped.unsubPost, 'List-Unsubscribe=One-Click', 'unsubPost preserved');
+});
+
+test('shapeTriageEmail: hasUnsub false when listUnsubscribe absent', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({ id: 'x', from: 'Bob <bob@example.com>', listUnsubscribe: '' });
+  assert.equal(shaped.hasUnsub, false, 'hasUnsub false for empty string');
+  assert.equal(shaped.unsubUrl, null, 'unsubUrl null when empty');
+  assert.equal(shaped.unsubPost, null, 'unsubPost null when absent');
+});
+
+test('shapeTriageEmail: defaults for missing optional fields', async () => {
+  const { shapeTriageEmail } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+  const shaped = shapeTriageEmail({ id: 'y', from: 'plain@example.com' });
+  assert.equal(shaped.subject, '');
+  assert.equal(shaped.snippet, '');
+  assert.equal(shaped.date, '');
+  assert.equal(shaped.tier, null);
+  assert.deepEqual(shaped.ruleLabels, []);
+  assert.equal(shaped.fromEmail, 'plain@example.com');
+  assert.equal(shaped.fromName, 'plain@example.com', 'bare addr → name=addr');
+});
+
+test('filterHidden: hideListed:true drops VIP, OK, and blocklisted senders; hideListed:false drops only blocked', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-fh-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync(path.join(dir, 'viplist.json'),   JSON.stringify([{ email: 'vip@example.com' }]));
+    fs.writeFileSync(path.join(dir, 'oklist.json'),    JSON.stringify([{ email: 'ok@example.com' }]));
+    fs.writeFileSync(path.join(dir, 'blocklist.json'), JSON.stringify([{ email: 'blocked@example.com', reason: 'junk' }]));
+
+    const { filterHidden } = await import(triageApiModulePath + '?t=' + Date.now() + Math.random());
+
+    const emails = [
+      { from: 'VIP Sender <vip@example.com>',     id: 'a' },
+      { from: 'OK Sender <ok@example.com>',        id: 'b' },
+      { from: 'Spammer <blocked@example.com>',     id: 'c' },
+      { from: 'Normal Person <other@example.com>', id: 'd' },
+    ];
+
+    const withHide = filterHidden(emails, { hideListed: true });
+    const ids = withHide.map(e => e.id);
+    assert.ok(!ids.includes('a'), 'VIP dropped when hideListed:true');
+    assert.ok(!ids.includes('b'), 'OK dropped when hideListed:true');
+    assert.ok(!ids.includes('c'), 'blocked always dropped');
+    assert.ok(ids.includes('d'),  'unlisted kept');
+
+    const noHide = filterHidden(emails, { hideListed: false });
+    const ids2 = noHide.map(e => e.id);
+    assert.ok(ids2.includes('a'),  'VIP kept when hideListed:false');
+    assert.ok(ids2.includes('b'),  'OK kept when hideListed:false');
+    assert.ok(!ids2.includes('c'), 'blocked always dropped');
+    assert.ok(ids2.includes('d'),  'unlisted kept');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── isListedSender: VIP OR OK keep-list predicate (triage "hide VIP/OK" filter) ───
 test('isListedSender: true for VIP/OK/@domain listed senders, false otherwise', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-listed-'));
@@ -1441,3 +1535,196 @@ test('setSchedulerLastRunAt: writes an ISO timestamp readable by loadSettings', 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ─── Task 4: Triage API (unified action + stateless undo) ──────────────────────
+
+test('ACTION_DISPATCH: has all nine actions, each with the correct undo kind', async () => {
+  const { ACTION_DISPATCH } = await import(triageApiModulePath);
+  const expected = {
+    'ok':        'removeListEntry',
+    'vip':       'removeListEntry',
+    'ok-clean':  'listOnly',
+    'vip-clean': 'listOnly',
+    'junk':      'listOnly',
+    'unsub':     'none',
+    'archive':   'addInbox',
+    'delete':    'untrash',
+    'review':    'none',
+  };
+  assert.deepEqual(Object.keys(ACTION_DISPATCH).sort(), Object.keys(expected).sort(),
+    'dispatch has exactly the nine action keys');
+  for (const [action, undo] of Object.entries(expected)) {
+    assert.equal(ACTION_DISPATCH[action].undo, undo, `${action} → undo ${undo}`);
+  }
+  // List actions carry their list name so undo knows which remover to call.
+  assert.equal(ACTION_DISPATCH['ok'].listName, 'ok');
+  assert.equal(ACTION_DISPATCH['vip'].listName, 'vip');
+  assert.equal(ACTION_DISPATCH['ok-clean'].listName, 'ok');
+  assert.equal(ACTION_DISPATCH['vip-clean'].listName, 'vip');
+  assert.equal(ACTION_DISPATCH['junk'].listName, 'blocklist');
+});
+
+test('normalizeGuard: flattens a guard response; passes success through unchanged', async () => {
+  const { normalizeGuard } = await import(triageApiModulePath);
+  const guarded = normalizeGuard({ ok: false, guard: true, count: 120, email: 'x@y.com', message: 'm' });
+  assert.deepEqual(guarded, { ok: false, guard: { count: 120, message: 'm' } });
+  // A success result (no guard:true) is returned untouched.
+  const success = { ok: true, labeled: 3, undo: { action: 'ok', id: 'i' } };
+  assert.equal(normalizeGuard(success), success);
+});
+
+test('senderList.remove: name-scoped removes only the exact pair; name-blind removes all', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-remove-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(senderListModulePath + '?t=' + Date.now() + Math.random());
+    // Name-scoped remove: drop only a@x / Two, keep a@x / One.
+    const store = senderList('namescope.json', { dedupeOnLoad: false });
+    fs.writeFileSync(path.join(dir, 'namescope.json'),
+      JSON.stringify([{ email: 'a@x', name: 'One' }, { email: 'a@x', name: 'Two' }]));
+    store.remove('a@x', 'Two');
+    let after = store.load();
+    assert.equal(after.length, 1, 'name-scoped remove drops only the matching pair');
+    assert.equal(after[0].name, 'One');
+
+    // Name-blind remove (back-compat): drop ALL entries for the address.
+    const store2 = senderList('blind.json', { dedupeOnLoad: false });
+    fs.writeFileSync(path.join(dir, 'blind.json'),
+      JSON.stringify([{ email: 'a@x', name: 'One' }, { email: 'a@x', name: 'Two' }]));
+    store2.remove('a@x');
+    assert.equal(store2.load().length, 0, 'name-blind remove drops all entries for the email');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('untrashMessage: untrashes then re-adds INBOX via batchModify', async () => {
+  const { untrashMessage } = await import(gmailModulePath);
+  const calls = [];
+  const gmail = { users: { messages: {
+    untrash:     async (a) => { calls.push(['untrash', a]); },
+    batchModify: async (a) => { calls.push(['batchModify', a]); },
+  } } };
+  await untrashMessage(gmail, 'msg123');
+  assert.equal(calls.length, 2, 'two Gmail calls');
+  assert.equal(calls[0][0], 'untrash', 'untrash is called first');
+  assert.equal(calls[0][1].id, 'msg123');
+  assert.equal(calls[1][0], 'batchModify', 'batchModify is called second');
+  assert.deepEqual(calls[1][1].requestBody.ids, ['msg123']);
+  assert.ok(calls[1][1].requestBody.addLabelIds.includes('INBOX'), 'batchModify re-adds INBOX');
+});
+
+// ─── getHealthReport: web-asset check (Task 9) ───────────────────────────────
+test('getHealthReport: webAsset missing → degraded, checks.web = missing', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset1=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'missing',
+  });
+  assert.equal(r.ok, false, 'missing web asset degrades health');
+  assert.equal(r.body.checks.web, 'missing');
+});
+
+test('getHealthReport: webAsset ok → not degraded by web check', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset2=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'ok',
+  });
+  assert.equal(r.ok, true, 'web asset ok → health not degraded');
+  assert.equal(r.body.checks.web, 'ok');
+});
+
+test('getHealthReport: webAsset disabled → not degraded by web check', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?webAsset3=' + Date.now());
+  const now = Date.parse('2026-06-23T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.05', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-23T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+    webAsset: 'disabled',
+  });
+  assert.equal(r.ok, true, 'disabled rollback → health not degraded');
+  assert.equal(r.body.checks.web, 'disabled');
+});
+
+// ─── readWebAsset: edge I/O — fs check extracted from /health route ───────────
+test('readWebAsset: returns "ok" when index.html exists in webDist', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-wa-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html>');
+    const { readWebAsset } = await import(healthModulePath + '?wa1=' + Date.now());
+    assert.equal(readWebAsset(dir, true), 'ok');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readWebAsset: returns "missing" when index.html absent from webDist', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-wa-'));
+  try {
+    const { readWebAsset } = await import(healthModulePath + '?wa2=' + Date.now());
+    assert.equal(readWebAsset(dir, true), 'missing');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readWebAsset: returns "disabled" without touching fs when webEnabled is false', async () => {
+  const { readWebAsset } = await import(healthModulePath + '?wa3=' + Date.now());
+  // Pass a non-existent path — would throw if fs were called
+  assert.equal(readWebAsset('/nonexistent/path/that/does/not/exist', false), 'disabled');
+});
+
+// ─── resolveWebDist: picks the right web/dist for local vs container layout ──
+test('resolveWebDist: LOCAL layout — triage.js in app/, bundle at ../web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd1=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-local-'));
+  try {
+    const moduleDir = path.join(root, 'app');          // <repo>/app/triage.js
+    const expected = path.join(root, 'web', 'dist');   // <repo>/web/dist
+    fs.mkdirSync(moduleDir, { recursive: true });
+    fs.mkdirSync(expected, { recursive: true });
+    fs.writeFileSync(path.join(expected, 'index.html'), '<!doctype html>');
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(expected));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveWebDist: CONTAINER layout — triage.js at /app, bundle at /app/web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd2=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-container-'));
+  try {
+    const moduleDir = path.join(root, 'app');                  // /app/triage.js
+    const expected = path.join(moduleDir, 'web', 'dist');      // /app/web/dist (child, no "..")
+    fs.mkdirSync(expected, { recursive: true });
+    fs.writeFileSync(path.join(expected, 'index.html'), '<!doctype html>');
+    // The local-layout candidate (root/web/dist) must NOT exist, so the child wins.
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(expected));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveWebDist: neither candidate has index.html → falls back to ../web/dist', async () => {
+  const { resolveWebDist } = await import(healthModulePath + '?rwd3=' + Date.now());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-webdist-none-'));
+  try {
+    const moduleDir = path.join(root, 'app');
+    fs.mkdirSync(moduleDir, { recursive: true });
+    const fallback = path.join(moduleDir, '..', 'web', 'dist');
+    assert.equal(path.resolve(resolveWebDist(moduleDir)), path.resolve(fallback));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
