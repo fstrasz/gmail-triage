@@ -908,6 +908,37 @@ test('buildQueueQuery: default (no args) excludes For_Review', async () => {
   assert.ok(buildQueueQuery().includes('-label:For_Review'));
 });
 
+// ─── collectMatchingIds — shared paginate-and-harvest kernel (rules pair) ────────
+test('collectMatchingIds: walks all pages and harvests every id', async () => {
+  const { collectMatchingIds } = await import(gmailModulePath);
+  const pages = [
+    { data: { messages: [{ id: 'a' }, { id: 'b' }], nextPageToken: '1' } },
+    { data: { messages: [{ id: 'c' }], nextPageToken: '2' } },
+    { data: { messages: [{ id: 'd' }] } },
+  ];
+  let i = 0;
+  const gmail = { users: { messages: { list: async () => pages[i++] } } };
+  assert.deepEqual(await collectMatchingIds(gmail, 'from:x in:inbox'), ['a', 'b', 'c', 'd']);
+});
+
+test('collectMatchingIds: empty page returns []', async () => {
+  const { collectMatchingIds } = await import(gmailModulePath);
+  const gmail = { users: { messages: { list: async () => ({ data: { messages: [] } }) } } };
+  assert.deepEqual(await collectMatchingIds(gmail, 'from:nobody'), []);
+});
+
+test('collectMatchingIds: missing res.data.messages does not throw', async () => {
+  const { collectMatchingIds } = await import(gmailModulePath);
+  const gmail = { users: { messages: { list: async () => ({ data: {} }) } } };
+  assert.deepEqual(await collectMatchingIds(gmail, 'q'), []);
+});
+
+test('collectMatchingIds: list API error propagates to the caller', async () => {
+  const { collectMatchingIds } = await import(gmailModulePath);
+  const gmail = { users: { messages: { list: async () => { throw new Error('rate limit'); } } } };
+  await assert.rejects(() => collectMatchingIds(gmail, 'q'), /rate limit/);
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {
