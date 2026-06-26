@@ -1804,6 +1804,67 @@ test('getHealthReport: webAsset disabled → not degraded by web check', async (
   assert.equal(r.body.checks.web, 'disabled');
 });
 
+// ─── #33: opt-in deep auth probe (getProfile) + liveAuth verdict ──────────────
+test('probeGmailAuth: getProfile resolves → "ok"', async () => {
+  const { probeGmailAuth } = await import(healthModulePath + '?probe1=' + Date.now());
+  const gmail = { users: { getProfile: async () => ({ data: { emailAddress: 'x@y.com' } }) } };
+  assert.equal(await probeGmailAuth(gmail), 'ok');
+});
+
+test('probeGmailAuth: invalid_grant → "invalid" (the F25 class the file check misses)', async () => {
+  const { probeGmailAuth } = await import(healthModulePath + '?probe2=' + Date.now());
+  const gmail = { users: { getProfile: async () => { throw new Error('invalid_grant: Token has been expired or revoked.'); } } };
+  assert.equal(await probeGmailAuth(gmail), 'invalid');
+});
+
+test('probeGmailAuth: 401 → "invalid"', async () => {
+  const { probeGmailAuth } = await import(healthModulePath + '?probe3=' + Date.now());
+  const gmail = { users: { getProfile: async () => { const e = new Error('Unauthorized'); e.response = { status: 401 }; throw e; } } };
+  assert.equal(await probeGmailAuth(gmail), 'invalid');
+});
+
+test('probeGmailAuth: transient/network error → "error" (not "invalid")', async () => {
+  const { probeGmailAuth } = await import(healthModulePath + '?probe4=' + Date.now());
+  const gmail = { users: { getProfile: async () => { throw new Error('ECONNRESET'); } } };
+  assert.equal(await probeGmailAuth(gmail), 'error');
+});
+
+test('getHealthReport: liveAuth "invalid" → degraded (503), checks.tokenLive set', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?live1=' + Date.now());
+  const now = Date.parse('2026-06-26T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.16', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-26T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok', liveAuth: 'invalid',
+  });
+  assert.equal(r.ok, false, 'rejected live auth → degraded even though the token file looks ok');
+  assert.equal(r.body.checks.tokenLive, 'invalid');
+});
+
+test('getHealthReport: liveAuth "error" reported but does NOT fail (no flapping)', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?live2=' + Date.now());
+  const now = Date.parse('2026-06-26T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.16', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-26T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok', liveAuth: 'error',
+  });
+  assert.equal(r.ok, true, 'transient live-probe error must not flap health to degraded');
+  assert.equal(r.body.checks.tokenLive, 'error');
+});
+
+test('getHealthReport: liveAuth absent → no tokenLive check (probe disabled, back-compat)', async () => {
+  const { getHealthReport } = await import(healthModulePath + '?live3=' + Date.now());
+  const now = Date.parse('2026-06-26T12:00:00Z');
+  const r = getHealthReport({
+    version: 'v1.2.16', uptimeSec: 3600, now,
+    settings: { schedulerEnabled: true, schedulerIntervalHours: 2, schedulerLastRunAt: '2026-06-26T11:30:00Z' },
+    tokenState: 'ok', configState: 'ok',
+  });
+  assert.equal(r.ok, true);
+  assert.equal('tokenLive' in r.body.checks, false, 'no tokenLive key when probe disabled');
+});
+
 // ─── readWebAsset: edge I/O — fs check extracted from /health route ───────────
 test('readWebAsset: returns "ok" when index.html exists in webDist', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-wa-'));
