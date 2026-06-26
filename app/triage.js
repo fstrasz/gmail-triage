@@ -10,7 +10,7 @@ import { isListedSender } from "./lib/listedSender.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
 import { shell, triageEmailRow, esc } from "./lib/html.js";
 import { homePage, triagePage, statsPage, blocklistPage, viplistPage, oklistPage, listsPage, senderPage, labeledPage, reviewPage, settingsPage, rulesPage, eventsPage, APP_VERSION } from "./lib/pages.js";
-import { getHealthReport, readHealthInputs, readWebAsset, resolveWebDist } from "./lib/health.js";
+import { getHealthReport, readHealthInputs, readWebAsset, resolveWebDist, probeGmailAuth } from "./lib/health.js";
 import { shapeTriageEmail, filterHidden, normalizeGuard, ACTION_DISPATCH } from "./lib/triageApi.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
@@ -865,14 +865,24 @@ app.post("/settings/events-search", (req, res) => {
 });
 
 // ─── Health (unauthenticated; cheap signals, no Gmail API call) ──────────────────
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
   const webAsset = readWebAsset(WEB_DIST, process.env.WEB_APP_ENABLED !== "0");
+  // Opt-in deep probe (#33): actually exercise the OAuth refresh via getProfile, which
+  // catches a present-but-REJECTED refresh token (the F25 class the cheap token-file
+  // check misses). Off by default — set HEALTH_DEEP_PROBE=1 to enable (one Gmail call
+  // per poll; transient errors are reported, not failed).
+  let liveAuth;
+  if (process.env.HEALTH_DEEP_PROBE === "1") {
+    try { liveAuth = await probeGmailAuth(await getGmailClient()); }
+    catch (e) { liveAuth = isAuthError(e) ? "invalid" : "error"; }
+  }
   const { ok, body } = getHealthReport({
     version: APP_VERSION,
     uptimeSec: process.uptime(),
     now: Date.now(),
     ...readHealthInputs(),
     webAsset,
+    liveAuth,
   });
   res.status(ok ? 200 : 503).json(body);
 });

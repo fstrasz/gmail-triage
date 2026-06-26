@@ -53,7 +53,7 @@ export function resolveWebDist(moduleDir) {
 
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
 // webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
-export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset }) {
+export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset, liveAuth }) {
   const checks = {};
   let ok = true;
 
@@ -87,6 +87,15 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
     if (webAsset === "missing") ok = false;
   }
 
+  // Opt-in deep auth probe result (#33). "invalid" = the OAuth refresh was REJECTED
+  // (the F25 class the static token-file check can't see) → degraded. "error"
+  // (transient/network) is reported but does NOT fail, to avoid flapping /health on a
+  // Gmail blip. Absent entirely when the probe is disabled (back-compat).
+  if (liveAuth !== undefined) {
+    checks.tokenLive = liveAuth;
+    if (liveAuth === "invalid") ok = false;
+  }
+
   return {
     ok,
     body: {
@@ -97,4 +106,19 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
       checks,
     },
   };
+}
+
+// Opt-in deep auth probe (#33): exercise the OAuth refresh with a cheap getProfile call.
+// Returns "ok" (refresh works), "invalid" (refresh REJECTED — the F25 class the static
+// token-file check can't see), or "error" (transient/network — reported, not failed).
+// Async I/O, so it lives at the edge; getHealthReport stays pure (it just reads the result).
+// gmail is injected, so health.js keeps no googleapis dependency.
+export async function probeGmailAuth(gmail) {
+  try {
+    await gmail.users.getProfile({ userId: "me" });
+    return "ok";
+  } catch (e) {
+    if (e?.response?.status === 401 || /invalid_grant/i.test(e?.message || "")) return "invalid";
+    return "error";
+  }
 }
