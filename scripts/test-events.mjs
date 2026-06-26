@@ -1028,6 +1028,51 @@ test('setLastReapply / clearLastReapply round-trip through settings.json', async
   }
 });
 
+// ─── getBulkGuardThreshold (#7): live-tunable threshold, falls back to the constant ──
+test('getBulkGuardThreshold: returns the fallback when unset', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-guard-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { getBulkGuardThreshold } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.equal(getBulkGuardThreshold(100), 100);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('getBulkGuardThreshold: a positive setting overrides the fallback', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-guard-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync('settings.json', JSON.stringify({ bulkGuardThreshold: 250 }));
+    const { getBulkGuardThreshold } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.equal(getBulkGuardThreshold(100), 250);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('getBulkGuardThreshold: invalid setting (0 / non-number) falls back to the constant', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-guard-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync('settings.json', JSON.stringify({ bulkGuardThreshold: 0 }));
+    const m1 = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.equal(m1.getBulkGuardThreshold(100), 100, '0 is rejected');
+    fs.writeFileSync('settings.json', JSON.stringify({ bulkGuardThreshold: 'lots' }));
+    const m2 = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    assert.equal(m2.getBulkGuardThreshold(100), 100, 'non-number is rejected');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {

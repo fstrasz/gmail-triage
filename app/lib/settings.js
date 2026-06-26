@@ -34,6 +34,14 @@ const DEFAULTS = {
 export function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) }; } catch { return { ...DEFAULTS }; }
 }
+
+// #7: live-tunable bulk-guard threshold. Reads settings.json (bind-mounted, so an edit
+// takes effect without a redeploy); a positive number wins, otherwise the caller's
+// fallback (the BULK_GUARD_THRESHOLD constant) is used so the default stays in one place.
+export function getBulkGuardThreshold(fallback) {
+  const v = loadSettings().bulkGuardThreshold;
+  return (typeof v === "number" && v > 0) ? v : fallback;
+}
 export function saveSettings(s) {
   atomicWriteFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
 }
