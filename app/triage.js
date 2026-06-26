@@ -16,7 +16,7 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt, setLastReapply, clearLastReapply } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt, setLastReapply, clearLastReapply, getBulkGuardThreshold } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, scanAll, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
 import { sendEventsEmail } from "./lib/eventSearch.js";
@@ -171,7 +171,7 @@ app.post("/api/reapply", async (req, res) => {
         totalCount += count;
         if (count > 0) breakdown.push({ entry: label, count, query: q });
       }
-      if (totalCount > BULK_GUARD_THRESHOLD) {
+      if (totalCount > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
         const top10 = breakdown.sort((a, b) => b.count - a.count).slice(0, 10);
         const lines = top10.map(b => `  ${b.entry}: ~${b.count}`).join('\n');
         return res.json({
@@ -346,7 +346,7 @@ app.post("/api/tier", async (req, res) => {
       if(!confirmed){
         const q=`from:"${fromEmail}" in:inbox -in:sent -in:trash`;
         const count=await countMatchingEmails(gmail,q);
-        if(count>BULK_GUARD_THRESHOLD){
+        if(count>getBulkGuardThreshold(BULK_GUARD_THRESHOLD)){
           return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will label ${count} emails from ${fromEmail}. Confirm?`});
         }
       }
@@ -375,7 +375,7 @@ app.post("/api/ok-clean", async (req, res) => {
     if(!confirmed){
       const q=`from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count=await countMatchingEmails(gmail,q);
-      if(count>BULK_GUARD_THRESHOLD){
+      if(count>getBulkGuardThreshold(BULK_GUARD_THRESHOLD)){
         return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will clean ${count} emails from ${fromEmail}. Confirm?`});
       }
     }
@@ -398,7 +398,7 @@ app.post("/api/vip-clean", async (req, res) => {
     if(!confirmed){
       const q=`from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count=await countMatchingEmails(gmail,q);
-      if(count>BULK_GUARD_THRESHOLD){
+      if(count>getBulkGuardThreshold(BULK_GUARD_THRESHOLD)){
         return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will clean ${count} emails from ${fromEmail}. Confirm?`});
       }
     }
@@ -418,7 +418,7 @@ app.post("/api/junk", async (req, res) => {
     if(!confirmed){
       const q=`from:"${fromEmail}" -in:sent -in:trash`;
       const count=await countMatchingEmails(gmail,q);
-      if(count>BULK_GUARD_THRESHOLD){
+      if(count>getBulkGuardThreshold(BULK_GUARD_THRESHOLD)){
         return res.json({ok:false,guard:true,count,email:fromEmail,message:`This will label ${count} emails from ${fromEmail} as junk. Confirm?`});
       }
     }
@@ -975,7 +975,7 @@ app.post("/api/triage/action", async (req, res) => {
         if (!confirmed) {
           const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
           const count = await countMatchingEmails(gmail, q);
-          if (count > BULK_GUARD_THRESHOLD)
+          if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
             return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will label ${count} emails from ${fromEmail}. Confirm?` }));
         }
         if (isVip) addToViplist(fromEmail, name); else addToOklist(fromEmail, name);
@@ -995,7 +995,7 @@ app.post("/api/triage/action", async (req, res) => {
       if (!confirmed) {
         const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
-        if (count > BULK_GUARD_THRESHOLD)
+        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
           return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will clean ${count} emails from ${fromEmail}. Confirm?` }));
       }
       const alreadyListed = isVip ? isViplisted(fromEmail, name) : isOklisted(fromEmail, name);
@@ -1010,7 +1010,7 @@ app.post("/api/triage/action", async (req, res) => {
       if (!confirmed) {
         const q = `from:"${fromEmail}" -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
-        if (count > BULK_GUARD_THRESHOLD)
+        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
           return res.json(normalizeGuard({ ok: false, guard: true, count, email: fromEmail, message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?` }));
       }
       const alreadyListed = !!isBlocked(fromEmail, name);
