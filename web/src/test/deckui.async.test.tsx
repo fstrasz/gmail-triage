@@ -115,9 +115,14 @@ describe('TriagePage / real React-Query interleave', () => {
 
     // DECK-2: the confirmed-success path ALSO announces, reading the correct
     // new top (e2), not a stale closure value.
-    const live = document.querySelector('[aria-live="polite"]')
-    expect(live!.textContent).toMatch(/Name e2/)
-    expect(live!.textContent).toMatch(/Subject e2/)
+    // The announce region is filled by a post-advance effect; on slower CI the
+    // effect can flush a tick after Subject e2 renders, so poll instead of a sync
+    // read (this was an intermittent CI flake: "expected '' to match /Name e2/").
+    await waitFor(() => {
+      const live = document.querySelector('[aria-live="polite"]')
+      expect(live!.textContent).toMatch(/Name e2/)
+      expect(live!.textContent).toMatch(/Subject e2/)
+    })
   })
 
   test('auth: card is restored and the Reconnect Gmail state shows after an ASYNC gmail_auth resolve', async () => {
