@@ -1,20 +1,21 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Install dependencies
-COPY app/package.json .
-RUN npm install
-RUN npm install -g nodemon
+# Install production dependencies from the lockfile (reproducible). --omit=dev drops
+# nodemon: code is baked (not bind-mounted), so there is nothing to live-reload.
+COPY app/package.json app/package-lock.json ./
+RUN npm ci --omit=dev
 
-# Copy app files
-COPY app/triage.js .
+# Bake app code into the image (no longer bind-mounted -- see compose.yaml).
+COPY app/triage.js ./triage.js
 COPY app/lib ./lib
+# Bake the built React bundle. Lands at /app/web/dist -- resolveWebDist's container
+# candidate (<moduleDir>/web/dist) already probes exactly this path, so /app keeps
+# working with no resolver change (F28 stays fixed by the same code).
+COPY web/dist ./web/dist
 
-# NOTE: config (.env, credentials.json, token.json, *.json) is NOT baked into the
-# image — it is bind-mounted at runtime via compose.yaml. Baking secrets here was
-# redundant (the mounts override them) and left credentials in the image layers.
+# NOTE: config (.env, credentials.json, token.json, *.json) is NOT baked -- it is
+# bind-mounted at runtime via compose.yaml, keeping secrets out of the image layers.
 
 EXPOSE 3000
-# --ignore web/dist/*: web/dist is bind-mounted; rebuilding the React bundle on
-# deploy must NOT restart the node server (it only serves those static files).
-CMD ["nodemon", "--ignore", "*.json", "--ignore", "web/dist/*", "triage.js"]
+CMD ["node", "triage.js"]
