@@ -42,6 +42,15 @@ export function getBulkGuardThreshold(fallback) {
   const v = loadSettings().bulkGuardThreshold;
   return (typeof v === "number" && v > 0) ? v : fallback;
 }
+// #7 (React Settings port): live-tunable setter paired with getBulkGuardThreshold.
+// A positive finite number stores the floored value; anything else clears the key
+// so the getter reverts to the caller's BULK_GUARD_THRESHOLD fallback.
+export function setBulkGuardThreshold(n) {
+  const s = loadSettings();
+  if (typeof n === "number" && isFinite(n) && n > 0) s.bulkGuardThreshold = Math.floor(n);
+  else delete s.bulkGuardThreshold;
+  saveSettings(s);
+}
 export function saveSettings(s) {
   atomicWriteFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
 }

@@ -1,20 +1,20 @@
 import { Routes, Route } from 'react-router-dom'
 import { AppShell } from './shell/AppShell.tsx'
 import { TriagePage } from './triage/TriagePage.tsx'
-
-function ComingSoon({ name }: { name: string }) {
-  return <div>Coming soon — {name}</div>
-}
+import { ListsPage } from './lists/ListsPage.tsx'
+import { EventsPage } from './events/EventsPage.tsx'
+import { ReviewPage } from './review/ReviewPage.tsx'
+import { SettingsPage } from './settings/SettingsPage.tsx'
 
 export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<TriagePage />} />
-        <Route path="lists" element={<ComingSoon name="Lists" />} />
-        <Route path="events" element={<ComingSoon name="Events" />} />
-        <Route path="review" element={<ComingSoon name="Review" />} />
-        <Route path="settings" element={<ComingSoon name="Settings" />} />
+        <Route path="lists" element={<ListsPage />} />
+        <Route path="events" element={<EventsPage />} />
+        <Route path="review" element={<ReviewPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )

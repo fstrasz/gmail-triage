@@ -1073,6 +1073,41 @@ test('getBulkGuardThreshold: invalid setting (0 / non-number) falls back to the 
   }
 });
 
+// ─── setBulkGuardThreshold (React Settings port): positive int sets, else clears ──
+test('setBulkGuardThreshold: a positive number stores the floored value', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-guard-set-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setBulkGuardThreshold, getBulkGuardThreshold, loadSettings } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    setBulkGuardThreshold(250.9);
+    assert.equal(loadSettings().bulkGuardThreshold, 250, 'stores Math.floor of the value');
+    assert.equal(getBulkGuardThreshold(100), 250, 'getter returns the set value over the fallback');
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('setBulkGuardThreshold: zero / negative / NaN / non-number clears the key (reverts to default)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gmail-triage-guard-set-'));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setBulkGuardThreshold, getBulkGuardThreshold, loadSettings } = await import(settingsModulePath + '?t=' + Date.now() + Math.random());
+    for (const bad of [0, -5, NaN, Infinity, 'lots', null, undefined]) {
+      setBulkGuardThreshold(500);          // set a real value first
+      assert.equal(loadSettings().bulkGuardThreshold, 500);
+      setBulkGuardThreshold(bad);          // then a bad value must clear it
+      assert.equal(loadSettings().bulkGuardThreshold, undefined, `${String(bad)} clears the key`);
+      assert.equal(getBulkGuardThreshold(100), 100, `${String(bad)} → getter falls back to default`);
+    }
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {
