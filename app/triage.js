@@ -16,10 +16,10 @@ import { keepAndClean } from "./lib/keepClean.js";
 import { analyzeEmail } from "./lib/claude.js";
 import { getCalendarClient, createCalendarEvent } from "./lib/calendar.js";
 import { loadReview, addToReview, updateReview, removeFromReview } from "./lib/review.js";
-import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt, setLastReapply, clearLastReapply, getBulkGuardThreshold } from "./lib/settings.js";
+import { loadSettings, addLocation, removeLocation, setTimezone, setScheduler, setDailySummary, setDailySummaryDebug, setDailySummarySchedule, setLastTriageAt, setListsViewMode, addEventInterest, removeEventInterest, updateEventInterest, setEventsSearchSettings, clearScannedEmailIds, clearWebSearchLastRunAt, setLastReapply, clearLastReapply, getBulkGuardThreshold, setBulkGuardThreshold } from "./lib/settings.js";
 import { loadRules, addRule, updateRule, deleteRule, toggleRule } from "./lib/rules.js";
 import { startScheduler, startDailySummaryScheduler, restartDailySummaryScheduler, runScheduledScan, scanAll, loadScanLog, sendDailySummary, startEventsSearchScheduler, runEventsSearchNow } from "./lib/scheduler.js";
-import { sendEventsEmail } from "./lib/eventSearch.js";
+import { sendEventsEmail, sortGroupKeysByLocationOrder } from "./lib/eventSearch.js";
 import { appendLog, loadLog } from "./lib/activityLog.js";
 import { loadFoundEvents, ignoreFoundEvent, setEventCalendarLink, pruneInvalidEmailEvents, saveFoundEvents } from "./lib/foundEvents.js";
 
@@ -1092,6 +1092,265 @@ app.post("/api/triage/undo", async (req, res) => {
     if (isAuthError(e)) return res.status(503).json({ ok: false, error: "gmail_auth" });
     triageServerError(res, e, "/api/triage/undo", true);
   }
+});
+
+// ═══ React Slices 2–3 JSON API (Lists / Rules / Events / Review / Settings) ═════
+// Thin JSON wrappers over the existing loaders/setters, backing the React ports of
+// the Lists, Events, Review, and Settings screens. Additive — the old server-rendered
+// routes above are untouched. Registered here, before the /app SPA fallback.
+// Auth failures → 503 {error:'gmail_auth'}; other errors → triageServerError.
+
+// ─── Lists ──────────────────────────────────────────────────────────────────────
+app.get("/api/lists", (req, res) => {
+  try {
+    const vip = loadViplist(), ok = loadOklist(), blocklist = loadBlocklist(), rules = loadRules();
+    const bkp = loadBlocklistBackup();
+    const single = bkp ? { backedUpAt: bkp.backedUpAt, count: (bkp.list || []).length } : null;
+    const named = loadNamedBackups().map(b => ({ n: b.n, backedUpAt: b.backedUpAt, count: (b.list || []).length }));
+    res.json({ ok: true, vip, oklist: ok, blocklist, rules, backups: { single, named }, counts: { vip: vip.length, ok: ok.length, blocklist: blocklist.length } });
+  } catch (e) { triageServerError(res, e, "/api/lists"); }
+});
+app.post("/api/lists/add", (req, res) => {
+  const { list, email, name, reason } = req.body || {};
+  if (!email) return res.status(400).json({ error: "Missing email" });
+  try {
+    const addr = String(email).trim().toLowerCase();
+    const nm = name != null ? (String(name).trim() || null) : null;
+    if (list === "vip") addToViplist(addr, nm);
+    else if (list === "ok") addToOklist(addr, nm);
+    else if (list === "blocklist") addToBlocklist(addr, reason || "manual", nm);
+    else return res.status(400).json({ error: "Invalid list" });
+    res.json({ ok: true });
+  } catch (e) { triageServerError(res, e, "/api/lists/add"); }
+});
+app.post("/api/lists/remove", (req, res) => {
+  const { list, email, name } = req.body || {};
+  try {
+    const addr = String(email || "").trim().toLowerCase();
+    const nm = name != null ? (String(name).trim() || null) : null;
+    if (list === "vip") removeFromViplist(addr, nm);
+    else if (list === "ok") removeFromOklist(addr, nm);
+    else if (list === "blocklist") removeFromBlocklist(addr, nm);
+    else return res.status(400).json({ error: "Invalid list" });
+    res.json({ ok: true });
+  } catch (e) { triageServerError(res, e, "/api/lists/remove"); }
+});
+app.post("/api/lists/reset-blocklist", (req, res) => {
+  try { const backedUp = backupBlocklist(); resetBlocklist(); res.json({ ok: true, backedUp }); }
+  catch (e) { triageServerError(res, e, "/api/lists/reset-blocklist"); }
+});
+app.post("/api/lists/backup", (req, res) => {
+  try { res.json({ ok: true, n: createNamedBackup() }); }
+  catch (e) { triageServerError(res, e, "/api/lists/backup"); }
+});
+
+// ─── Rules ──────────────────────────────────────────────────────────────────────
+app.post("/api/rules/add", (req, res) => {
+  const { name, senders, subjects, label, skipInbox } = req.body || {};
+  if (!label?.trim()) return res.status(400).json({ error: "Missing label" });
+  try {
+    addRule({
+      name: name?.trim() || "",
+      senders: Array.isArray(senders) ? senders : [],
+      subjects: Array.isArray(subjects) ? subjects : [],
+      label: label.trim(),
+      skipInbox: !!skipInbox,
+    });
+    res.json({ ok: true });
+  } catch (e) { triageServerError(res, e, "/api/rules/add"); }
+});
+app.post("/api/rules/update", (req, res) => {
+  const { id, ...updates } = req.body || {};
+  if (!id) return res.status(400).json({ error: "Missing id" });
+  try { updateRule(id, updates); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/rules/update"); }
+});
+app.post("/api/rules/toggle", (req, res) => {
+  if (!req.body?.id) return res.status(400).json({ error: "Missing id" });
+  try { res.json({ ok: true, enabled: toggleRule(req.body.id) }); }
+  catch (e) { triageServerError(res, e, "/api/rules/toggle"); }
+});
+app.post("/api/rules/delete", (req, res) => {
+  if (!req.body?.id) return res.status(400).json({ error: "Missing id" });
+  try { deleteRule(req.body.id); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/rules/delete"); }
+});
+
+// ─── Events ─────────────────────────────────────────────────────────────────────
+// Same active-filter + chronological sort + group-by-location + configured ordering
+// the old eventsPage does (pages.js), returned as JSON groups for the React screen.
+app.get("/api/events", (req, res) => {
+  try {
+    const settings = loadSettings();
+    const today = new Date().toISOString().slice(0, 10);
+    const active = loadFoundEvents()
+      .filter(e => !e.ignored && (!e.date || e.date >= today))
+      .sort((a, b) => {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date);
+      });
+    const grouped = {};
+    for (const e of active) {
+      const key = e.configuredLocation || e.location || "Other";
+      (grouped[key] = grouped[key] || []).push(e);
+    }
+    const groups = sortGroupKeysByLocationOrder(Object.keys(grouped), settings.locations || [])
+      .map(location => ({ location, events: grouped[location] }));
+    const interests = settings.eventInterests || [];
+    res.json({ ok: true, groups, lastRunAt: settings.eventsSearchLastRunAt, interests, hasInterests: interests.length > 0 });
+  } catch (e) { triageServerError(res, e, "/api/events"); }
+});
+app.post("/api/events/ignore", (req, res) => {
+  try { ignoreFoundEvent(req.body?.id); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/events/ignore"); }
+});
+app.post("/api/events/calendar", async (req, res) => {
+  const { id, event } = req.body || {};
+  try {
+    const calendar = await getCalendarClient();
+    const url = await createCalendarEvent(calendar, event || {});
+    if (id) setEventCalendarLink(id, url);
+    res.json({ ok: true, url });
+  } catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    triageServerError(res, e, "/api/events/calendar");
+  }
+});
+app.post("/api/events/search", async (req, res) => {
+  try { res.json({ ok: true, added: await runEventsSearchNow(getGmailClient) }); }
+  catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    triageServerError(res, e, "/api/events/search");
+  }
+});
+app.post("/api/events/send-email", async (req, res) => {
+  try {
+    const gmail = await getGmailClient();
+    await pruneInvalidEmailEvents(gmail);
+    const today = new Date().toISOString().slice(0, 10);
+    const active = loadFoundEvents().filter(e => !e.ignored && (!e.date || e.date >= today));
+    await sendEventsEmail(gmail, active, loadSettings());
+    res.json({ ok: true });
+  } catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    triageServerError(res, e, "/api/events/send-email");
+  }
+});
+app.post("/api/events/reset-rebuild", async (req, res) => {
+  try {
+    saveFoundEvents([]);
+    clearScannedEmailIds();
+    clearWebSearchLastRunAt();
+    res.json({ ok: true, added: await runEventsSearchNow(getGmailClient) });
+  } catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    triageServerError(res, e, "/api/events/reset-rebuild");
+  }
+});
+
+// ─── Review (execute/calendar/dismiss already exist as JSON above) ────────────────
+app.get("/api/review", (req, res) => {
+  try { res.json({ ok: true, items: loadReview() }); }
+  catch (e) { triageServerError(res, e, "/api/review"); }
+});
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+app.get("/api/settings", (req, res) => {
+  try {
+    const bkp = loadBlocklistBackup();
+    const single = bkp ? { backedUpAt: bkp.backedUpAt, count: (bkp.list || []).length } : null;
+    const named = loadNamedBackups().map(b => ({ n: b.n, backedUpAt: b.backedUpAt, count: (b.list || []).length }));
+    res.json({
+      ok: true,
+      settings: loadSettings(),
+      activityLog: loadLog().slice(0, 200),
+      backups: { single, named },
+      stats: loadStats(),
+      bulkGuardThreshold: getBulkGuardThreshold(BULK_GUARD_THRESHOLD),
+    });
+  } catch (e) { triageServerError(res, e, "/api/settings"); }
+});
+app.post("/api/settings/scheduler", (req, res) => {
+  const { enabled, startHour, startMinute, intervalHours } = req.body || {};
+  try { setScheduler(enabled, startHour, startMinute, intervalHours); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/scheduler"); }
+});
+app.post("/api/settings/daily-summary", (req, res) => {
+  const { enabled, email } = req.body || {};
+  try { setDailySummary(enabled, email); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/daily-summary"); }
+});
+app.post("/api/settings/daily-summary-schedule", (req, res) => {
+  const { hour, minute, intervalValue, intervalUnit } = req.body || {};
+  try { setDailySummarySchedule(hour, minute, intervalUnit, intervalValue); restartDailySummaryScheduler(); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/daily-summary-schedule"); }
+});
+app.post("/api/settings/events-search", (req, res) => {
+  const { enabled, intervalDays, email } = req.body || {};
+  try { setEventsSearchSettings(enabled, intervalDays, email); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/events-search"); }
+});
+app.post("/api/settings/timezone", (req, res) => {
+  const { timezone } = req.body || {};
+  try { if (timezone?.trim()) setTimezone(timezone.trim()); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/timezone"); }
+});
+app.post("/api/settings/lists-view-mode", (req, res) => {
+  try { setListsViewMode(req.body?.mode); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/lists-view-mode"); }
+});
+app.post("/api/settings/bulk-guard-threshold", (req, res) => {
+  try { setBulkGuardThreshold(req.body?.threshold); res.json({ ok: true, threshold: getBulkGuardThreshold(BULK_GUARD_THRESHOLD) }); }
+  catch (e) { triageServerError(res, e, "/api/settings/bulk-guard-threshold"); }
+});
+app.post("/api/settings/locations/add", (req, res) => {
+  const { location } = req.body || {};
+  try { if (location?.trim()) addLocation(location.trim()); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/locations/add"); }
+});
+app.post("/api/settings/locations/remove", (req, res) => {
+  try { removeLocation(req.body?.location); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/locations/remove"); }
+});
+app.post("/api/settings/event-interests/add", (req, res) => {
+  try { addEventInterest(req.body?.topic || ""); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/event-interests/add"); }
+});
+app.post("/api/settings/event-interests/remove", (req, res) => {
+  try { removeEventInterest(req.body?.topic || ""); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/event-interests/remove"); }
+});
+app.post("/api/settings/event-interests/edit", (req, res) => {
+  const { old: oldTopic, new: newTopic } = req.body || {};
+  try { if (oldTopic && newTopic) updateEventInterest(oldTopic, newTopic); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/event-interests/edit"); }
+});
+app.post("/api/settings/run-scan", async (req, res) => {
+  try {
+    const { timeLabel, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved } = await runScheduledScan(getGmailClient);
+    res.json({ ok: true, totalMoved, blocklistMoved, vipMoved, okMoved, rulesMoved: rulesMoved || 0, timeLabel });
+  } catch (e) {
+    if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
+    triageServerError(res, e, "/api/settings/run-scan");
+  }
+});
+app.post("/api/settings/restore-blocklist-backup", (req, res) => {
+  const { merge } = req.body || {};
+  try { const restored = restoreBlocklistBackup(merge === "true" || merge === true); res.json({ ok: true, restored }); }
+  catch (e) { triageServerError(res, e, "/api/settings/restore-blocklist-backup"); }
+});
+app.post("/api/settings/restore-named-backup", (req, res) => {
+  const { n, merge } = req.body || {};
+  try { const restored = restoreNamedBackup(parseInt(n), merge === "true" || merge === true); res.json({ ok: true, restored }); }
+  catch (e) { triageServerError(res, e, "/api/settings/restore-named-backup"); }
+});
+app.post("/api/settings/delete-named-backup", (req, res) => {
+  const { n } = req.body || {};
+  if (n == null || Number.isNaN(parseInt(n))) return res.status(400).json({ error: "Missing or invalid n" });
+  try { deleteNamedBackup(parseInt(n)); res.json({ ok: true }); }
+  catch (e) { triageServerError(res, e, "/api/settings/delete-named-backup"); }
 });
 
 // ─── React app (/app) — served from web/dist, resolved relative to THIS module
