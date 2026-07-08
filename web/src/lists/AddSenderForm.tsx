@@ -49,7 +49,10 @@ export function AddSenderForm() {
       </label>
       <label className="flex flex-1 flex-col text-xs text-muted">
         Email
-        <input aria-label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
+        {/* type="text" (not "email"): domain-wildcard entries like "@mail.anthropic.com"
+            are a first-class feature (backend matches a whole domain), but the native
+            type="email" validation rejects a leading-"@" value with no local part. */}
+        <input aria-label="Email" type="text" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
       </label>
       <label className="flex flex-1 flex-col text-xs text-muted">
         Name

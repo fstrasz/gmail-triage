@@ -116,6 +116,18 @@ describe('ListsPage', () => {
     expect(addMutate.mock.calls[0][0]).toMatchObject({ list: 'vip', email: 'new@x.com', name: 'New' })
   })
 
+  test('accepts a domain-wildcard entry (@domain); Email field is not type=email', () => {
+    state.lists = { data: emptyData, isPending: false, isError: false }
+    render(<ListsPage />)
+    const emailInput = screen.getByLabelText('Email')
+    // Regression: type="email" blocked leading-"@" domain wildcards, a first-class feature.
+    expect(emailInput).not.toHaveAttribute('type', 'email')
+    fireEvent.change(emailInput, { target: { value: '@mail.anthropic.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+    expect(addMutate).toHaveBeenCalledTimes(1)
+    expect(addMutate.mock.calls[0][0]).toMatchObject({ list: 'vip', email: '@mail.anthropic.com' })
+  })
+
   test('reapply guard flow: clicking a reapply button opens the guard dialog', async () => {
     state.lists = { data: emptyData, isPending: false, isError: false }
     globalThis.fetch = vi.fn().mockResolvedValue({
