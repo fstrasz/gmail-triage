@@ -5,6 +5,11 @@
   "type": "module",
   "description": "Repo-level package.json — provides `npm test` from the repo root. The runtime app lives under app/ with its own package.json.",
   "scripts": {
-    "test": "node scripts/test-events.mjs"
+    "test": "node scripts/test-events.mjs",
+    "check": "biome check .",
+    "fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9"
   }
 }

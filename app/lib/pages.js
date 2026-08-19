@@ -1,11 +1,11 @@
-import { triageEmailRow, esc } from "./html.js";
-import { extractEmail, extractName } from "./gmail.js";
-import { loadStats } from "./stats.js";
 import { loadBlocklist } from "./blocklist.js";
-import { loadViplist } from "./viplist.js";
+import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
+import { extractEmail, extractName } from "./gmail.js";
+import { esc, triageEmailRow } from "./html.js";
 import { loadOklist } from "./oklist.js";
 import { loadRules } from "./rules.js";
-import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
+import { loadStats } from "./stats.js";
+import { loadViplist } from "./viplist.js";
 
 export const APP_VERSION = "v1.2.17";
 
@@ -13,23 +13,33 @@ export const APP_VERSION = "v1.2.17";
 function buildConflictSection(conflicts) {
   if (!conflicts || !conflicts.length) return "";
   const listLabel = { VIP: "VIP", OK: "OK", Block: "Block" };
-  const listBtnClass = { VIP: "btn-warning", OK: "btn-primary", Block: "btn-danger" };
-  const rows = conflicts.map(s => {
-    const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
-    const buttons = s.lists.map(list => `
+  const listBtnClass = {
+    VIP: "btn-warning",
+    OK: "btn-primary",
+    Block: "btn-danger",
+  };
+  const rows = conflicts
+    .map((s) => {
+      const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
+      const buttons = s.lists
+        .map(
+          (list) => `
         <form method="POST" action="/api/conflict/remove-from-list">
           <input type="hidden" name="email" value="${s.email}"/>
           <input type="hidden" name="list" value="${list}"/>
           <button class="btn ${listBtnClass[list]}" type="submit">Remove from ${listLabel[list]}</button>
-        </form>`).join("");
-    return `<div class="bl-row">
+        </form>`,
+        )
+        .join("");
+      return `<div class="bl-row">
       <div>
         <div class="bl-email">${lbl}</div>
         <div class="bl-meta">In lists: ${s.lists.join(", ")}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">${buttons}</div>
     </div>`;
-  }).join("");
+    })
+    .join("");
   return `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:20px">
     <div class="card-header" style="background:#fef3c7;color:#92400e">
       <span>⚠️ List Conflicts (${conflicts.length} sender${conflicts.length !== 1 ? "s" : ""})</span>
@@ -40,22 +50,25 @@ function buildConflictSection(conflicts) {
 function buildDelPendSection(delPendSummary) {
   if (!delPendSummary || delPendSummary.total === 0) return "";
   const senderRows = delPendSummary.senders.length
-    ? delPendSummary.senders.map(s => {
-        const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
-        const countStr = `${s.count.toLocaleString()}${s.capped ? "+" : ""}`;
-        return `<div class="bl-row">
+    ? delPendSummary.senders
+        .map((s) => {
+          const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
+          const countStr = `${s.count.toLocaleString()}${s.capped ? "+" : ""}`;
+          return `<div class="bl-row">
           <div><div class="bl-email">${lbl}</div>
           <div class="bl-meta">${countStr} message${s.count !== 1 ? "s" : ""} in DelPend</div></div>
           <form method="POST" action="/api/delpend/trash-sender">
             <input type="hidden" name="email" value="${s.email}"/>
             <button class="btn btn-danger" type="submit">🗑 Trash</button>
           </form></div>`;
-      }).join("")
+        })
+        .join("")
     : `<div class="empty">No per-sender data.</div>`;
   const sampled = delPendSummary.sampled ?? delPendSummary.total;
-  const sampleNote = sampled < delPendSummary.total
-    ? ` <span class="bl-meta" style="font-weight:normal">(senders discovered from most recent ${sampled.toLocaleString()})</span>`
-    : "";
+  const sampleNote =
+    sampled < delPendSummary.total
+      ? ` <span class="bl-meta" style="font-weight:normal">(senders discovered from most recent ${sampled.toLocaleString()})</span>`
+      : "";
   return `<div class="card">
     <div class="card-header">
       <span>🗑 DelPend Queue (${delPendSummary.total.toLocaleString()} messages)${sampleNote}</span>
@@ -66,15 +79,17 @@ function buildDelPendSection(delPendSummary) {
 }
 
 // ─── Shared: sidebar navigation ─────────────────────────────────────────────
-function sidebar({ active = '' } = {}) {
+function sidebar({ active = "" } = {}) {
   const blCount = loadBlocklist().length;
   const vipCount = loadViplist().length;
   const okCount = loadOklist().length;
   const total = blCount + vipCount + okCount;
   const item = (href, icon, label, badge, isActive) => {
-    const badgeHtml = badge !== null && badge !== undefined && badge !== ''
-      ? `<span class="sb-badge"${isActive ? ' style="background:#c7d2fe;color:#4f46e5"' : ''}>${badge}</span>` : '';
-    return `<a href="${href}" class="sb-item${isActive ? ' sb-active' : ''}">${icon} ${label}${badgeHtml}</a>`;
+    const badgeHtml =
+      badge !== null && badge !== undefined && badge !== ""
+        ? `<span class="sb-badge"${isActive ? ' style="background:#c7d2fe;color:#4f46e5"' : ""}>${badge}</span>`
+        : "";
+    return `<a href="${href}" class="sb-item${isActive ? " sb-active" : ""}">${icon} ${label}${badgeHtml}</a>`;
   };
   return `<div class="sidebar">
     <a href="/legacy" class="sb-logo" style="text-decoration:none;color:inherit;display:block">
@@ -82,42 +97,51 @@ function sidebar({ active = '' } = {}) {
       <div style="font-size:.68rem;color:#94a3b8;margin-top:1px">${APP_VERSION}</div>
     </a>
     <div class="sb-nav">
-      ${item('/legacy','🏠','Home','',active==='home')}
-      ${item('/triage','▶','Start Triage','',active==='triage')}
-      ${item('/stats','📊','Stats',null,active==='stats')}
-      ${item('/review','🤖','Review',null,active==='review')}
+      ${item("/legacy", "🏠", "Home", "", active === "home")}
+      ${item("/triage", "▶", "Start Triage", "", active === "triage")}
+      ${item("/stats", "📊", "Stats", null, active === "stats")}
+      ${item("/review", "🤖", "Review", null, active === "review")}
       <div class="sb-section">Label Lists</div>
-      ${item('/lists','🏷','All Lists',total||'',active==='lists')}
-      ${item('/rules','⚡','Rules',loadRules().length||'',active==='rules')}
-      ${item('/labeled?label=..VIP','⭐','VIP Emails',null,active==='labeled-..VIP')}
-      ${item('/labeled?label=..OK','✅','OK Emails',null,active==='labeled-..OK')}
-      ${item('/labeled?label=.DelPend','🗑','Del. Pending',null,active==='labeled-.DelPend')}
+      ${item("/lists", "🏷", "All Lists", total || "", active === "lists")}
+      ${item("/rules", "⚡", "Rules", loadRules().length || "", active === "rules")}
+      ${item("/labeled?label=..VIP", "⭐", "VIP Emails", null, active === "labeled-..VIP")}
+      ${item("/labeled?label=..OK", "✅", "OK Emails", null, active === "labeled-..OK")}
+      ${item("/labeled?label=.DelPend", "🗑", "Del. Pending", null, active === "labeled-.DelPend")}
       <div class="sb-divider"></div>
-      ${item('/events','📅','Events',null,active==='events')}
+      ${item("/events", "📅", "Events", null, active === "events")}
       <div class="sb-divider"></div>
-      ${item('/settings','⚙️','Settings',null,active==='settings')}
+      ${item("/settings", "⚙️", "Settings", null, active === "settings")}
     </div>
     <div class="sb-stat-block">
-      ${(() => { const s = loadStats(); return `
-      <div class="sb-stat-row"><span>🚫 Blocked</span><span class="sb-stat-val">${(s.cleaned||0).toLocaleString()}</span></div>
-      <div class="sb-stat-row"><span>⭐ VIP</span><span class="sb-stat-val">${(s.vip||0).toLocaleString()}</span></div>
-      <div class="sb-stat-row"><span>✅ OK</span><span class="sb-stat-val">${(s.ok||0).toLocaleString()}</span></div>`; })()}
+      ${(() => {
+        const s = loadStats();
+        return `
+      <div class="sb-stat-row"><span>🚫 Blocked</span><span class="sb-stat-val">${(s.cleaned || 0).toLocaleString()}</span></div>
+      <div class="sb-stat-row"><span>⭐ VIP</span><span class="sb-stat-val">${(s.vip || 0).toLocaleString()}</span></div>
+      <div class="sb-stat-row"><span>✅ OK</span><span class="sb-stat-val">${(s.ok || 0).toLocaleString()}</span></div>`;
+      })()}
     </div>
   </div>`;
 }
 
 // ─── Home page ─────────────────────────────────────────────────────────────────
-export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = null, keptDelPendConflicts = []) {
+export function homePage(
+  blocklist,
+  viplist = [],
+  oklist = [],
+  delPendSummary = null,
+  keptDelPendConflicts = [],
+) {
   const conflictSection = buildConflictSection(keptDelPendConflicts);
-  const delPendSection  = buildDelPendSection(delPendSummary);
-  const nav = sidebar({ active: 'home' });
+  const delPendSection = buildDelPendSection(delPendSummary);
+  const nav = sidebar({ active: "home" });
   return `
     <div class="app-layout">
       ${nav}
       <div class="main-content">
-        <div class="main-scroll" style="display:flex;flex-direction:column;align-items:center;justify-content:${conflictSection || delPendSection ? 'flex-start' : 'center'}">
-          <div style="max-width:520px;width:100%;padding:${conflictSection || delPendSection ? '32px 16px 16px' : '0 16px'}">
-            <div style="text-align:center;margin-bottom:${conflictSection || delPendSection ? '32px' : '0'}">
+        <div class="main-scroll" style="display:flex;flex-direction:column;align-items:center;justify-content:${conflictSection || delPendSection ? "flex-start" : "center"}">
+          <div style="max-width:520px;width:100%;padding:${conflictSection || delPendSection ? "32px 16px 16px" : "0 16px"}">
+            <div style="text-align:center;margin-bottom:${conflictSection || delPendSection ? "32px" : "0"}">
               <div style="font-size:2.5rem;margin-bottom:14px">📬</div>
               <h2 style="font-size:1.15rem;margin-bottom:8px">Ready to triage your inbox?</h2>
               <p style="color:#64748b;font-size:.88rem;margin-bottom:24px">⭐ VIP · ✅ OK · ✅ OK &amp; Clean · 🗑 Junk · 🚫 Unsubscribe</p>
@@ -133,15 +157,29 @@ export function homePage(blocklist, viplist = [], oklist = [], delPendSummary = 
 }
 
 // ─── Triage page ───────────────────────────────────────────────────────────────
-export function triagePage(emails, blocklist, savedStats, scanResults, hideListed = false) {
+export function triagePage(
+  emails,
+  blocklist,
+  savedStats,
+  scanResults,
+  hideListed = false,
+) {
   const rows = emails.map(triageEmailRow).join("");
-  const dataScript = `<script type="application/json" id="page-data">${JSON.stringify({
-    total: emails.length, blCount: blocklist.length, savedStats, scanResults, hideListed,
-    seenSenders: emails.map(e => extractName(e.from) + "<" + extractEmail(e.from) + ">"),
-    seenIds: emails.map(e => e.id),
-  })}</script>`;
+  const dataScript = `<script type="application/json" id="page-data">${JSON.stringify(
+    {
+      total: emails.length,
+      blCount: blocklist.length,
+      savedStats,
+      scanResults,
+      hideListed,
+      seenSenders: emails.map(
+        (e) => extractName(e.from) + "<" + extractEmail(e.from) + ">",
+      ),
+      seenIds: emails.map((e) => e.id),
+    },
+  )}</script>`;
 
-  const nav = sidebar({ active: 'triage' });
+  const nav = sidebar({ active: "triage" });
 
   const body = `
     ${dataScript}
@@ -169,8 +207,8 @@ export function triagePage(emails, blocklist, savedStats, scanResults, hideListe
           </div>
           <div class="session-stats">
             <div class="stat-item"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Processed</span></div>
-            <div class="stat-item"><span class="stat-num stat-vip" id="stat-vip">${savedStats.vip||0}</span><span class="stat-label">⭐ VIP</span></div>
-            <div class="stat-item"><span class="stat-num stat-ok" id="stat-ok">${savedStats.ok||0}</span><span class="stat-label">✅ OK</span></div>
+            <div class="stat-item"><span class="stat-num stat-vip" id="stat-vip">${savedStats.vip || 0}</span><span class="stat-label">⭐ VIP</span></div>
+            <div class="stat-item"><span class="stat-num stat-ok" id="stat-ok">${savedStats.ok || 0}</span><span class="stat-label">✅ OK</span></div>
             <div class="stat-item"><span class="stat-num stat-clean" id="stat-clean">${savedStats.cleaned}</span><span class="stat-label">✅ OK &amp; Cleaned</span></div>
             <div class="stat-item"><span class="stat-num stat-junk" id="stat-junk">${savedStats.junked}</span><span class="stat-label">🗑 Junked</span></div>
             <div class="stat-item"><span class="stat-num stat-unsub" id="stat-unsub">${savedStats.unsubbed}</span><span class="stat-label">🚫 Unsub</span></div>
@@ -198,7 +236,8 @@ export function triagePage(emails, blocklist, savedStats, scanResults, hideListe
   return { body, script: clientScript() };
 }
 
-function clientScript() { return `
+function clientScript() {
+  return `
   var _d=JSON.parse(document.getElementById('page-data').textContent);
   var total=_d.total,blCount=_d.blCount,savedStats=_d.savedStats,scanResults=_d.scanResults,hideListed=_d.hideListed;
   var seenSenders=new Set(_d.seenSenders),seenIds=new Set(_d.seenIds);
@@ -572,35 +611,77 @@ function clientScript() { return `
       document.getElementById('tag-'+id).className='status-tag tag-junk';
     }
   }
-`;}
+`;
+}
 
 // ─── Stats page ────────────────────────────────────────────────────────────────
 export function statsPage(stats, blocklist) {
-  const daily  = stats.daily || [];
-  const totals = { vip: stats.vip||0, ok: stats.ok||0, kept: stats.kept||0, cleaned: stats.cleaned||0, junked: stats.junked||0, unsubbed: stats.unsubbed||0 };
+  const daily = stats.daily || [];
+  const totals = {
+    vip: stats.vip || 0,
+    ok: stats.ok || 0,
+    kept: stats.kept || 0,
+    cleaned: stats.cleaned || 0,
+    junked: stats.junked || 0,
+    unsubbed: stats.unsubbed || 0,
+  };
 
   const last30 = [];
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
+    const d = new Date();
+    d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
-    last30.push(daily.find(e => e.date === key) || { date: key, vip:0, ok:0, kept:0, cleaned:0, junked:0, unsubbed:0, inboxSize:null });
+    last30.push(
+      daily.find((e) => e.date === key) || {
+        date: key,
+        vip: 0,
+        ok: 0,
+        kept: 0,
+        cleaned: 0,
+        junked: 0,
+        unsubbed: 0,
+        inboxSize: null,
+      },
+    );
   }
-  const topBlocked  = [...blocklist].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,15);
-  const inboxSeries = daily.filter(e => e.inboxSize !== null).map(e => ({ date: e.date, size: e.inboxSize }));
+  const topBlocked = [...blocklist]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 15);
+  const inboxSeries = daily
+    .filter((e) => e.inboxSize !== null)
+    .map((e) => ({ date: e.date, size: e.inboxSize }));
 
   const totalMeta = [
-    {k:"vip",label:"⭐ VIP",color:"#92400e"},{k:"ok",label:"✅ OK",color:"#0f766e"},
-    {k:"cleaned",label:"✅ OK & Cleaned",color:"#065f46"},
-    {k:"junked",label:"🗑 Junked",color:"#b91c1c"},{k:"unsubbed",label:"🚫 Unsubscribed",color:"#92400e"},
+    { k: "vip", label: "⭐ VIP", color: "#92400e" },
+    { k: "ok", label: "✅ OK", color: "#0f766e" },
+    { k: "cleaned", label: "✅ OK & Cleaned", color: "#065f46" },
+    { k: "junked", label: "🗑 Junked", color: "#b91c1c" },
+    { k: "unsubbed", label: "🚫 Unsubscribed", color: "#92400e" },
   ];
-  const totalCards = totalMeta.map(m => `<div class="stats-big"><div class="stats-big-num" style="color:${m.color}">${(totals[m.k]||0).toLocaleString()}</div><div class="stats-big-label">${m.label}</div></div>`).join("");
+  const totalCards = totalMeta
+    .map(
+      (m) =>
+        `<div class="stats-big"><div class="stats-big-num" style="color:${m.color}">${(totals[m.k] || 0).toLocaleString()}</div><div class="stats-big-label">${m.label}</div></div>`,
+    )
+    .join("");
   const topRows = topBlocked.length
-    ? topBlocked.map(e => { const cls=e.reason==="junk"?"bl-junk":e.reason==="unsub"?"bl-unsub":"bl-manual"; const lbl=e.name?e.name+" &lt;"+e.email+"&gt;":e.email; return `<div class="ts-row"><span class="ts-email" title="${lbl}">${lbl}</span><span class="ts-badge ${cls}">${e.reason}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:8px;white-space:nowrap">${new Date(e.date).toLocaleDateString()}</span></div>`; }).join("")
+    ? topBlocked
+        .map((e) => {
+          const cls =
+            e.reason === "junk"
+              ? "bl-junk"
+              : e.reason === "unsub"
+                ? "bl-unsub"
+                : "bl-manual";
+          const lbl = e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email;
+          return `<div class="ts-row"><span class="ts-email" title="${lbl}">${lbl}</span><span class="ts-badge ${cls}">${e.reason}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:8px;white-space:nowrap">${new Date(e.date).toLocaleDateString()}</span></div>`;
+        })
+        .join("")
     : `<div class="empty">No blocked senders yet.</div>`;
 
-  const nav = sidebar({ active: 'stats' });
+  const nav = sidebar({ active: "stats" });
   const body = `
-    <script type="application/json" id="stats-data">${JSON.stringify({last30,topBlocked,inboxSeries})}</script>
+    <script type="application/json" id="stats-data">${JSON.stringify({ last30, topBlocked, inboxSeries })}</script>
     <div class="app-layout">
       ${nav}
       <div class="main-content">
@@ -683,20 +764,21 @@ function senderEmailCard(e, border) {
 
 export function senderPage(emails, fromEmail, fromName) {
   const displayName = fromName || fromEmail;
-  const isVip = loadViplist().some(v => v.email === fromEmail.toLowerCase());
-  const isOk  = !isVip && loadOklist().some(o => o.email === fromEmail.toLowerCase());
-  const border = isVip ? '#f59e0b' : isOk ? '#14b8a6' : null;
+  const isVip = loadViplist().some((v) => v.email === fromEmail.toLowerCase());
+  const isOk =
+    !isVip && loadOklist().some((o) => o.email === fromEmail.toLowerCase());
+  const border = isVip ? "#f59e0b" : isOk ? "#14b8a6" : null;
   const tierBadge = isVip
     ? `<span style="background:#fef3c7;color:#92400e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px">⭐ VIP</span>`
     : isOk
-    ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px">✅ OK</span>`
-    : "";
+      ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px">✅ OK</span>`
+      : "";
   const firstId = emails.length ? emails[0].id : null;
   const rows = emails.length
-    ? emails.map(e => senderEmailCard(e, border)).join("")
+    ? emails.map((e) => senderEmailCard(e, border)).join("")
     : `<div class="empty">No emails found from this sender.</div>`;
 
-  const nav = sidebar({ active: '' });
+  const nav = sidebar({ active: "" });
   const body = `
     <div class="app-layout">
       ${nav}
@@ -728,7 +810,7 @@ export function senderPage(emails, fromEmail, fromName) {
     </div>
   `;
 
-  const safeEmail = fromEmail.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const safeEmail = fromEmail.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const script = `
     var pageFromEmail='${safeEmail}';
     var emailPanel=document.getElementById('email-panel');
@@ -827,7 +909,7 @@ export function senderPage(emails, fromEmail, fromName) {
         updateTrashBtn();
       }catch(e){alert('Error: '+e.message);}
     }
-    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ''}
+    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ""}
   `;
 
   return { body, script };
@@ -836,26 +918,32 @@ export function senderPage(emails, fromEmail, fromName) {
 // ─── Labeled emails page ───────────────────────────────────────────────────────
 export function labeledPage(labelName, emails) {
   const LABELS = {
-    '..VIP':    { icon: '⭐', title: 'VIP Emails',      border: '#f59e0b' },
-    '..OK':     { icon: '✅', title: 'OK Emails',       border: '#14b8a6' },
-    '.DelPend': { icon: '🗑', title: 'Delete Pending',  border: '#ef4444' },
+    "..VIP": { icon: "⭐", title: "VIP Emails", border: "#f59e0b" },
+    "..OK": { icon: "✅", title: "OK Emails", border: "#14b8a6" },
+    ".DelPend": { icon: "🗑", title: "Delete Pending", border: "#ef4444" },
   };
-  const meta = LABELS[labelName] || { icon: '🏷', title: labelName, border: '#6366f1' };
-  const nav = sidebar({ active: 'labeled-' + labelName });
-  const safe = s => (s||'').replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const meta = LABELS[labelName] || {
+    icon: "🏷",
+    title: labelName,
+    border: "#6366f1",
+  };
+  const nav = sidebar({ active: "labeled-" + labelName });
+  const safe = (s) => (s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const tz = ""; // date formatted server-side
 
-  const rows = emails.length ? emails.map(e => {
-    const fromEmail = extractEmail(e.from || '');
-    const fromName  = extractName(e.from || '') || fromEmail;
-    const dateStr   = e.date ? new Date(e.date).toLocaleDateString() : "";
-    const subj      = (e.subject || "(no subject)").replace(/</g, "&lt;");
-    return `
+  const rows = emails.length
+    ? emails
+        .map((e) => {
+          const fromEmail = extractEmail(e.from || "");
+          const fromName = extractName(e.from || "") || fromEmail;
+          const dateStr = e.date ? new Date(e.date).toLocaleDateString() : "";
+          const subj = (e.subject || "(no subject)").replace(/</g, "&lt;");
+          return `
       <div class="triage-row" id="row-${e.id}" style="border-left:4px solid ${meta.border}" data-from-email="${fromEmail}">
         <div class="triage-header" onclick="openPreview('${e.id}')">
           <div class="triage-meta">
             <div class="triage-from">${fromName} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
-            <div class="triage-subj" style="${e.isRead ? 'color:#94a3b8' : 'font-weight:600;color:#1e293b'}">${subj}</div>
+            <div class="triage-subj" style="${e.isRead ? "color:#94a3b8" : "font-weight:600;color:#1e293b"}">${subj}</div>
           </div>
           <div class="triage-date">${dateStr}</div>
           <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
@@ -866,7 +954,9 @@ export function labeledPage(labelName, emails) {
           <button class="btn btn-expand" onclick="openPreview('${e.id}')">▼ Preview</button>
         </div>
       </div>`;
-  }).join("") : `<div class="empty">No emails with this label.</div>`;
+        })
+        .join("")
+    : `<div class="empty">No emails with this label.</div>`;
 
   const firstId = emails.length ? emails[0].id : null;
 
@@ -916,27 +1006,33 @@ export function labeledPage(labelName, emails) {
           if(activePreviewId===id)closePreview();
         });
     }
-    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ''}
+    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ""}
   `;
   return { body, script };
 }
 
 // ─── Blocklist page ────────────────────────────────────────────────────────────
 export function blocklistPage(list) {
-  const rows = list.length ? list.map(e => `
+  const rows = list.length
+    ? list
+        .map(
+          (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name?e.name+" &lt;"+e.email+"&gt;":e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="bl-reason bl-${e.reason}">${e.reason}</span>
         <form method="POST" action="/blocklist/remove">
           <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name||""}"/>
+          <input type="hidden" name="name" value="${e.name || ""}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
-    </div>`).join("") : `<div class="empty">No blocked senders yet.</div>`;
+    </div>`,
+        )
+        .join("")
+    : `<div class="empty">No blocked senders yet.</div>`;
 
-  const nav = sidebar({ active: 'lists' });
+  const nav = sidebar({ active: "lists" });
   return `
     <div class="app-layout">
       ${nav}
@@ -976,19 +1072,25 @@ export function blocklistPage(list) {
 
 // ─── VIP List page ─────────────────────────────────────────────────────────────
 export function viplistPage(list) {
-  const rows = list.length ? list.map(e => `
+  const rows = list.length
+    ? list
+        .map(
+          (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name?e.name+" &lt;"+e.email+"&gt;":e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
         <form method="POST" action="/viplist/remove">
           <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name||""}"/>
+          <input type="hidden" name="name" value="${e.name || ""}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
-    </div>`).join("") : `<div class="empty">No VIP senders yet.</div>`;
+    </div>`,
+        )
+        .join("")
+    : `<div class="empty">No VIP senders yet.</div>`;
 
-  const nav = sidebar({ active: 'lists' });
+  const nav = sidebar({ active: "lists" });
   return `
     <div class="app-layout">
       ${nav}
@@ -1025,54 +1127,79 @@ export function viplistPage(list) {
 }
 
 // ─── Unified Lists page ────────────────────────────────────────────────────────
-export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBackups = [], viewMode = "table") {
+export function listsPage(
+  blocklist,
+  viplist,
+  oklist,
+  backupInfo = null,
+  namedBackups = [],
+  viewMode = "table",
+) {
   // Merge entries by email so each sender gets one row with all list badges
   const rawAll = [
-    ...blocklist.map(e => ({ ...e, listType: 'block' })),
-    ...viplist.map(e => ({ ...e, listType: 'vip' })),
-    ...oklist.map(e => ({ ...e, listType: 'ok' })),
+    ...blocklist.map((e) => ({ ...e, listType: "block" })),
+    ...viplist.map((e) => ({ ...e, listType: "vip" })),
+    ...oklist.map((e) => ({ ...e, listType: "ok" })),
   ];
   const byEmail = {};
   for (const e of rawAll) {
     const k = e.email.toLowerCase();
-    if (!byEmail[k]) byEmail[k] = { email: e.email, name: e.name, date: e.date, lists: [] };
+    if (!byEmail[k])
+      byEmail[k] = { email: e.email, name: e.name, date: e.date, lists: [] };
     byEmail[k].lists.push({ listType: e.listType, reason: e.reason });
     if (e.name && !byEmail[k].name) byEmail[k].name = e.name;
-    if (e.date && (!byEmail[k].date || e.date > byEmail[k].date)) byEmail[k].date = e.date;
+    if (e.date && (!byEmail[k].date || e.date > byEmail[k].date))
+      byEmail[k].date = e.date;
   }
   const all = Object.values(byEmail);
 
-  const removeForm = (email, listType) => `<form method="POST" action="/lists/remove" style="margin:0;display:inline">
+  const removeForm = (
+    email,
+    listType,
+  ) => `<form method="POST" action="/lists/remove" style="margin:0;display:inline">
     <input type="hidden" name="email" value="${esc(email)}"/>
     <input type="hidden" name="name" value=""/>
     <input type="hidden" name="listType" value="${listType}"/>
     <button class="btn btn-danger" type="submit" style="font-size:.72rem;padding:2px 7px">✕</button>
   </form>`;
 
-  const badgeHtml = (list) => list.listType === 'block'
-    ? `<span class="badge-block">🚫 ${esc(list.reason || 'blocked')}</span>`
-    : list.listType === 'vip'
-    ? `<span class="badge-vip">⭐ VIP</span>`
-    : `<span class="badge-ok">✅ OK</span>`;
+  const badgeHtml = (list) =>
+    list.listType === "block"
+      ? `<span class="badge-block">🚫 ${esc(list.reason || "blocked")}</span>`
+      : list.listType === "vip"
+        ? `<span class="badge-vip">⭐ VIP</span>`
+        : `<span class="badge-ok">✅ OK</span>`;
 
-  const typesStr = (e) => e.lists.map(l => l.listType).join(' ');
+  const typesStr = (e) => e.lists.map((l) => l.listType).join(" ");
 
-  const rows = all.map(e => `<tr data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
+  const rows = all
+    .map(
+      (
+        e,
+      ) => `<tr data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name || "").toLowerCase())}" data-date="${esc(e.date || "")}">
       <td data-col="name" class="lt-td">${e.name ? `<span class="lt-name">${esc(e.name)}</span>` : `<span style="color:#cbd5e1">—</span>`}</td>
       <td data-col="email" class="lt-td"><span class="lt-email">${esc(e.email)}</span></td>
       <td data-col="date" class="lt-td" style="white-space:nowrap">${e.date ? new Date(e.date).toLocaleDateString() : "—"}</td>
-      <td data-col="label" class="lt-td"><div style="display:flex;flex-direction:column;gap:3px">${e.lists.map(l => badgeHtml(l)).join('')}</div></td>
-      <td data-col="action" class="lt-td lt-action">${e.lists.map(l => removeForm(e.email, l.listType)).join('')}</td>
-    </tr>`).join("");
+      <td data-col="label" class="lt-td"><div style="display:flex;flex-direction:column;gap:3px">${e.lists.map((l) => badgeHtml(l)).join("")}</div></td>
+      <td data-col="action" class="lt-td lt-action">${e.lists.map((l) => removeForm(e.email, l.listType)).join("")}</td>
+    </tr>`,
+    )
+    .join("");
 
-  const compactRows = all.map(e => `<div class="lt-compact-row" data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name||"").toLowerCase())}" data-date="${esc(e.date||"")}">
-    ${e.lists.map(l => badgeHtml(l)).join(' ')}
+  const compactRows = all
+    .map(
+      (
+        e,
+      ) => `<div class="lt-compact-row" data-type="${typesStr(e)}" data-email="${esc(e.email.toLowerCase())}" data-name="${esc((e.name || "").toLowerCase())}" data-date="${esc(e.date || "")}">
+    ${e.lists.map((l) => badgeHtml(l)).join(" ")}
     <span class="lt-compact-name">${e.name ? `<strong>${esc(e.name)}</strong> <span style="color:#94a3b8">&lt;${esc(e.email)}&gt;</span>` : `<span>${esc(e.email)}</span>`}</span>
     <span class="lt-compact-date">${e.date ? new Date(e.date).toLocaleDateString() : ""}</span>
-    ${e.lists.map(l => removeForm(e.email, l.listType)).join('')}
-  </div>`).join("");
+    ${e.lists.map((l) => removeForm(e.email, l.listType)).join("")}
+  </div>`,
+    )
+    .join("");
 
-  const nav = sidebar({ active: 'lists' });
+  const nav = sidebar({ active: "lists" });
 
   const body = `
     <style>
@@ -1119,17 +1246,21 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
             </div>
           </div>
           <div class="card" style="overflow:hidden">
-            ${viewMode === 'compact' ? `
+            ${
+              viewMode === "compact"
+                ? `
             <div class="lt-compact-list" id="list-tbody">
               ${all.length ? compactRows : '<div class="lt-empty">No entries yet.</div>'}
-            </div>` : `
+            </div>`
+                : `
             <div style="overflow-x:auto">
               <table class="lt-table">
                 <thead><tr id="list-thead-row"></tr></thead>
-                <tbody id="list-tbody">${all.length ? rows : ''}</tbody>
+                <tbody id="list-tbody">${all.length ? rows : ""}</tbody>
               </table>
-              ${!all.length ? '<div class="lt-empty">No entries yet.</div>' : ''}
-            </div>`}
+              ${!all.length ? '<div class="lt-empty">No entries yet.</div>' : ""}
+            </div>`
+            }
           </div>
           <div class="card" style="margin-top:14px">
             <div class="card-header" style="cursor:pointer" onclick="toggleAdd()">
@@ -1156,7 +1287,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
             <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
               <div>
                 <div style="font-weight:600;font-size:.88rem;color:#374151">Reset Blocklist</div>
-                <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">Permanently clears all ${blocklist.length} blocked sender${blocklist.length !== 1 ? 's' : ''}. A backup will be saved automatically.</div>
+                <div style="font-size:.78rem;color:#94a3b8;margin-top:2px">Permanently clears all ${blocklist.length} blocked sender${blocklist.length !== 1 ? "s" : ""}. A backup will be saved automatically.</div>
               </div>
               <button class="btn btn-danger" onclick="openResetModal()">🗑 Reset Blocklist</button>
             </div>
@@ -1169,7 +1300,7 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
       <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
         <div style="font-size:2rem;text-align:center;margin-bottom:12px">⚠️</div>
         <h3 id="reset-modal-title" style="margin:0 0 10px;text-align:center;color:#b91c1c;font-size:1.05rem">Reset Blocklist?</h3>
-        <p style="font-size:.85rem;color:#374151;margin:0 0 8px">You are about to <strong>permanently delete all ${blocklist.length} blocked sender${blocklist.length !== 1 ? 's' : ''}</strong>. This list may represent hours of triage work.</p>
+        <p style="font-size:.85rem;color:#374151;margin:0 0 8px">You are about to <strong>permanently delete all ${blocklist.length} blocked sender${blocklist.length !== 1 ? "s" : ""}</strong>. This list may represent hours of triage work.</p>
         <p style="font-size:.85rem;color:#374151;margin:0 0 18px">A backup will be saved and can be restored from Settings. Gmail labels already applied to emails are not affected.</p>
         <div style="font-size:.82rem;color:#64748b;margin-bottom:6px">Type <strong>RESET</strong> to confirm:</div>
         <input id="reset-confirm-input" type="text" autocomplete="off" placeholder="RESET"
@@ -1444,78 +1575,107 @@ export function listsPage(blocklist, viplist, oklist, backupInfo = null, namedBa
 
 // ─── Review page ───────────────────────────────────────────────────────────────
 export function reviewPage(items) {
-  const pending   = items.filter(i => i.status === "pending");
-  const executed  = items.filter(i => i.status !== "pending");
+  const pending = items.filter((i) => i.status === "pending");
+  const executed = items.filter((i) => i.status !== "pending");
 
-  const actionBadge = a =>
-    a === "keep"    ? `<span class="bl-reason" style="background:#dcfce7;color:#15803d">📁 Keep</span>` :
-    a === "archive" ? `<span class="bl-reason" style="background:#dbeafe;color:#1e40af">📥 Archive</span>` :
-    a === "junk"    ? `<span class="bl-reason" style="background:#fee2e2;color:#b91c1c">🗑 Junk</span>` :
-                      `<span class="bl-reason" style="background:#f1f5f9;color:#64748b">— None</span>`;
+  const actionBadge = (a) =>
+    a === "keep"
+      ? `<span class="bl-reason" style="background:#dcfce7;color:#15803d">📁 Keep</span>`
+      : a === "archive"
+        ? `<span class="bl-reason" style="background:#dbeafe;color:#1e40af">📥 Archive</span>`
+        : a === "junk"
+          ? `<span class="bl-reason" style="background:#fee2e2;color:#b91c1c">🗑 Junk</span>`
+          : `<span class="bl-reason" style="background:#f1f5f9;color:#64748b">— None</span>`;
 
   const calendarForm = (item) => {
     // Support both new (events array) and old (event singular) data formats
     const events = Array.isArray(item.analysis.events)
       ? item.analysis.events
-      : (item.analysis.isLocalEvent && item.analysis.event ? [item.analysis.event] : []);
+      : item.analysis.isLocalEvent && item.analysis.event
+        ? [item.analysis.event]
+        : [];
     if (!events.length) return "";
     const calendarLinks = item.calendarLinks || {};
-    const pendingCount = events.filter((_, i) => !calendarLinks[String(i)]).length;
-    const createAllBtn = pendingCount > 1
-      ? `<button type="button" class="btn btn-primary" id="cal-all-btn-${item.id}" onclick="doCreateAllCalEvents('${item.id}',${events.length})" style="width:100%;margin-bottom:4px">📅 Create All ${pendingCount} Events</button>`
-      : "";
-    return createAllBtn + events.map((ev, idx) => {
-      const link = calendarLinks[String(idx)];
-      const formOrLink = link
-        ? `<div style="margin-top:10px;padding:10px;background:#dcfce7;border-radius:8px;font-size:.85rem">✅ Event created: <a href="${link}" target="_blank" style="color:#15803d">Open in Calendar</a></div>`
-        : `<form id="cal-form-${item.id}-${idx}" onsubmit="doCreateCalEvent(event,'${item.id}',${idx});return false;" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-            <input name="title"       value="${(ev.title||"").replace(/"/g,"&quot;")}"       placeholder="Title"       style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
-            <input name="date"        value="${ev.date||""}"         type="date"               style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
-            <input name="time"        value="${ev.time||""}"         type="time"               style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
-            <input name="location"    value="${(ev.location||"").replace(/"/g,"&quot;")}"    placeholder="Location"    style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
-            <input name="url"         value="${(ev.url||"").replace(/"/g,"&quot;")}"         placeholder="Event URL"   style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
-            <textarea name="description" rows="3" placeholder="Description" style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">${ev.description||""}</textarea>
+    const pendingCount = events.filter(
+      (_, i) => !calendarLinks[String(i)],
+    ).length;
+    const createAllBtn =
+      pendingCount > 1
+        ? `<button type="button" class="btn btn-primary" id="cal-all-btn-${item.id}" onclick="doCreateAllCalEvents('${item.id}',${events.length})" style="width:100%;margin-bottom:4px">📅 Create All ${pendingCount} Events</button>`
+        : "";
+    return (
+      createAllBtn +
+      events
+        .map((ev, idx) => {
+          const link = calendarLinks[String(idx)];
+          const formOrLink = link
+            ? `<div style="margin-top:10px;padding:10px;background:#dcfce7;border-radius:8px;font-size:.85rem">✅ Event created: <a href="${link}" target="_blank" style="color:#15803d">Open in Calendar</a></div>`
+            : `<form id="cal-form-${item.id}-${idx}" onsubmit="doCreateCalEvent(event,'${item.id}',${idx});return false;" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+            <input name="title"       value="${(ev.title || "").replace(/"/g, "&quot;")}"       placeholder="Title"       style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
+            <input name="date"        value="${ev.date || ""}"         type="date"               style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
+            <input name="time"        value="${ev.time || ""}"         type="time"               style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
+            <input name="location"    value="${(ev.location || "").replace(/"/g, "&quot;")}"    placeholder="Location"    style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
+            <input name="url"         value="${(ev.url || "").replace(/"/g, "&quot;")}"         placeholder="Event URL"   style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem"/>
+            <textarea name="description" rows="3" placeholder="Description" style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">${ev.description || ""}</textarea>
             <button type="submit" class="btn btn-primary" id="cal-btn-${item.id}-${idx}">📅 Create Calendar Event</button>
           </form>`;
-      const label = events.length > 1
-        ? `📅 Event ${idx+1} of ${events.length}: ${ev.title||""}`
-        : "📅 Local Event Detected";
-      return `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-top:12px">
+          const label =
+            events.length > 1
+              ? `📅 Event ${idx + 1} of ${events.length}: ${ev.title || ""}`
+              : "📅 Local Event Detected";
+          return `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-top:12px">
         <div style="font-weight:700;font-size:.85rem;color:#15803d;margin-bottom:4px">${label}</div>
         ${formOrLink}
       </div>`;
-    }).join("");
+        })
+        .join("")
+    );
   };
 
   const draftReplyBox = (item) => {
     if (!item.analysis.draftReply) return "";
     return `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-top:12px">
       <div style="font-weight:700;font-size:.85rem;color:#0369a1;margin-bottom:6px">✉️ Suggested Reply</div>
-      <textarea rows="6" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;font-family:sans-serif" readonly>${item.analysis.draftReply.replace(/</g,"&lt;")}</textarea>
+      <textarea rows="6" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;font-family:sans-serif" readonly>${item.analysis.draftReply.replace(/</g, "&lt;")}</textarea>
     </div>`;
   };
 
   const itemRow = (item, isPending) => {
     const a = item.analysis || {};
     const from = item.from || "";
-    const dateStr = item.date ? (() => {
-      const d = new Date(item.date);
-      return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) + " " + d.toLocaleDateString();
-    })() : "";
-    return `<div class="review-item ${isPending?"":"review-done"}" id="ritem-${item.id}" onclick="selectReview('${item.id}')" style="cursor:pointer">
+    const dateStr = item.date
+      ? (() => {
+          const d = new Date(item.date);
+          return (
+            d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+            " " +
+            d.toLocaleDateString()
+          );
+        })()
+      : "";
+    return `<div class="review-item ${isPending ? "" : "review-done"}" id="ritem-${item.id}" onclick="selectReview('${item.id}')" style="cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${from.replace(/</g,"&lt;")}</div>
-          <div style="font-size:.82rem;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${(item.subject||"").replace(/</g,"&lt;")}</div>
+          <div style="font-weight:600;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${from.replace(/</g, "&lt;")}</div>
+          <div style="font-size:.82rem;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${(item.subject || "").replace(/</g, "&lt;")}</div>
           <div style="font-size:.72rem;color:#94a3b8;margin-top:2px">${dateStr}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
           ${actionBadge(a.action)}
-          ${(() => { const ec = Array.isArray(item.analysis.events) ? item.analysis.events.length : (item.analysis.isLocalEvent ? 1 : 0); return ec > 0 ? `<span style="font-size:.7rem;background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:999px">📅 ${ec > 1 ? ec+" Events" : "Event"}</span>` : ""; })()}
+          ${(() => {
+            const ec = Array.isArray(item.analysis.events)
+              ? item.analysis.events.length
+              : item.analysis.isLocalEvent
+                ? 1
+                : 0;
+            return ec > 0
+              ? `<span style="font-size:.7rem;background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:999px">📅 ${ec > 1 ? ec + " Events" : "Event"}</span>`
+              : "";
+          })()}
           ${isPending ? "" : `<span style="font-size:.7rem;color:#94a3b8">✓ done</span>`}
         </div>
       </div>
-      <div style="font-size:.8rem;color:#64748b;margin-top:6px;line-height:1.4">${(a.summary||"").replace(/</g,"&lt;")}</div>
+      <div style="font-size:.8rem;color:#64748b;margin-top:6px;line-height:1.4">${(a.summary || "").replace(/</g, "&lt;")}</div>
     </div>`;
   };
 
@@ -1523,19 +1683,23 @@ export function reviewPage(items) {
     const a = item.analysis || {};
     const isPending = item.status === "pending";
     const suggestedAction = a.action || "none";
-    const btnStyle = (action) => action === suggestedAction
-      ? `style="border:2px solid #6366f1"` : "";
+    const btnStyle = (action) =>
+      action === suggestedAction ? `style="border:2px solid #6366f1"` : "";
     return `<div id="rdetail-${item.id}" class="review-detail" style="display:none;padding:16px;overflow-y:auto;height:100%">
-      <div style="font-size:.82rem;color:#64748b;margin-bottom:10px">${(item.from||"").replace(/</g,"&lt;")} · ${item.date?new Date(item.date).toLocaleDateString():""}</div>
-      <div style="font-weight:700;margin-bottom:6px">${(item.subject||"").replace(/</g,"&lt;")}</div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:.85rem;color:#475569;line-height:1.5;margin-bottom:12px">${(a.summary||"").replace(/</g,"&lt;")}</div>
-      <div style="font-size:.78rem;color:#94a3b8;margin-bottom:12px"><em>${(a.actionReason||"").replace(/</g,"&lt;")}</em></div>
-      ${isPending ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="font-size:.82rem;color:#64748b;margin-bottom:10px">${(item.from || "").replace(/</g, "&lt;")} · ${item.date ? new Date(item.date).toLocaleDateString() : ""}</div>
+      <div style="font-weight:700;margin-bottom:6px">${(item.subject || "").replace(/</g, "&lt;")}</div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:.85rem;color:#475569;line-height:1.5;margin-bottom:12px">${(a.summary || "").replace(/</g, "&lt;")}</div>
+      <div style="font-size:.78rem;color:#94a3b8;margin-bottom:12px"><em>${(a.actionReason || "").replace(/</g, "&lt;")}</em></div>
+      ${
+        isPending
+          ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="btn btn-keep"    ${btnStyle("keep")}    onclick="executeAction('${item.id}','keep',event)">📁 Keep</button>
         <button class="btn btn-archive" ${btnStyle("archive")} onclick="executeAction('${item.id}','archive',event)">📥 Archive</button>
         <button class="btn btn-junk"    ${btnStyle("junk")}    onclick="executeAction('${item.id}','junk',event)">🗑 Junk</button>
         <button class="btn" style="background:#f1f5f9;color:#64748b" onclick="dismiss('${item.id}',event)">✕ Dismiss</button>
-      </div>` : `<div style="font-size:.82rem;color:#15803d;margin-bottom:12px">✅ Action executed</div>`}
+      </div>`
+          : `<div style="font-size:.82rem;color:#15803d;margin-bottom:12px">✅ Action executed</div>`
+      }
       <iframe src="/api/preview/${item.id}" style="width:100%;height:300px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0"></iframe>
       ${calendarForm(item)}
       ${draftReplyBox(item)}
@@ -1543,10 +1707,12 @@ export function reviewPage(items) {
   };
 
   const allItems = [...pending, ...executed];
-  const listRows   = allItems.map(i => itemRow(i,  i.status === "pending")).join("");
-  const detailDivs = allItems.map(i => detailPanel(i)).join("");
+  const listRows = allItems
+    .map((i) => itemRow(i, i.status === "pending"))
+    .join("");
+  const detailDivs = allItems.map((i) => detailPanel(i)).join("");
 
-  const nav = sidebar({ active: 'review' });
+  const nav = sidebar({ active: "review" });
   const body = `
     <div class="app-layout">
       ${nav}
@@ -1556,9 +1722,11 @@ export function reviewPage(items) {
         </div>
         <div style="flex:1;min-height:0;display:flex;overflow:hidden">
           <div class="email-panel" style="width:380px;flex:none">
-        ${allItems.length === 0
-          ? `<div class="empty" style="margin-top:60px">No emails in the review queue yet.<br><br><a href="/triage" style="color:#6366f1">Start Triaging →</a></div>`
-          : listRows}
+        ${
+          allItems.length === 0
+            ? `<div class="empty" style="margin-top:60px">No emails in the review queue yet.<br><br><a href="/triage" style="color:#6366f1">Start Triaging →</a></div>`
+            : listRows
+        }
       </div>
       <div class="preview-panel open" style="display:flex;flex-direction:column">
         <div id="rdetail-placeholder" style="display:flex;align-items:center;justify-content:center;flex:1;color:#94a3b8;font-size:.9rem">
@@ -1656,19 +1824,25 @@ export function reviewPage(items) {
 
 // ─── OK List page ──────────────────────────────────────────────────────────────
 export function oklistPage(list) {
-  const rows = list.length ? list.map(e => `
+  const rows = list.length
+    ? list
+        .map(
+          (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name?e.name+" &lt;"+e.email+"&gt;":e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
         <form method="POST" action="/oklist/remove">
           <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name||""}"/>
+          <input type="hidden" name="name" value="${e.name || ""}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
-    </div>`).join("") : `<div class="empty">No OK senders yet.</div>`;
+    </div>`,
+        )
+        .join("")
+    : `<div class="empty">No OK senders yet.</div>`;
 
-  const nav = sidebar({ active: 'lists' });
+  const nav = sidebar({ active: "lists" });
   return `
     <div class="app-layout">
       ${nav}
@@ -1706,36 +1880,45 @@ export function oklistPage(list) {
 
 const TIMEZONES = [
   ["America/Los_Angeles", "Pacific (LA)"],
-  ["America/Denver",      "Mountain (Denver)"],
-  ["America/Phoenix",     "Mountain no-DST (Phoenix)"],
-  ["America/Chicago",     "Central (Chicago)"],
-  ["America/New_York",    "Eastern (New York)"],
-  ["America/Anchorage",   "Alaska"],
-  ["Pacific/Honolulu",    "Hawaii"],
-  ["Europe/London",       "London"],
-  ["Europe/Paris",        "Paris / Berlin"],
-  ["Asia/Tokyo",          "Tokyo"],
-  ["Asia/Shanghai",       "Shanghai / Beijing"],
-  ["Australia/Sydney",    "Sydney"],
+  ["America/Denver", "Mountain (Denver)"],
+  ["America/Phoenix", "Mountain no-DST (Phoenix)"],
+  ["America/Chicago", "Central (Chicago)"],
+  ["America/New_York", "Eastern (New York)"],
+  ["America/Anchorage", "Alaska"],
+  ["Pacific/Honolulu", "Hawaii"],
+  ["Europe/London", "London"],
+  ["Europe/Paris", "Paris / Berlin"],
+  ["Asia/Tokyo", "Tokyo"],
+  ["Asia/Shanghai", "Shanghai / Beijing"],
+  ["Australia/Sydney", "Sydney"],
 ];
 
-export function settingsPage(settings, backupInfo = null, namedBackups = [], activityLog = []) {
+export function settingsPage(
+  settings,
+  backupInfo = null,
+  namedBackups = [],
+  activityLog = [],
+) {
   const locations = settings.locations || [];
-  const timezone  = settings.timezone  || "America/Los_Angeles";
+  const timezone = settings.timezone || "America/Los_Angeles";
   const locationRows = locations.length
-    ? locations.map(loc => `
+    ? locations
+        .map(
+          (loc) => `
       <div class="bl-row">
         <div>
-          <div class="bl-email">${loc.replace(/</g,"&lt;")}</div>
+          <div class="bl-email">${loc.replace(/</g, "&lt;")}</div>
         </div>
         <form method="POST" action="/settings/locations/remove" style="margin:0">
-          <input type="hidden" name="location" value="${loc.replace(/"/g,'&quot;')}">
+          <input type="hidden" name="location" value="${loc.replace(/"/g, "&quot;")}">
           <button class="btn btn-danger" type="submit">Remove</button>
         </form>
-      </div>`).join("")
+      </div>`,
+        )
+        .join("")
     : `<div class="empty">No locations set — Claude will surface events from any location.</div>`;
 
-  const nav = sidebar({ active: 'settings' });
+  const nav = sidebar({ active: "settings" });
   const body = `
     <div class="app-layout">
       ${nav}
@@ -1765,25 +1948,31 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           Event Interests
           <span style="font-size:.75rem;font-weight:400;color:#94a3b8">What types of events Claude should search for in your locations</span>
         </div>
-        ${(settings.eventInterests||[]).length
-          ? (settings.eventInterests||[]).map((t,i) => `
+        ${
+          (settings.eventInterests || []).length
+            ? (settings.eventInterests || [])
+                .map(
+                  (t, i) => `
             <div class="bl-row" id="interest-row-${i}">
               <div id="interest-view-${i}" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-                <div class="bl-email">${t.replace(/</g,"&lt;")}</div>
+                <div class="bl-email">${t.replace(/</g, "&lt;")}</div>
                 <button class="btn btn-secondary" type="button" style="font-size:.78rem;padding:4px 8px" onclick="interestEditOpen(${i})">Edit</button>
                 <form method="POST" action="/settings/event-interests/remove" style="margin:0">
-                  <input type="hidden" name="topic" value="${t.replace(/"/g,'&quot;')}">
+                  <input type="hidden" name="topic" value="${t.replace(/"/g, "&quot;")}">
                   <button class="btn btn-danger" type="submit" style="font-size:.78rem;padding:4px 8px">Remove</button>
                 </form>
               </div>
               <form id="interest-edit-${i}" method="POST" action="/settings/event-interests/edit" style="display:none;flex:1;gap:6px;align-items:center" onsubmit="">
-                <input type="hidden" name="old" value="${t.replace(/"/g,'&quot;')}">
-                <input type="text" name="new" value="${t.replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+                <input type="hidden" name="old" value="${t.replace(/"/g, "&quot;")}">
+                <input type="text" name="new" value="${t.replace(/"/g, "&quot;")}" style="flex:1;padding:5px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
                 <button class="btn btn-primary" type="submit" style="font-size:.78rem;padding:4px 10px">Save</button>
                 <button class="btn btn-secondary" type="button" style="font-size:.78rem;padding:4px 8px" onclick="interestEditClose(${i})">Cancel</button>
               </form>
-            </div>`).join("")
-          : `<div class="empty">No interests set — add topics like "wine festivals" or "outdoor concerts".</div>`}
+            </div>`,
+                )
+                .join("")
+            : `<div class="empty">No interests set — add topics like "wine festivals" or "outdoor concerts".</div>`
+        }
         <div class="add-form">
           <input type="text" id="interest-input" placeholder="e.g. wine festivals" style="flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
           <button class="btn btn-primary" id="interest-add-btn" type="button">Add</button>
@@ -1796,21 +1985,21 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
         </div>
         <form method="POST" action="/settings/events-search" style="padding:14px 18px;display:flex;flex-direction:column;gap:14px">
           <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer">
-            <input type="checkbox" name="enabled" value="1" ${settings.eventsSearchEnabled ? 'checked' : ''}>
+            <input type="checkbox" name="enabled" value="1" ${settings.eventsSearchEnabled ? "checked" : ""}>
             Enable scheduled event search
           </label>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:.8rem;color:#64748b;font-weight:500">Run every</label>
             <div style="display:flex;align-items:center;gap:8px">
-              <input type="number" name="intervalDays" value="${settings.eventsSearchIntervalDays||7}" min="1" max="365" style="width:70px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
-              <span style="font-size:.85rem;color:#374151">days, at ${String(settings.dailySummaryHour??6).padStart(2,'0')}:${String(settings.dailySummaryMinute??0).padStart(2,'0')} (set in Daily Summary)</span>
+              <input type="number" name="intervalDays" value="${settings.eventsSearchIntervalDays || 7}" min="1" max="365" style="width:70px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+              <span style="font-size:.85rem;color:#374151">days, at ${String(settings.dailySummaryHour ?? 6).padStart(2, "0")}:${String(settings.dailySummaryMinute ?? 0).padStart(2, "0")} (set in Daily Summary)</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:.8rem;color:#64748b;font-weight:500">Send results to</label>
-            <input type="text" name="email" value="${settings.eventsSearchEmail||''}" placeholder="email address (leave blank to use Daily Summary email)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
+            <input type="text" name="email" value="${settings.eventsSearchEmail || ""}" placeholder="email address (leave blank to use Daily Summary email)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem">
           </div>
-          ${settings.eventsSearchLastRunAt ? `<div style="font-size:.8rem;color:#64748b">Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}</div>` : ''}
+          ${settings.eventsSearchLastRunAt ? `<div style="font-size:.8rem;color:#64748b">Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}</div>` : ""}
           <div style="display:flex;gap:10px">
             <button class="btn btn-primary" type="submit">Save</button>
             <button class="btn btn-secondary" type="submit" formaction="/events/search" formmethod="POST">Search Now</button>
@@ -1837,15 +2026,15 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           <input type="number" name="hour" min="0" max="23" value="${settings.dailySummaryHour ?? 6}"
             style="width:54px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
           <span style="font-size:.82rem;color:#64748b">:</span>
-          <input type="number" name="minute" min="0" max="59" value="${String(settings.dailySummaryMinute ?? 0).padStart(2,'0')}"
+          <input type="number" name="minute" min="0" max="59" value="${String(settings.dailySummaryMinute ?? 0).padStart(2, "0")}"
             style="width:54px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
           <span style="font-size:.82rem;color:#64748b;white-space:nowrap;margin-left:8px">every</span>
           <input type="number" name="intervalValue" min="1" value="${settings.dailySummaryIntervalValue ?? 1}"
             style="width:60px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;text-align:center">
           <select name="intervalUnit" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
-            <option value="hours" ${(settings.dailySummaryIntervalUnit||"days")==="hours"?"selected":""}>hours</option>
-            <option value="days"  ${(settings.dailySummaryIntervalUnit||"days")==="days" ?"selected":""}>days</option>
-            <option value="weeks" ${(settings.dailySummaryIntervalUnit||"days")==="weeks"?"selected":""}>weeks</option>
+            <option value="hours" ${(settings.dailySummaryIntervalUnit || "days") === "hours" ? "selected" : ""}>hours</option>
+            <option value="days"  ${(settings.dailySummaryIntervalUnit || "days") === "days" ? "selected" : ""}>days</option>
+            <option value="weeks" ${(settings.dailySummaryIntervalUnit || "days") === "weeks" ? "selected" : ""}>weeks</option>
           </select>
           <button class="btn btn-secondary" type="submit" style="font-size:.82rem">Save Schedule</button>
         </form>
@@ -1857,7 +2046,7 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;cursor:pointer;color:#64748b">
             <input type="checkbox" id="debug-summary-cb" ${settings.dailySummaryDebug ? "checked" : ""} style="width:14px;height:14px">
             Debug: send after each auto-clean (auto-disables after 12h)
-            <span id="debug-summary-ts" style="color:#f59e0b;font-size:.75rem">${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `· enabled ${Math.round((Date.now()-new Date(settings.dailySummaryDebugEnabledAt).getTime())/3600000*10)/10}h ago` : ""}</span>
+            <span id="debug-summary-ts" style="color:#f59e0b;font-size:.75rem">${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `· enabled ${Math.round(((Date.now() - new Date(settings.dailySummaryDebugEnabledAt).getTime()) / 3600000) * 10) / 10}h ago` : ""}</span>
           </label>
         </div>
       </div>
@@ -1866,10 +2055,10 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
         <form method="POST" action="/settings/lists-view-mode" style="padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
           <label style="font-size:.85rem;color:#374151;font-weight:500">Label Lists view</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer">
-            <input type="radio" name="mode" value="table" ${settings.listsViewMode !== 'compact' ? 'checked' : ''}> Table
+            <input type="radio" name="mode" value="table" ${settings.listsViewMode !== "compact" ? "checked" : ""}> Table
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer">
-            <input type="radio" name="mode" value="compact" ${settings.listsViewMode === 'compact' ? 'checked' : ''}> Compact
+            <input type="radio" name="mode" value="compact" ${settings.listsViewMode === "compact" ? "checked" : ""}> Compact
           </label>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
@@ -1898,9 +2087,12 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           </label>
           <label style="font-size:.85rem">Start time
             <select name="startHour" style="margin-left:6px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
-              ${[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22].map(h =>
-                `<option value="${h}"${h === (settings.schedulerStartHour ?? 10) ? " selected" : ""}>${h < 12 ? h+" AM" : h === 12 ? "12 PM" : (h-12)+" PM"}</option>`
-              ).join("")}
+              ${[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+                .map(
+                  (h) =>
+                    `<option value="${h}"${h === (settings.schedulerStartHour ?? 10) ? " selected" : ""}>${h < 12 ? h + " AM" : h === 12 ? "12 PM" : h - 12 + " PM"}</option>`,
+                )
+                .join("")}
             </select>
             <select name="startMinute" style="margin-left:4px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
               <option value="0"${(settings.schedulerStartMinute ?? 0) === 0 ? " selected" : ""}>:00</option>
@@ -1909,9 +2101,20 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           </label>
           <label style="font-size:.85rem">Every
             <select name="intervalHours" style="margin-left:6px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff">
-              ${[[0.5,"30 min"],[1,"1 hr"],[2,"2 hr"],[3,"3 hr"],[4,"4 hr"],[6,"6 hr"],[8,"8 hr"]].map(([v,label]) =>
-                `<option value="${v}"${(settings.schedulerIntervalHours ?? 2) === v ? " selected" : ""}>${label}</option>`
-              ).join("")}
+              ${[
+                [0.5, "30 min"],
+                [1, "1 hr"],
+                [2, "2 hr"],
+                [3, "3 hr"],
+                [4, "4 hr"],
+                [6, "6 hr"],
+                [8, "8 hr"],
+              ]
+                .map(
+                  ([v, label]) =>
+                    `<option value="${v}"${(settings.schedulerIntervalHours ?? 2) === v ? " selected" : ""}>${label}</option>`,
+                )
+                .join("")}
             </select>
           </label>
           <button class="btn btn-primary" type="submit">Save</button>
@@ -1921,7 +2124,9 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
           <span id="run-scan-status" style="font-size:.82rem;color:#64748b"></span>
         </div>
       </div>
-      ${(backupInfo && backupInfo.backedUpAt) || namedBackups.length ? `
+      ${
+        (backupInfo && backupInfo.backedUpAt) || namedBackups.length
+          ? `
       <div class="card" style="margin-top:16px;border:1px solid #fde68a">
         <div class="card-header" style="background:#fffbeb;border-bottom:1px solid #fde68a">
           Blocklist Backups
@@ -1936,7 +2141,11 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
             <th style="padding:6px 14px;border-bottom:1px solid #fde68a"></th>
           </tr></thead>
           <tbody>
-            ${namedBackups.slice().reverse().map(b => `<tr>
+            ${namedBackups
+              .slice()
+              .reverse()
+              .map(
+                (b) => `<tr>
               <td style="padding:7px 14px;font-size:.84rem;color:#374151;font-weight:600">#${b.n}</td>
               <td style="padding:7px 14px;font-size:.82rem;color:#64748b">${new Date(b.backedUpAt).toLocaleString()}</td>
               <td style="padding:7px 14px;font-size:.84rem;color:#374151">${b.list.length}</td>
@@ -1948,8 +2157,12 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
                   <button class="btn btn-danger" style="font-size:.75rem;padding:3px 9px" type="submit">✕</button>
                 </form>
               </td>
-            </tr>`).join('')}
-            ${backupInfo && backupInfo.backedUpAt ? `<tr>
+            </tr>`,
+              )
+              .join("")}
+            ${
+              backupInfo && backupInfo.backedUpAt
+                ? `<tr>
               <td style="padding:7px 14px;font-size:.84rem;color:#374151;font-weight:600">—</td>
               <td style="padding:7px 14px;font-size:.82rem;color:#64748b">${new Date(backupInfo.backedUpAt).toLocaleString()}</td>
               <td style="padding:7px 14px;font-size:.84rem;color:#374151">${backupInfo.list.length}</td>
@@ -1957,7 +2170,9 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
               <td style="padding:7px 14px;text-align:right">
                 <button class="btn btn-secondary" style="font-size:.75rem;padding:3px 10px" onclick="openRestoreModal('auto',0,${backupInfo.list.length},'${new Date(backupInfo.backedUpAt).toLocaleDateString()}')">↩ Restore</button>
               </td>
-            </tr>` : ''}
+            </tr>`
+                : ""
+            }
           </tbody>
         </table>
       </div>
@@ -1979,13 +2194,18 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
             </form>
           </div>
         </div>
-      </div>` : ""}
+      </div>`
+          : ""
+      }
       <div class="card" style="margin-top:16px">
         <div class="card-header">
           Activity Log
           <span style="font-size:.75rem;font-weight:400;color:#94a3b8">Last ${activityLog.length} events (newest first)</span>
         </div>
-        ${activityLog.length === 0 ? `<div class="empty">No activity recorded yet.</div>` : `
+        ${
+          activityLog.length === 0
+            ? `<div class="empty">No activity recorded yet.</div>`
+            : `
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead><tr style="background:#f8fafc">
             <th style="padding:6px 14px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Time</th>
@@ -1993,31 +2213,58 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
             <th style="padding:6px 14px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Sender / Rule</th>
             <th style="padding:6px 14px;text-align:right;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0">Count</th>
           </tr></thead>
-          <tbody>${activityLog.slice(0, 200).map(e => {
-            const ts = e.ts ? new Date(e.ts).toLocaleString('en-US', { timeZone: settings.timezone || 'America/Los_Angeles', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-            const actionMap = { vip:'⭐ VIP', ok:'✅ OK', 'ok-clean':'✅ OK & Clean', junk:'🗑 Junk', unsub:'🚫 Unsub', archive:'📥 Archive', delete:'🗑 Delete', 'rule-applied':'⚡ Rule' };
-            const badge = e.type === 'rule'
-              ? `<span style="background:#ede9fe;color:#6d28d9;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⚡ Rule</span>`
-              : { vip:`<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⭐ VIP</span>`,
-                  ok:`<span style="background:#ccfbf1;color:#0f766e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK</span>`,
-                  'ok-clean':`<span style="background:#a7f3d0;color:#065f46;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK & Clean</span>`,
-                  junk:`<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Junk</span>`,
-                  unsub:`<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🚫 Unsub</span>`,
-                  archive:`<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">📥 Archive</span>`,
-                  delete:`<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Delete</span>`,
-                }[e.action] || `<span style="color:#94a3b8">${esc(e.action)}</span>`;
-            const senderCell = e.type === 'rule'
-              ? `<span style="font-weight:600">${esc(e.ruleName)}</span><span style="color:#94a3b8;margin-left:6px">→ ${esc(e.label)}</span>`
-              : e.sender ? `${esc(e.senderName || e.sender)}<span style="color:#94a3b8;font-size:.76rem;margin-left:4px">&lt;${esc(e.sender)}&gt;</span>` : `<span style="color:#94a3b8">${esc(e.msgId||'—')}</span>`;
-            const count = e.count != null ? e.count : '—';
-            return `<tr style="border-bottom:1px solid #f8fafc">
+          <tbody>${activityLog
+            .slice(0, 200)
+            .map((e) => {
+              const ts = e.ts
+                ? new Date(e.ts).toLocaleString("en-US", {
+                    timeZone: settings.timezone || "America/Los_Angeles",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "";
+              const actionMap = {
+                vip: "⭐ VIP",
+                ok: "✅ OK",
+                "ok-clean": "✅ OK & Clean",
+                junk: "🗑 Junk",
+                unsub: "🚫 Unsub",
+                archive: "📥 Archive",
+                delete: "🗑 Delete",
+                "rule-applied": "⚡ Rule",
+              };
+              const badge =
+                e.type === "rule"
+                  ? `<span style="background:#ede9fe;color:#6d28d9;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⚡ Rule</span>`
+                  : {
+                      vip: `<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">⭐ VIP</span>`,
+                      ok: `<span style="background:#ccfbf1;color:#0f766e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK</span>`,
+                      "ok-clean": `<span style="background:#a7f3d0;color:#065f46;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">✅ OK & Clean</span>`,
+                      junk: `<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Junk</span>`,
+                      unsub: `<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🚫 Unsub</span>`,
+                      archive: `<span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">📥 Archive</span>`,
+                      delete: `<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:999px;font-size:.74rem;font-weight:700">🗑 Delete</span>`,
+                    }[e.action] ||
+                    `<span style="color:#94a3b8">${esc(e.action)}</span>`;
+              const senderCell =
+                e.type === "rule"
+                  ? `<span style="font-weight:600">${esc(e.ruleName)}</span><span style="color:#94a3b8;margin-left:6px">→ ${esc(e.label)}</span>`
+                  : e.sender
+                    ? `${esc(e.senderName || e.sender)}<span style="color:#94a3b8;font-size:.76rem;margin-left:4px">&lt;${esc(e.sender)}&gt;</span>`
+                    : `<span style="color:#94a3b8">${esc(e.msgId || "—")}</span>`;
+              const count = e.count != null ? e.count : "—";
+              return `<tr style="border-bottom:1px solid #f8fafc">
               <td style="padding:6px 14px;white-space:nowrap;color:#64748b">${ts}</td>
               <td style="padding:6px 14px">${badge}</td>
               <td style="padding:6px 14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${senderCell}</td>
               <td style="padding:6px 14px;text-align:right;color:#64748b">${count}</td>
             </tr>`;
-          }).join('')}</tbody>
-        </table>`}
+            })
+            .join("")}</tbody>
+        </table>`
+        }
       </div>
           </div>
         </div>
@@ -2141,7 +2388,7 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
         else { cb.checked = !intended; }
       } catch(e) { cb.checked = !intended; }
     };
-    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : 'null'});
+    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : "null"});
     function openRestoreModal(type, n, count, date) {
       var modal = document.getElementById('restore-modal');
       if (!modal) return;
@@ -2167,21 +2414,30 @@ export function settingsPage(settings, backupInfo = null, namedBackups = [], act
 
 // ─── Rules page ────────────────────────────────────────────────────────────────
 export function rulesPage(rules) {
-  const nav = sidebar({ active: 'rules' });
+  const nav = sidebar({ active: "rules" });
 
   const ruleCards = rules.length
-    ? rules.map(r => {
-        const enabled = r.enabled !== false;
-        const senderLines = (r.senders || []).map(s => `<div class="rule-chip">${esc(s)}</div>`).join('');
-        const subjectLines = (r.subjects || []).map(s => `<div class="rule-chip rule-chip-subject">${esc(s)}</div>`).join('');
-        const skipBadge = r.skipInbox ? `<span class="badge-skip">skip inbox</span>` : '';
-        const enabledBadge = enabled
-          ? `<span class="badge-enabled">active</span>`
-          : `<span class="badge-disabled">disabled</span>`;
-        const rid = esc(r.id);
-        const sendersVal = esc((r.senders || []).join('\n'));
-        const subjectsVal = esc((r.subjects || []).join('\n'));
-        return `<div class="card" style="margin-bottom:12px;${enabled ? '' : 'opacity:.6'}">
+    ? rules
+        .map((r) => {
+          const enabled = r.enabled !== false;
+          const senderLines = (r.senders || [])
+            .map((s) => `<div class="rule-chip">${esc(s)}</div>`)
+            .join("");
+          const subjectLines = (r.subjects || [])
+            .map(
+              (s) => `<div class="rule-chip rule-chip-subject">${esc(s)}</div>`,
+            )
+            .join("");
+          const skipBadge = r.skipInbox
+            ? `<span class="badge-skip">skip inbox</span>`
+            : "";
+          const enabledBadge = enabled
+            ? `<span class="badge-enabled">active</span>`
+            : `<span class="badge-disabled">disabled</span>`;
+          const rid = esc(r.id);
+          const sendersVal = esc((r.senders || []).join("\n"));
+          const subjectsVal = esc((r.subjects || []).join("\n"));
+          return `<div class="card" style="margin-bottom:12px;${enabled ? "" : "opacity:.6"}">
           <div id="view-${rid}">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -2194,7 +2450,7 @@ export function rulesPage(rules) {
                 <button class="btn" type="button" onclick="ruleEditOpen('${rid}')" style="padding:4px 10px;font-size:.8rem;background:#f1f5f9;color:#475569">Edit</button>
                 <form method="POST" action="/rules/toggle" style="margin:0">
                   <input type="hidden" name="id" value="${rid}"/>
-                  <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;background:${enabled ? '#f1f5f9' : '#dcfce7'};color:${enabled ? '#475569' : '#166534'}">${enabled ? 'Disable' : 'Enable'}</button>
+                  <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;background:${enabled ? "#f1f5f9" : "#dcfce7"};color:${enabled ? "#475569" : "#166534"}">${enabled ? "Disable" : "Enable"}</button>
                 </form>
                 <form method="POST" action="/rules/delete" style="margin:0">
                   <input type="hidden" name="id" value="${rid}"/>
@@ -2203,9 +2459,9 @@ export function rulesPage(rules) {
               </div>
             </div>
             <div style="padding:10px 18px 12px">
-              ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ''}
-              ${subjectLines ? `<div><span class="rule-section-label">Subject keywords</span><div class="rule-chips">${subjectLines}</div></div>` : ''}
-              ${!senderLines && !subjectLines ? `<div style="color:#94a3b8;font-size:.85rem;font-style:italic">No conditions — rule will not run</div>` : ''}
+              ${senderLines ? `<div style="margin-bottom:6px"><span class="rule-section-label">Senders</span><div class="rule-chips">${senderLines}</div></div>` : ""}
+              ${subjectLines ? `<div><span class="rule-section-label">Subject keywords</span><div class="rule-chips">${subjectLines}</div></div>` : ""}
+              ${!senderLines && !subjectLines ? `<div style="color:#94a3b8;font-size:.85rem;font-style:italic">No conditions — rule will not run</div>` : ""}
             </div>
           </div>
           <div id="edit-${rid}" style="display:none;padding:16px 18px">
@@ -2214,7 +2470,7 @@ export function rulesPage(rules) {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
                 <div>
                   <label class="form-label">Name</label>
-                  <input class="form-input" type="text" name="name" value="${esc(r.name || '')}"/>
+                  <input class="form-input" type="text" name="name" value="${esc(r.name || "")}"/>
                 </div>
                 <div>
                   <label class="form-label">Label</label>
@@ -2233,7 +2489,7 @@ export function rulesPage(rules) {
               </div>
               <div style="display:flex;align-items:center;gap:16px">
                 <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;color:#374151;cursor:pointer">
-                  <input type="checkbox" name="skipInbox"${r.skipInbox ? ' checked' : ''}/> Skip Inbox
+                  <input type="checkbox" name="skipInbox"${r.skipInbox ? " checked" : ""}/> Skip Inbox
                 </label>
                 <button class="btn btn-primary" type="submit" style="padding:5px 14px">Save</button>
                 <button class="btn" type="button" onclick="ruleEditClose('${rid}')" style="padding:5px 12px;background:#f1f5f9;color:#475569">Cancel</button>
@@ -2241,7 +2497,8 @@ export function rulesPage(rules) {
             </form>
           </div>
         </div>`;
-      }).join('')
+        })
+        .join("")
     : `<div class="empty" style="margin-bottom:16px">No rules yet. Add one below.</div>`;
 
   const addForm = `<div class="card" style="margin-bottom:12px">
@@ -2320,67 +2577,84 @@ export function rulesPage(rules) {
 // ─── Events page ───────────────────────────────────────────────────────────────
 export function eventsPage(events, settings) {
   const today = new Date().toISOString().slice(0, 10);
-  const active = (events || []).filter(e => !e.ignored && (!e.date || e.date >= today)).sort((a, b) => {
-    if (!a.date && !b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return a.date.localeCompare(b.date);
-  });
+  const active = (events || [])
+    .filter((e) => !e.ignored && (!e.date || e.date >= today))
+    .sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
   const interests = settings.eventInterests || [];
 
   // Group by configured location
   const grouped = {};
   for (const e of active) {
-    const key = e.configuredLocation || e.location || 'Other';
+    const key = e.configuredLocation || e.location || "Other";
     (grouped[key] = grouped[key] || []).push(e);
   }
 
   const lastRun = settings.eventsSearchLastRunAt
     ? `Last searched: ${new Date(settings.eventsSearchLastRunAt).toLocaleString()}`
-    : 'Never searched';
+    : "Never searched";
 
   const noInterests = !interests.length
     ? `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:20px">
         <div style="padding:16px 18px;color:#92400e">
           No event interests configured. <a href="/settings" style="color:#1d4ed8">Add some in Settings</a> to start finding events.
         </div>
-      </div>` : '';
+      </div>`
+    : "";
 
-  const orderedKeys = sortGroupKeysByLocationOrder(Object.keys(grouped), settings.locations || []);
+  const orderedKeys = sortGroupKeysByLocationOrder(
+    Object.keys(grouped),
+    settings.locations || [],
+  );
   const eventCards = active.length
-    ? orderedKeys.map(loc => [loc, grouped[loc]]).map(([loc, evs]) => `
+    ? orderedKeys
+        .map((loc) => [loc, grouped[loc]])
+        .map(
+          ([loc, evs]) => `
         <div style="margin-bottom:24px">
           <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
-            ${evs.map(e => {
-              const displayUrl = e.canonicalUrl || e.url;
-              const sourceIcon = (e.source === 'email' && !e.canonicalUrl) ? '✉ ' : '';
-              const titleLink = displayUrl
-                ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
-                : `${sourceIcon}${e.title}`;
-              const priceRating = [
-                e.pricePerPerson ? `<strong style="color:#16a34a;font-size:.88rem">${e.pricePerPerson} / person</strong>` : '',
-                e.rating ? `<span style="font-size:.85rem">⭐ ${e.rating}</span>` : '',
-              ].filter(Boolean).join(' &nbsp;&bull;&nbsp; ');
-              return `
+            ${evs
+              .map((e) => {
+                const displayUrl = e.canonicalUrl || e.url;
+                const sourceIcon =
+                  e.source === "email" && !e.canonicalUrl ? "✉ " : "";
+                const titleLink = displayUrl
+                  ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
+                  : `${sourceIcon}${e.title}`;
+                const priceRating = [
+                  e.pricePerPerson
+                    ? `<strong style="color:#16a34a;font-size:.88rem">${e.pricePerPerson} / person</strong>`
+                    : "",
+                  e.rating
+                    ? `<span style="font-size:.85rem">⭐ ${e.rating}</span>`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" &nbsp;&bull;&nbsp; ");
+                return `
             <li class="card" style="margin:0;padding:0">
               <div style="padding:14px 18px">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
                   <div style="flex:1;min-width:0">
                     <div style="font-weight:600;font-size:.9rem;margin-bottom:4px">
                       ${titleLink}
-                      <span style="font-weight:400;font-size:.78rem;color:#94a3b8"> &mdash; ${e.interest||''}</span>
+                      <span style="font-weight:400;font-size:.78rem;color:#94a3b8"> &mdash; ${e.interest || ""}</span>
                     </div>
-                    ${priceRating ? `<div style="margin-bottom:5px">${priceRating}</div>` : ''}
+                    ${priceRating ? `<div style="margin-bottom:5px">${priceRating}</div>` : ""}
                     <div style="font-size:.82rem;color:#374151;margin-bottom:4px">
-                      📅 ${e.date||'TBD'}${e.time ? ' at ' + e.time : ''} &nbsp;|&nbsp; 📍 ${e.location||'TBD'}
+                      📅 ${e.date || "TBD"}${e.time ? " at " + e.time : ""} &nbsp;|&nbsp; 📍 ${e.location || "TBD"}
                     </div>
-                    ${e.description ? `<div style="font-size:.82rem;color:#6b7280">${e.description}</div>` : ''}
-                    ${e.calendarEventUrl ? `<div style="margin-top:6px"><a href="${e.calendarEventUrl}" target="_blank" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ''}
+                    ${e.description ? `<div style="font-size:.82rem;color:#6b7280">${e.description}</div>` : ""}
+                    ${e.calendarEventUrl ? `<div style="margin-top:6px"><a href="${e.calendarEventUrl}" target="_blank" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ""}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-                    ${displayUrl ? `<a href="${displayUrl}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ''}
-                    ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${e.id}')">+ Calendar</button>` : ''}
+                    ${displayUrl ? `<a href="${displayUrl}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ""}
+                    ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${e.id}')">+ Calendar</button>` : ""}
                     <form method="POST" action="/events/ignore" style="margin:0">
                       <input type="hidden" name="id" value="${e.id}">
                       <button class="btn btn-danger" style="font-size:.78rem;padding:5px 10px;width:100%" type="submit">Ignore</button>
@@ -2391,13 +2665,13 @@ export function eventsPage(events, settings) {
                   <form method="POST" action="/events/calendar" style="display:flex;flex-direction:column;gap:8px">
                     <input type="hidden" name="id" value="${e.id}">
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                      <input type="text" name="title" value="${(e.title||'').replace(/"/g,'&quot;')}" placeholder="Title" style="flex:2;min-width:160px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                      <input type="date" name="date" value="${e.date||''}" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                      <input type="time" name="time" value="${e.time||''}" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="text" name="title" value="${(e.title || "").replace(/"/g, "&quot;")}" placeholder="Title" style="flex:2;min-width:160px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="date" name="date" value="${e.date || ""}" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="time" name="time" value="${e.time || ""}" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
                     </div>
-                    <input type="text" name="location" value="${(e.location||'').replace(/"/g,'&quot;')}" placeholder="Location" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                    <input type="url" name="url" value="${(e.url||'').replace(/"/g,'&quot;')}" placeholder="URL (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                    <textarea name="description" rows="2" placeholder="Description (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;resize:vertical">${e.description||''}</textarea>
+                    <input type="text" name="location" value="${(e.location || "").replace(/"/g, "&quot;")}" placeholder="Location" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <input type="url" name="url" value="${(e.url || "").replace(/"/g, "&quot;")}" placeholder="URL (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <textarea name="description" rows="2" placeholder="Description (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;resize:vertical">${e.description || ""}</textarea>
                     <div style="display:flex;gap:8px">
                       <button class="btn btn-primary" type="submit" style="font-size:.83rem">Add to Calendar</button>
                       <button class="btn btn-secondary" type="button" onclick="toggleCalForm('${e.id}')" style="font-size:.83rem">Cancel</button>
@@ -2405,15 +2679,19 @@ export function eventsPage(events, settings) {
                   </form>
                 </div>
               </div>
-            </li>`;}).join('')}
+            </li>`;
+              })
+              .join("")}
           </ul>
-        </div>`).join('')
+        </div>`,
+        )
+        .join("")
     : `<div class="empty" style="padding:40px 0;text-align:center;color:#94a3b8">
         No upcoming events found yet.<br>
         <span style="font-size:.85rem">Use "Search Now" to find events, or enable scheduled search in Settings.</span>
       </div>`;
 
-  const nav = sidebar({ active: 'events' });
+  const nav = sidebar({ active: "events" });
   const body = `
     <div class="app-layout">
       ${nav}

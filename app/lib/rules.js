@@ -1,12 +1,16 @@
-import fs from 'fs';
-import path from 'path';
-import { randomUUID } from 'crypto';
-import { atomicWriteFileSync } from './atomicWrite.js';
+import { randomUUID } from "crypto";
+import fs from "fs";
+import path from "path";
+import { atomicWriteFileSync } from "./atomicWrite.js";
 
-const RULES_PATH = path.join(process.cwd(), 'rules.json');
+const RULES_PATH = path.join(process.cwd(), "rules.json");
 
 export function loadRules() {
-  try { return JSON.parse(fs.readFileSync(RULES_PATH)); } catch { return []; }
+  try {
+    return JSON.parse(fs.readFileSync(RULES_PATH));
+  } catch {
+    return [];
+  }
 }
 export function saveRules(rules) {
   atomicWriteFileSync(RULES_PATH, JSON.stringify(rules, null, 2));
@@ -15,7 +19,7 @@ export function addRule({ name, senders, subjects, label, skipInbox }) {
   const rules = loadRules();
   rules.push({
     id: randomUUID(),
-    name: name || '',
+    name: name || "",
     senders: senders || [],
     subjects: subjects || [],
     label,
@@ -27,17 +31,18 @@ export function addRule({ name, senders, subjects, label, skipInbox }) {
 }
 export function toggleRule(id) {
   const rules = loadRules();
-  const idx = rules.findIndex(r => r.id === id);
-  if (idx >= 0) rules[idx].enabled = rules[idx].enabled === false ? true : false;
+  const idx = rules.findIndex((r) => r.id === id);
+  if (idx >= 0)
+    rules[idx].enabled = rules[idx].enabled === false ? true : false;
   saveRules(rules);
   return idx >= 0 ? rules[idx].enabled : null;
 }
 export function updateRule(id, updates) {
   const rules = loadRules();
-  const idx = rules.findIndex(r => r.id === id);
+  const idx = rules.findIndex((r) => r.id === id);
   if (idx >= 0) rules[idx] = { ...rules[idx], ...updates };
   saveRules(rules);
 }
 export function deleteRule(id) {
-  saveRules(loadRules().filter(r => r.id !== id));
+  saveRules(loadRules().filter((r) => r.id !== id));
 }

@@ -4,46 +4,69 @@ import { loadSettings } from "./settings.js";
 /** Escape HTML special characters to prevent XSS */
 export function esc(s) {
   if (!s) return "";
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Escape a value for use inside an inline JS string literal (single-quoted) */
 export function safe(s) {
-  return String(s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return String(s || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'");
 }
 
 export function triageEmailRow(e) {
   const fromEmail = extractEmail(e.from);
-  const fromName  = extractName(e.from);
-  const dateStr   = e.date ? (() => {
-    const d  = new Date(e.date);
-    const tz = loadSettings().timezone;
-    const time = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone: tz});
-    const date = d.toLocaleDateString('en-US', {timeZone: tz});
-    return `${time} ${date}`;
-  })() : "";
-  const subj     = (e.subject || "(no subject)").replace(/</g, "&lt;");
+  const fromName = extractName(e.from);
+  const dateStr = e.date
+    ? (() => {
+        const d = new Date(e.date);
+        const tz = loadSettings().timezone;
+        const time = d.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: tz,
+        });
+        const date = d.toLocaleDateString("en-US", { timeZone: tz });
+        return `${time} ${date}`;
+      })()
+    : "";
+  const subj = (e.subject || "(no subject)").replace(/</g, "&lt;");
   const hasUnsub = !!e.listUnsubscribe;
-  const tier     = e.tier || null;
+  const tier = e.tier || null;
   const ruleLabels = e.ruleLabels || [];
 
-  const tierBorder = tier === "..VIP" ? "border-left:4px solid #f59e0b;background:#fffbeb"
-                   : tier === "..OK"  ? "border-left:4px solid #14b8a6;background:#f0fdfa"
-                   : ruleLabels.length ? "border-left:4px solid #4f46e5;background:#eef2ff" : "";
-  const tierBadge  = tier === "..VIP"
-    ? `<span style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">⭐ VIP</span>`
-    : tier === "..OK"
-    ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">✅ OK</span>`
-    : "";
-  const ruleBadges = ruleLabels.map(l =>
-    `<span style="background:#e0e7ff;color:#4f46e5;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">${l.replace(/</g,"&lt;")}</span>`
-  ).join("");
+  const tierBorder =
+    tier === "..VIP"
+      ? "border-left:4px solid #f59e0b;background:#fffbeb"
+      : tier === "..OK"
+        ? "border-left:4px solid #14b8a6;background:#f0fdfa"
+        : ruleLabels.length
+          ? "border-left:4px solid #4f46e5;background:#eef2ff"
+          : "";
+  const tierBadge =
+    tier === "..VIP"
+      ? `<span style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">⭐ VIP</span>`
+      : tier === "..OK"
+        ? `<span style="background:#ccfbf1;color:#0f766e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">✅ OK</span>`
+        : "";
+  const ruleBadges = ruleLabels
+    .map(
+      (l) =>
+        `<span style="background:#e0e7ff;color:#4f46e5;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px;margin-left:5px">${l.replace(/</g, "&lt;")}</span>`,
+    )
+    .join("");
 
-  const unsubStyle = hasUnsub ? "" : ' style="opacity:.6;border:2px dashed #f59e0b"';
+  const unsubStyle = hasUnsub
+    ? ""
+    : ' style="opacity:.6;border:2px dashed #f59e0b"';
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header"';
 
   return `
-    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId||''}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId || ""}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
       <div class="triage-header" onclick="openPreview('${e.id}')">
         <div class="triage-meta">
           <div class="triage-from">${fromName}${tierBadge}${ruleBadges} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
@@ -60,9 +83,9 @@ export function triageEmailRow(e) {
         <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
         <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
         <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
-        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId||''}')">📥 Archive</button>
+        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId || ""}')">📥 Archive</button>
         <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
-        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject||"")}')">🤖 Review</button>
+        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject || "")}')">🤖 Review</button>
         <button class="btn btn-expand"     onclick="openPreview('${e.id}')">▼ Preview</button>
       </div>
     </div>`;
@@ -276,5 +299,5 @@ export function shell(title, body, script = "") {
     .badge-ok{background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700}
     /* preview panel inside app-layout */
     .app-layout .preview-panel{flex:none;width:46%;min-width:340px}
-  </style></head><body>${body}${script ? "<script>" + script + "<\/script>" : ""}</body></html>`;
+  </style></head><body>${body}${script ? "<script>" + script + "</script>" : ""}</body></html>`;
 }

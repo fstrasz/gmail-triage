@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { getLabeled } from './labeledApi.ts'
-import type { LabeledTier } from './labeledApi.ts'
+import { useQuery } from "@tanstack/react-query";
+import type { LabeledTier } from "./labeledApi.ts";
+import { getLabeled } from "./labeledApi.ts";
 
 /**
  * getLabeled can issue up to 200 parallel Gmail messages.get calls per load
@@ -12,9 +12,9 @@ import type { LabeledTier } from './labeledApi.ts'
  */
 export function useLabeled(label: LabeledTier) {
   return useQuery({
-    queryKey: ['labeled', label],
+    queryKey: ["labeled", label],
     queryFn: () => getLabeled(label),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-  })
+  });
 }

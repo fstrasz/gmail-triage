@@ -14,16 +14,21 @@ function extractAngleBracket(header, prefix) {
 export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
   // No header — open Gmail compose pre-filled so user can send manually
   if (!unsubUrl || !unsubUrl.trim()) {
-    const openTabUrl = "https://mail.google.com/mail/?view=cm"
-      + "&to="   + encodeURIComponent(fromEmail)
-      + "&su="   + encodeURIComponent("UNSUBSCRIBE")
-      + "&body=" + encodeURIComponent("Please UNSUBSCRIBE me.\nThank you.");
+    const openTabUrl =
+      "https://mail.google.com/mail/?view=cm" +
+      "&to=" +
+      encodeURIComponent(fromEmail) +
+      "&su=" +
+      encodeURIComponent("UNSUBSCRIBE") +
+      "&body=" +
+      encodeURIComponent("Please UNSUBSCRIBE me.\nThank you.");
     return { result: "no-header→compose", openTab: true, openTabUrl };
   }
 
-  const httpUrl  = extractAngleBracket(unsubUrl, "http")
-    ?? (unsubUrl.startsWith("http") ? unsubUrl.trim() : null);
-  const mailto   = extractAngleBracket(unsubUrl, "mailto:");
+  const httpUrl =
+    extractAngleBracket(unsubUrl, "http") ??
+    (unsubUrl.startsWith("http") ? unsubUrl.trim() : null);
+  const mailto = extractAngleBracket(unsubUrl, "mailto:");
   const oneClick = (unsubPost || "").toLowerCase().includes("one-click");
 
   // Try HTTP first
@@ -35,10 +40,18 @@ export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
     if (mailto) {
       const mailResult = await unsubMailto(gmail, mailto);
       if (!mailResult.startsWith("mailto-error"))
-        return { result: "http-failed→" + mailResult, openTab: false, openTabUrl: null };
+        return {
+          result: "http-failed→" + mailResult,
+          openTab: false,
+          openTabUrl: null,
+        };
     }
     // Both failed → open URL in browser as last resort
-    return { result: "auto-failed→open-tab", openTab: true, openTabUrl: httpUrl };
+    return {
+      result: "auto-failed→open-tab",
+      openTab: true,
+      openTabUrl: httpUrl,
+    };
   }
 
   // mailto only
@@ -67,31 +80,37 @@ export function sanitizeUrl(raw) {
     if (/^169\.254\./.test(host)) return null;
     if (host.endsWith(".local") || host.endsWith(".internal")) return null;
     return u.href; // reconstructed URL breaks taint chain
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Manual redirect follower with per-hop SSRF re-check. fetch's redirect:'follow' would
 // allow an attacker-controlled public URL to 302 into a private IP, bypassing the
 // initial sanitizeUrl. We follow up to 5 hops, each through sanitizeUrl.
-async function fetchWithSsrfGuardedRedirects(initialUrl, init = {}, maxHops = 5) {
+async function fetchWithSsrfGuardedRedirects(
+  initialUrl,
+  init = {},
+  maxHops = 5,
+) {
   let url = initialUrl;
   for (let hop = 0; hop <= maxHops; hop++) {
     const safe = sanitizeUrl(url);
-    if (!safe) throw new Error('blocked-redirect-target');
+    if (!safe) throw new Error("blocked-redirect-target");
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 8000);
     try {
       const r = await fetch(safe, {
         ...init,
-        redirect: 'manual',
+        redirect: "manual",
         signal: ac.signal,
         headers: {
-          'User-Agent': 'gmail-triage/1.x (+unsub)',
+          "User-Agent": "gmail-triage/1.x (+unsub)",
           ...(init.headers || {}),
         },
       });
       if (r.status >= 300 && r.status < 400) {
-        const next = r.headers.get('location');
+        const next = r.headers.get("location");
         if (!next) return r;
         url = new URL(next, safe).toString();
         continue;
@@ -101,7 +120,7 @@ async function fetchWithSsrfGuardedRedirects(initialUrl, init = {}, maxHops = 5)
       clearTimeout(timer);
     }
   }
-  throw new Error('too-many-redirects');
+  throw new Error("too-many-redirects");
 }
 
 async function unsubHttp(url, oneClick) {
@@ -115,15 +134,21 @@ async function unsubHttp(url, oneClick) {
           body: "List-Unsubscribe=One-Click",
         })
       : await fetchWithSsrfGuardedRedirects(safe);
-    return r.ok ? (oneClick ? "one-click-post" : "http-get") : "failed-" + r.status;
-  } catch(e) { return "error: " + e.message; }
+    return r.ok
+      ? oneClick
+        ? "one-click-post"
+        : "http-get"
+      : "failed-" + r.status;
+  } catch (e) {
+    return "error: " + e.message;
+  }
 }
 
 async function unsubMailto(gmail, val) {
   const [addr, q] = val.split("?");
   const p = new URLSearchParams(q || "");
   const subject = p.get("subject") || "Unsubscribe";
-  const body    = p.get("body")    || "Please unsubscribe me.";
+  const body = p.get("body") || "Please unsubscribe me.";
   const mime = [
     "From: me",
     "To: " + addr,
@@ -137,7 +162,7 @@ async function unsubMailto(gmail, val) {
   try {
     await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
     return "mailto-sent";
-  } catch(e) {
+  } catch (e) {
     console.error("unsubMailto error:", e.message);
     return "mailto-error: " + e.message;
   }
@@ -145,16 +170,21 @@ async function unsubMailto(gmail, val) {
 
 export function unsubLabel(result) {
   const map = {
-    "one-click-post":        "✅ One-click POST",
-    "http-get":              "✅ HTTP unsubscribed",
-    "mailto-sent":           "✅ Unsubscribe email sent",
-    "no-header→compose":     "✋ Compose opened — hit Send",
-    "no-valid-header":       "⚠️ Invalid header",
-    "auto-failed→open-tab":  "🌐 Opened in browser",
+    "one-click-post": "✅ One-click POST",
+    "http-get": "✅ HTTP unsubscribed",
+    "mailto-sent": "✅ Unsubscribe email sent",
+    "no-header→compose": "✋ Compose opened — hit Send",
+    "no-valid-header": "⚠️ Invalid header",
+    "auto-failed→open-tab": "🌐 Opened in browser",
   };
   if (map[result]) return map[result];
-  if (result.startsWith("http-failed→mailto-sent")) return "✅ HTTP failed → email sent";
-  if (result.startsWith("failed-") || result.startsWith("error:") || result.startsWith("mailto-error"))
+  if (result.startsWith("http-failed→mailto-sent"))
+    return "✅ HTTP failed → email sent";
+  if (
+    result.startsWith("failed-") ||
+    result.startsWith("error:") ||
+    result.startsWith("mailto-error")
+  )
     return "❌ " + result;
   return result;
 }

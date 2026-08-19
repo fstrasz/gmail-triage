@@ -1,5 +1,5 @@
-import { isViplisted } from "./viplist.js";
 import { isOklisted } from "./oklist.js";
+import { isViplisted } from "./viplist.js";
 
 // True when a sender is on the VIP or OK keep-list. Single source of truth for the
 // triage "Hide VIP/OK senders" filter, which skips already-listed senders from the queue.

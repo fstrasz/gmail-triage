@@ -1,11 +1,11 @@
-import { Routes, Route } from 'react-router-dom'
-import { AppShell } from './shell/AppShell.tsx'
-import { TriagePage } from './triage/TriagePage.tsx'
-import { ListsPage } from './lists/ListsPage.tsx'
-import { EventsPage } from './events/EventsPage.tsx'
-import { ReviewPage } from './review/ReviewPage.tsx'
-import { SettingsPage } from './settings/SettingsPage.tsx'
-import { LabeledPage } from './labeled/LabeledPage.tsx'
+import { Route, Routes } from "react-router-dom";
+import { EventsPage } from "./events/EventsPage.tsx";
+import { LabeledPage } from "./labeled/LabeledPage.tsx";
+import { ListsPage } from "./lists/ListsPage.tsx";
+import { ReviewPage } from "./review/ReviewPage.tsx";
+import { SettingsPage } from "./settings/SettingsPage.tsx";
+import { AppShell } from "./shell/AppShell.tsx";
+import { TriagePage } from "./triage/TriagePage.tsx";
 
 export function AppRoutes() {
   return (
@@ -19,5 +19,5 @@ export function AppRoutes() {
         <Route path="labeled" element={<LabeledPage />} />
       </Route>
     </Routes>
-  )
+  );
 }

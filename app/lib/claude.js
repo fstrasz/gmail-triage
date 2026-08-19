@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import dotenv from "dotenv";
 import { loadSettings } from "./settings.js";
+
 dotenv.config();
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -60,6 +61,9 @@ ${body.slice(0, 8000)}`;
 
   const text = msg.content[0].text.trim();
   // Strip any accidental markdown code fences
-  const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  const clean = text
+    .replace(/^```(?:json)?\n?/, "")
+    .replace(/\n?```$/, "")
+    .trim();
   return JSON.parse(clean);
 }

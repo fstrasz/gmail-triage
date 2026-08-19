@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import type { FormEvent } from 'react'
-import type { ReviewEvent } from './reviewApi.ts'
+import type { FormEvent } from "react";
+import { useState } from "react";
+import type { ReviewEvent } from "./reviewApi.ts";
 
 // Editable per-event form. Seeds from the Claude-extracted event; the operator
 // can adjust before creating the calendar entry. Submits the edited event to
@@ -10,18 +10,18 @@ export function CalendarForm({
   disabled,
   onCreate,
 }: {
-  event: ReviewEvent
-  disabled: boolean
-  onCreate: (event: ReviewEvent) => void
+  event: ReviewEvent;
+  disabled: boolean;
+  onCreate: (event: ReviewEvent) => void;
 }) {
-  const [title, setTitle] = useState(event.title)
-  const [date, setDate] = useState(event.date ?? '')
-  const [time, setTime] = useState(event.time ?? '')
-  const [location, setLocation] = useState(event.location ?? '')
-  const [description, setDescription] = useState(event.description ?? '')
+  const [title, setTitle] = useState(event.title);
+  const [date, setDate] = useState(event.date ?? "");
+  const [time, setTime] = useState(event.time ?? "");
+  const [location, setLocation] = useState(event.location ?? "");
+  const [description, setDescription] = useState(event.description ?? "");
 
   function submit(e: FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     onCreate({
       title,
       date: date || null,
@@ -29,17 +29,37 @@ export function CalendarForm({
       location,
       description,
       url: event.url,
-    })
+    });
   }
 
-  const field = 'rounded border border-hairline px-2 py-1 text-sm text-ink'
+  const field = "rounded border border-hairline px-2 py-1 text-sm text-ink";
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2 rounded-lg border border-hairline p-3">
-      <input aria-label="Event title" value={title} onChange={(e) => setTitle(e.target.value)} className={field} />
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-2 rounded-lg border border-hairline p-3"
+    >
+      <input
+        aria-label="Event title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className={field}
+      />
       <div className="flex gap-2">
-        <input aria-label="Event date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} />
-        <input aria-label="Event time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className={field} />
+        <input
+          aria-label="Event date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className={field}
+        />
+        <input
+          aria-label="Event time"
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          className={field}
+        />
       </div>
       <input
         aria-label="Event location"
@@ -63,5 +83,5 @@ export function CalendarForm({
         Add to Calendar
       </button>
     </form>
-  )
+  );
 }

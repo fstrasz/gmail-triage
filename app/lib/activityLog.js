@@ -8,7 +8,11 @@ const LOG_PATH = path.join(process.cwd(), "activity-log.json");
 const MAX_ENTRIES = 250;
 
 export function loadLog() {
-  try { return JSON.parse(fs.readFileSync(LOG_PATH)); } catch { return []; }
+  try {
+    return JSON.parse(fs.readFileSync(LOG_PATH));
+  } catch {
+    return [];
+  }
 }
 
 function saveLog(entries) {

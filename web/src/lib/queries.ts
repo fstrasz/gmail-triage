@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { QueryKey } from '@tanstack/react-query'
-import { getQueue, postAction, postUndo } from './api.ts'
-import type { TriageEmail, ActionResult } from './api.ts'
+import type { QueryKey } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ActionResult, TriageEmail } from "./api.ts";
+import { getQueue, postAction, postUndo } from "./api.ts";
 
 // ---------------------------------------------------------------------------
 // Query key factory — shared between useQueue and useAction for consistent
@@ -9,12 +9,12 @@ import type { TriageEmail, ActionResult } from './api.ts'
 // ---------------------------------------------------------------------------
 
 interface QueueParams {
-  hideListed: boolean
-  limit: number
+  hideListed: boolean;
+  limit: number;
 }
 
 function queueKey(params: QueueParams): QueryKey {
-  return ['triage', 'queue', params] as const
+  return ["triage", "queue", params] as const;
 }
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ export function useQueue(params: QueueParams) {
   return useQuery({
     queryKey: queueKey(params),
     queryFn: () => getQueue(params),
-  })
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -33,52 +33,54 @@ export function useQueue(params: QueueParams) {
 // ---------------------------------------------------------------------------
 
 interface ActionPayload {
-  id: string
-  action: Parameters<typeof postAction>[0]['action']
-  fromEmail: string | null
-  fromName: string | null
-  unsubUrl?: string | null
-  unsubPost?: string | null
-  confirmed?: boolean
+  id: string;
+  action: Parameters<typeof postAction>[0]["action"];
+  fromEmail: string | null;
+  fromName: string | null;
+  unsubUrl?: string | null;
+  unsubPost?: string | null;
+  confirmed?: boolean;
   /** Queue params to target for optimistic update */
-  queueParams: QueueParams
+  queueParams: QueueParams;
 }
 
-type QueueData = { emails: TriageEmail[]; counts: { left: number } }
+type QueueData = { emails: TriageEmail[]; counts: { left: number } };
 
 export function useAction() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ queueParams: _qp, ...payload }: ActionPayload): Promise<ActionResult> =>
-      postAction(payload),
+    mutationFn: ({
+      queueParams: _qp,
+      ...payload
+    }: ActionPayload): Promise<ActionResult> => postAction(payload),
 
     onMutate: async ({ id, queueParams }) => {
-      const key = queueKey(queueParams)
+      const key = queueKey(queueParams);
 
       // Cancel any in-flight refetches so they don't overwrite our optimistic state
-      await queryClient.cancelQueries({ queryKey: key })
+      await queryClient.cancelQueries({ queryKey: key });
 
       // Snapshot prior state for rollback
-      const snapshot = queryClient.getQueryData<QueueData>(key)
+      const snapshot = queryClient.getQueryData<QueueData>(key);
 
       // Optimistically remove the acted email from the queue
       queryClient.setQueryData<QueueData>(key, (prev) => {
-        if (!prev) return prev
+        if (!prev) return prev;
         return {
           ...prev,
           emails: prev.emails.filter((e) => e.id !== id),
           counts: { left: Math.max(0, prev.counts.left - 1) },
-        }
-      })
+        };
+      });
 
-      return { snapshot, key }
+      return { snapshot, key };
     },
 
     onError: (_err, _vars, context) => {
       // Roll back to snapshot on a thrown error.
       if (context?.snapshot !== undefined) {
-        queryClient.setQueryData(context.key, context.snapshot)
+        queryClient.setQueryData(context.key, context.snapshot);
       }
     },
 
@@ -92,13 +94,13 @@ export function useAction() {
     onSuccess: (result, _vars, context) => {
       if (!result.ok && context?.snapshot !== undefined) {
         // Guard / auth: roll back optimistic removal so the card stays visible.
-        queryClient.setQueryData(context.key, context.snapshot)
+        queryClient.setQueryData(context.key, context.snapshot);
       } else if (result.ok) {
         // Successful action: refetch the queue so new mail fills in immediately.
-        void queryClient.invalidateQueries({ queryKey: context?.key })
+        void queryClient.invalidateQueries({ queryKey: context?.key });
       }
     },
-  })
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -107,12 +109,12 @@ export function useAction() {
 // ---------------------------------------------------------------------------
 
 export function useUndo(queueParams: QueueParams) {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: postUndo,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queueKey(queueParams) })
+      void queryClient.invalidateQueries({ queryKey: queueKey(queueParams) });
     },
-  })
+  });
 }

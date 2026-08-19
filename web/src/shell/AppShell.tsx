@@ -1,13 +1,13 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet } from "react-router-dom";
 
 const TABS = [
-  { to: '/', label: 'Triage', end: true },
-  { to: '/lists', label: 'Lists', end: false },
-  { to: '/events', label: 'Events', end: false },
-  { to: '/review', label: 'Review', end: false },
-  { to: '/settings', label: 'Settings', end: false },
-  { to: '/labeled', label: 'Labeled', end: false },
-] as const
+  { to: "/", label: "Triage", end: true },
+  { to: "/lists", label: "Lists", end: false },
+  { to: "/events", label: "Events", end: false },
+  { to: "/review", label: "Review", end: false },
+  { to: "/settings", label: "Settings", end: false },
+  { to: "/labeled", label: "Labeled", end: false },
+] as const;
 
 export function AppShell() {
   return (
@@ -37,10 +37,12 @@ export function AppShell() {
             end={end}
             className={({ isActive }) =>
               [
-                'flex-1 flex flex-col items-center justify-center py-2 text-xs',
-                'md:flex-none md:py-3 md:px-2 md:rounded-lg md:mx-1',
-                isActive ? 'text-ink font-semibold' : 'text-muted hover:text-ink',
-              ].join(' ')
+                "flex-1 flex flex-col items-center justify-center py-2 text-xs",
+                "md:flex-none md:py-3 md:px-2 md:rounded-lg md:mx-1",
+                isActive
+                  ? "text-ink font-semibold"
+                  : "text-muted hover:text-ink",
+              ].join(" ")
             }
           >
             {label}
@@ -61,5 +63,5 @@ export function AppShell() {
         </a>
       </nav>
     </div>
-  )
+  );
 }

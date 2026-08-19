@@ -32,7 +32,11 @@ const DEFAULTS = {
 };
 
 export function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) }; } catch { return { ...DEFAULTS }; }
+  try {
+    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) };
+  } catch {
+    return { ...DEFAULTS };
+  }
 }
 
 // #7: live-tunable bulk-guard threshold. Reads settings.json (bind-mounted, so an edit
@@ -40,14 +44,15 @@ export function loadSettings() {
 // fallback (the BULK_GUARD_THRESHOLD constant) is used so the default stays in one place.
 export function getBulkGuardThreshold(fallback) {
   const v = loadSettings().bulkGuardThreshold;
-  return (typeof v === "number" && v > 0) ? v : fallback;
+  return typeof v === "number" && v > 0 ? v : fallback;
 }
 // #7 (React Settings port): live-tunable setter paired with getBulkGuardThreshold.
 // A positive finite number stores the floored value; anything else clears the key
 // so the getter reverts to the caller's BULK_GUARD_THRESHOLD fallback.
 export function setBulkGuardThreshold(n) {
   const s = loadSettings();
-  if (typeof n === "number" && isFinite(n) && n > 0) s.bulkGuardThreshold = Math.floor(n);
+  if (typeof n === "number" && isFinite(n) && n > 0)
+    s.bulkGuardThreshold = Math.floor(n);
   else delete s.bulkGuardThreshold;
   saveSettings(s);
 }
@@ -62,7 +67,7 @@ export function addLocation(loc) {
 }
 export function removeLocation(loc) {
   const s = loadSettings();
-  s.locations = s.locations.filter(l => l !== loc);
+  s.locations = s.locations.filter((l) => l !== loc);
   saveSettings(s);
 }
 export function setTimezone(tz) {
@@ -94,11 +99,18 @@ export function setListsViewMode(mode) {
   s.listsViewMode = mode === "compact" ? "compact" : "table";
   saveSettings(s);
 }
-export function setDailySummarySchedule(hour, minute, intervalUnit, intervalValue) {
+export function setDailySummarySchedule(
+  hour,
+  minute,
+  intervalUnit,
+  intervalValue,
+) {
   const s = loadSettings();
   s.dailySummaryHour = Math.min(23, Math.max(0, parseInt(hour) || 6));
   s.dailySummaryMinute = Math.min(59, Math.max(0, parseInt(minute) || 0));
-  s.dailySummaryIntervalUnit = ["hours", "days", "weeks"].includes(intervalUnit) ? intervalUnit : "days";
+  s.dailySummaryIntervalUnit = ["hours", "days", "weeks"].includes(intervalUnit)
+    ? intervalUnit
+    : "days";
   s.dailySummaryIntervalValue = Math.max(1, parseFloat(intervalValue) || 1);
   s.dailySummaryLastSentAt = null;
   saveSettings(s);
@@ -128,7 +140,10 @@ export function setLastReapply(list, record) {
 }
 export function clearLastReapply(list) {
   const s = loadSettings();
-  if (s.lastReapply && list in s.lastReapply) { delete s.lastReapply[list]; saveSettings(s); }
+  if (s.lastReapply && list in s.lastReapply) {
+    delete s.lastReapply[list];
+    saveSettings(s);
+  }
 }
 export function setWebSearchLastRunAt() {
   const s = loadSettings();
@@ -151,7 +166,7 @@ export function addEventInterest(topic) {
 }
 export function removeEventInterest(topic) {
   const s = loadSettings();
-  s.eventInterests = s.eventInterests.filter(t => t !== topic);
+  s.eventInterests = s.eventInterests.filter((t) => t !== topic);
   saveSettings(s);
 }
 export function updateEventInterest(oldTopic, newTopic) {

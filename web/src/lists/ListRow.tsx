@@ -1,22 +1,22 @@
-import type { MergedRow, ListName } from './listsApi.ts'
+import type { ListName, MergedRow } from "./listsApi.ts";
 
 const BADGE: Record<ListName, { label: string; cls: string }> = {
-  vip: { label: 'VIP', cls: 'bg-vip' },
-  ok: { label: 'OK', cls: 'bg-ok' },
-  blocklist: { label: 'Block', cls: 'bg-junk' },
-}
+  vip: { label: "VIP", cls: "bg-vip" },
+  ok: { label: "OK", cls: "bg-ok" },
+  blocklist: { label: "Block", cls: "bg-junk" },
+};
 
 export function ListRow({
   row,
   onRemove,
   removing,
 }: {
-  row: MergedRow
-  onRemove: (list: ListName, email: string, name?: string) => void
-  removing: boolean
+  row: MergedRow;
+  onRemove: (list: ListName, email: string, name?: string) => void;
+  removing: boolean;
 }) {
-  const name = row.memberships.find((m) => m.name)?.name ?? ''
-  const reason = row.memberships.find((m) => m.reason)?.reason
+  const name = row.memberships.find((m) => m.name)?.name ?? "";
+  const reason = row.memberships.find((m) => m.reason)?.reason;
 
   return (
     <li className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
@@ -42,8 +42,10 @@ export function ListRow({
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-ink">{name || row.email}</p>
         {name && <p className="truncate text-xs text-muted">{row.email}</p>}
-        {reason && <p className="truncate text-xs text-muted">Reason: {reason}</p>}
+        {reason && (
+          <p className="truncate text-xs text-muted">Reason: {reason}</p>
+        )}
       </div>
     </li>
-  )
+  );
 }

@@ -1,12 +1,12 @@
-import type { ReviewItem, ReviewAction, ReviewEvent } from './reviewApi.ts'
-import { getBodyUrl, formatDate } from './reviewApi.ts'
-import { CalendarForm } from './CalendarForm.tsx'
+import { CalendarForm } from "./CalendarForm.tsx";
+import type { ReviewAction, ReviewEvent, ReviewItem } from "./reviewApi.ts";
+import { formatDate, getBodyUrl } from "./reviewApi.ts";
 
 const ACTION_BTN: { action: ReviewAction; label: string; cls: string }[] = [
-  { action: 'keep', label: 'Keep', cls: 'bg-ok' },
-  { action: 'archive', label: 'Archive', cls: 'bg-muted' },
-  { action: 'junk', label: 'Junk', cls: 'bg-junk' },
-]
+  { action: "keep", label: "Keep", cls: "bg-ok" },
+  { action: "archive", label: "Archive", cls: "bg-muted" },
+  { action: "junk", label: "Junk", cls: "bg-junk" },
+];
 
 export function ReviewDetail({
   item,
@@ -16,23 +16,23 @@ export function ReviewDetail({
   onCreateAll,
   onDismiss,
 }: {
-  item: ReviewItem
-  busy: boolean
-  onExecute: (id: string, action: ReviewAction) => void
-  onCalendar: (id: string, eventIndex: number, event: ReviewEvent) => void
-  onCreateAll: (entries: { event: ReviewEvent; idx: number }[]) => void
-  onDismiss: (id: string) => void
+  item: ReviewItem;
+  busy: boolean;
+  onExecute: (id: string, action: ReviewAction) => void;
+  onCalendar: (id: string, eventIndex: number, event: ReviewEvent) => void;
+  onCreateAll: (entries: { event: ReviewEvent; idx: number }[]) => void;
+  onDismiss: (id: string) => void;
 }) {
-  const { analysis } = item
+  const { analysis } = item;
   // analysis is JSON.parse of raw model output — `events` may be absent if the
   // model deviated from the instructed schema; never dereference it unguarded.
-  const events = Array.isArray(analysis.events) ? analysis.events : []
-  const pending = item.status === 'pending'
-  const links = item.calendarLinks ?? {}
+  const events = Array.isArray(analysis.events) ? analysis.events : [];
+  const pending = item.status === "pending";
+  const links = item.calendarLinks ?? {};
   // Events without a created calendar link yet — drives the "Create All" button.
   const uncreated = events
     .map((event, idx) => ({ event, idx }))
-    .filter(({ idx }) => !links[String(idx)])
+    .filter(({ idx }) => !links[String(idx)]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -51,12 +51,17 @@ export function ReviewDetail({
       </div>
 
       <div className="flex flex-col gap-4 px-4 py-4">
-        <div className="rounded-lg bg-hairline/30 p-3 text-sm text-ink">{analysis.summary}</div>
+        <div className="rounded-lg bg-hairline/30 p-3 text-sm text-ink">
+          {analysis.summary}
+        </div>
 
         {analysis.actionReason && (
           <p className="text-sm italic text-muted">
-            Suggested: <span className="font-semibold not-italic text-ink">{analysis.action}</span>
-            {' — '}
+            Suggested:{" "}
+            <span className="font-semibold not-italic text-ink">
+              {analysis.action}
+            </span>
+            {" — "}
             {analysis.actionReason}
           </p>
         )}
@@ -103,10 +108,12 @@ export function ReviewDetail({
               )}
             </div>
             {events.map((event, idx) => {
-              const existing = links[String(idx)]
+              const existing = links[String(idx)];
               return (
                 <div key={idx} className="flex flex-col gap-1">
-                  <p className="text-sm font-semibold text-ink">{event.title}</p>
+                  <p className="text-sm font-semibold text-ink">
+                    {event.title}
+                  </p>
                   {existing ? (
                     <a
                       href={existing}
@@ -124,14 +131,16 @@ export function ReviewDetail({
                     />
                   )}
                 </div>
-              )
+              );
             })}
           </div>
         )}
 
         {analysis.draftReply && (
           <div className="flex flex-col gap-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Draft reply</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Draft reply
+            </p>
             <textarea
               aria-label="Draft reply"
               readOnly
@@ -143,7 +152,9 @@ export function ReviewDetail({
         )}
 
         <div className="flex flex-col gap-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Email</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Email
+          </p>
           <iframe
             title="Email body"
             sandbox="allow-popups"
@@ -153,5 +164,5 @@ export function ReviewDetail({
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import * as Dialog from '@radix-ui/react-dialog'
+import * as Dialog from "@radix-ui/react-dialog";
 
 // A small confirm dialog modeled on triage/GuardDialog.tsx (Radix). Used for the
 // destructive backup-restore / delete confirms in the Backups section.
@@ -6,24 +6,33 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Confirm',
+  confirmLabel = "Confirm",
   onConfirm,
   onCancel,
 }: {
-  open: boolean
-  title: string
-  message: string
-  confirmLabel?: string
-  onConfirm: () => void
-  onCancel: () => void
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-          <Dialog.Title className="text-base font-semibold text-ink">{title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-muted">{message}</Dialog.Description>
+          <Dialog.Title className="text-base font-semibold text-ink">
+            {title}
+          </Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm text-muted">
+            {message}
+          </Dialog.Description>
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
               <button
@@ -44,5 +53,5 @@ export function ConfirmDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  )
+  );
 }
