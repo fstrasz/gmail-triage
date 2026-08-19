@@ -45,7 +45,7 @@ function getListConflicts(viplist, oklist, blocklist) {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-app.get("/", async (req, res) => {
+async function renderLegacyHome(req, res) {
   let delPendSummary = null;
   try {
     const gmail = await getGmailClient();
@@ -54,6 +54,11 @@ app.get("/", async (req, res) => {
   const bl = loadBlocklist(), vip = loadViplist(), ok = loadOklist();
   const listConflicts = getListConflicts(vip, ok, bl);
   res.send(shell("Gmail Triage", homePage(bl, vip, ok, delPendSummary, listConflicts)));
+}
+app.get("/legacy", async (req, res) => { await renderLegacyHome(req, res); });
+app.get("/", async (req, res) => {
+  if (process.env.WEB_APP_ENABLED === "0") return renderLegacyHome(req, res);
+  return res.redirect("/app/");
 });
 
 // ─── Triage ────────────────────────────────────────────────────────────────────
@@ -475,7 +480,7 @@ app.post("/api/archive", async (req, res) => {
 // ─── Sender detail page ────────────────────────────────────────────────────────
 app.get("/sender", async (req, res) => {
   const { email, name } = req.query;
-  if (!email) return res.redirect("/");
+  if (!email) return res.redirect("/legacy");
   try {
     const gmail = await getGmailClient();
     const emails = await fetchSenderEmails(gmail, email);
@@ -490,7 +495,7 @@ app.get("/sender", async (req, res) => {
 app.get("/labeled", async (req, res) => {
   const { label } = req.query;
   const allowed = ["..VIP", "..OK", ".DelPend"];
-  if (!allowed.includes(label)) return res.redirect("/");
+  if (!allowed.includes(label)) return res.redirect("/legacy");
   try {
     const gmail = await getGmailClient();
     const emails = await fetchLabeledEmails(gmail, label);
@@ -523,7 +528,7 @@ app.post("/api/delpend/trash-all", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await trashDelPend(gmail, null);
-    res.redirect("/");
+    res.redirect("/legacy");
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
 app.post("/api/delpend/trash-sender", async (req, res) => {
@@ -531,7 +536,7 @@ app.post("/api/delpend/trash-sender", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await trashDelPend(gmail, email);
-    res.redirect("/");
+    res.redirect("/legacy");
   } catch(e) { res.status(500).send(shell("Error", `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`)); }
 });
 
@@ -541,7 +546,7 @@ app.post("/api/conflict/remove-from-list", (req, res) => {
   if (list === "VIP")   removeFromViplist(email);
   else if (list === "OK")    removeFromOklist(email);
   else if (list === "Block") removeFromBlocklist(email);
-  res.redirect("/");
+  res.redirect("/legacy");
 });
 
 // ─── Shared: build the full preview HTML document for a message ───────────────
@@ -795,7 +800,7 @@ app.post("/settings/delete-named-backup", (req, res) => {
   try { deleteNamedBackup(parseInt(req.body.n)); } catch(e) {}
   res.redirect("/settings");
 });
-app.get("/reset", (req, res) => { resetStats(); res.redirect("/"); });
+app.get("/reset", (req, res) => { resetStats(); res.redirect("/legacy"); });
 
 // ─── Events ────────────────────────────────────────────────────────────────────
 app.get("/events", (req, res) => {
