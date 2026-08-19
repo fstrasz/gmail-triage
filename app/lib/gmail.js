@@ -66,9 +66,11 @@ export function buildQueueQuery({ excludeListedLabels = false } = {}) {
 }
 
 // ─── Reapply query builder ────────────────────────────────────────────────────
-// Builds the Gmail search query used by /api/reapply guard, /api/reapply/preview, and
-// internally inside reapplyTier/reapplyBlocklist/reapplyRules. One source of truth so
-// future tweaks (e.g. adding -in:spam) apply uniformly. Returns null if the entry is empty.
+// Builds the Gmail search query used by the /api/reapply guard and /api/reapply/preview
+// in triage.js. reapplyTier/reapplyBlocklist/reapplyRules do NOT call this — they each
+// build byte-identical query strings inline (verified 2026-08-19) — so those three must
+// be kept in step by hand with this function until they are wired up to call it.
+// Returns null if the entry is empty.
 export function buildReapplyQuery(list, entry) {
   const email = entry.email || '';
   const fromClause = list === "rules"

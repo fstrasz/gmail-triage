@@ -9,7 +9,14 @@ import { ensureLabel, extractName } from "./gmail.js";
 export async function keepAndClean(gmail, id, fromEmail, fromName) {
   const delPendId = await ensureLabel(gmail, ".DelPend");
 
-  // Collect every message from this sender in inbox (excluding VIP)
+  // Collect every message from this sender in inbox. ..VIP is excluded so a
+  // lower-tier action can never archive higher-tier mail. ..OK is deliberately
+  // NOT excluded: an accumulated ..OK backlog (F29 — OK labeling does not
+  // archive) is exactly what "Clean" exists to clear, and excluding it would
+  // also desynchronise this sweep from the bulk-guard counts in triage.js,
+  // which exclude ..VIP only. That exclusion shipped once (9b68106) and was
+  // reverted 8 minutes later (dc08356); F19/v1.0.42 reinforced the uniform
+  // wipe. Do not re-add it — see the retired Phase 9 criterion in roadmap.md.
   const ids = [];
   let pageToken = null;
   do {
