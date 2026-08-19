@@ -823,7 +823,9 @@ test('upsertFoundEvents: ignored event blocks re-add of same key', async () => {
   }
 });
 
-// ─── buildReapplyQuery: shared by /api/reapply guard, /preview, lib functions ─
+// ─── buildReapplyQuery: used by the /api/reapply guard + /preview only ────────
+// NOT by reapplyTier/reapplyBlocklist/reapplyRules — they build byte-identical
+// strings inline (verified 2026-08-19). See the comment on the function itself.
 
 const gmailModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'gmail.js')
