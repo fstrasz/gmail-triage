@@ -42,6 +42,17 @@ export interface ActivityEntry {
   unsubResult?: string
 }
 
+export interface StatsDay {
+  date: string
+  kept: number
+  cleaned: number
+  junked: number
+  unsubbed: number
+  vip: number
+  ok: number
+  inboxSize: number | null
+}
+
 export interface Stats {
   kept: number
   cleaned: number
@@ -49,6 +60,7 @@ export interface Stats {
   unsubbed: number
   vip: number
   ok: number
+  daily?: StatsDay[]
 }
 
 export interface BackupMeta {

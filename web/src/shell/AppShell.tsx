@@ -6,6 +6,7 @@ const TABS = [
   { to: '/events', label: 'Events', end: false },
   { to: '/review', label: 'Review', end: false },
   { to: '/settings', label: 'Settings', end: false },
+  { to: '/labeled', label: 'Labeled', end: false },
 ] as const
 
 export function AppShell() {
@@ -45,6 +46,19 @@ export function AppShell() {
             {label}
           </NavLink>
         ))}
+
+        {/*
+         * Deliberately a plain full-page anchor, not a NavLink/route: it
+         * leaves the SPA on purpose. Several capabilities still only exist
+         * in the old server-rendered UI and need to stay discoverable from
+         * inside the app.
+         */}
+        <a
+          href="/legacy"
+          className="flex items-center justify-center py-2 text-xs text-muted hover:text-ink md:py-3"
+        >
+          Legacy UI
+        </a>
       </nav>
     </div>
   )
