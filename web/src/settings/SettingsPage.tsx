@@ -10,6 +10,7 @@ import { BulkGuardSection } from './sections/BulkGuardSection.tsx'
 import { BackupsSection } from './sections/BackupsSection.tsx'
 import { ActivityLogSection } from './sections/ActivityLogSection.tsx'
 import { StatsCard } from './sections/StatsCard.tsx'
+import { StatsChart } from './sections/StatsChart.tsx'
 
 export function SettingsPage() {
   const settings = useSettings()
@@ -40,6 +41,7 @@ export function SettingsPage() {
         <BulkGuardSection threshold={bulkGuardThreshold} />
         <BackupsSection backups={backups} />
         <StatsCard stats={stats} />
+        <StatsChart daily={stats.daily} />
         <div className="lg:col-span-2">
           <ActivityLogSection entries={activityLog} />
         </div>
