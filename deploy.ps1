@@ -237,20 +237,32 @@ if (-not $WhatIf) {
         }
     }
 
+    # Uses HttpWebRequest with AllowAutoRedirect disabled rather than
+    # Invoke-WebRequest -MaximumRedirection 0. Under Windows PowerShell 5.1 that
+    # switch THROWS on a redirect and the exception carries a null .Response, so
+    # a correct 302 read back as status="" and failed the deploy - and its exit 1
+    # fired before the /legacy and /api/labeled probes below ever ran. Note also
+    # that WebHeaderCollection in 5.1 has no .Location property; index it by name.
     Write-Host "Probing / redirect..." -ForegroundColor Cyan
+    $sc = 0
+    $loc = ""
     try {
-        $rootProbe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/" -MaximumRedirection 0 -TimeoutSec 15 -ErrorAction Stop
-        Write-Host "ROOT REDIRECT PROBE FAILED: expected a redirect, got HTTP $($rootProbe.StatusCode)." -ForegroundColor Red
-        exit 1
+        $req = [System.Net.HttpWebRequest]::Create("http://192.168.20.10:3000/")
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 15000
+        $resp = $req.GetResponse()
+        $sc = [int]$resp.StatusCode
+        $loc = $resp.Headers["Location"]
+        $resp.Close()
     } catch {
-        $sc = $_.Exception.Response.StatusCode.value__
-        $loc = $_.Exception.Response.Headers.Location
-        if ($sc -eq 302 -and $loc -eq "/app/") {
-            Write-Host "  / redirect probe OK (HTTP 302, Location: /app/)." -ForegroundColor Green
-        } else {
-            Write-Host "ROOT REDIRECT PROBE FAILED: status=$sc, Location=$loc (expected 302, /app/)." -ForegroundColor Red
-            exit 1
-        }
+        Write-Host "ROOT REDIRECT PROBE FAILED: request error: $_" -ForegroundColor Red
+        exit 1
+    }
+    if ($sc -eq 302 -and $loc -eq "/app/") {
+        Write-Host "  / redirect probe OK (HTTP 302, Location: /app/)." -ForegroundColor Green
+    } else {
+        Write-Host "ROOT REDIRECT PROBE FAILED: status=$sc, Location=$loc (expected 302, /app/)." -ForegroundColor Red
+        exit 1
     }
 
     Write-Host "Probing /legacy..." -ForegroundColor Cyan
