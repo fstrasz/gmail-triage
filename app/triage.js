@@ -1358,6 +1358,18 @@ app.post("/api/settings/delete-named-backup", (req, res) => {
   catch (e) { triageServerError(res, e, "/api/settings/delete-named-backup"); }
 });
 
+// ─── Labeled emails (JSON) ──────────────────────────────────────────────────────
+app.get("/api/labeled", async (req, res) => {
+  const { label } = req.query;
+  const allowed = ["..VIP", "..OK", ".DelPend"];
+  if (!allowed.includes(label)) return res.status(400).json({ ok: false });
+  try {
+    const gmail = await getGmailClient();
+    const items = await fetchLabeledEmails(gmail, label);
+    res.json({ ok: true, label, items });
+  } catch (e) { triageServerError(res, e, "/api/labeled"); }
+});
+
 // ─── React app (/app) — served from web/dist, resolved relative to THIS module
 // (not process.cwd(), since the server runs from app/). resolveWebDist probes both
 // the local (../web/dist) and container (/app/web/dist) layouts so /app works in
