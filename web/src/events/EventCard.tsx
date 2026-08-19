@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import type { CalendarEventInput, EventItem } from './eventsApi.ts'
-import { AddToCalendarDialog } from './AddToCalendarDialog.tsx'
+import { useState } from "react";
+import { AddToCalendarDialog } from "./AddToCalendarDialog.tsx";
+import type { CalendarEventInput, EventItem } from "./eventsApi.ts";
 
 export function EventCard({
   event,
@@ -8,18 +8,18 @@ export function EventCard({
   onAddToCalendar,
   calendarPending,
 }: {
-  event: EventItem
-  onIgnore: (id: string) => void
+  event: EventItem;
+  onIgnore: (id: string) => void;
   /** Resolves true when the calendar entry was created (so the dialog closes). */
-  onAddToCalendar: (id: string, input: CalendarEventInput) => Promise<boolean>
-  calendarPending: boolean
+  onAddToCalendar: (id: string, input: CalendarEventInput) => Promise<boolean>;
+  calendarPending: boolean;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const displayUrl = event.canonicalUrl || event.url
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const displayUrl = event.canonicalUrl || event.url;
 
   async function submit(input: CalendarEventInput) {
-    const ok = await onAddToCalendar(event.id, input)
-    if (ok) setDialogOpen(false)
+    const ok = await onAddToCalendar(event.id, input);
+    if (ok) setDialogOpen(false);
   }
 
   return (
@@ -40,25 +40,34 @@ export function EventCard({
               event.title
             )}
             {event.interest && (
-              <span className="ml-1 text-xs font-normal text-muted">— {event.interest}</span>
+              <span className="ml-1 text-xs font-normal text-muted">
+                — {event.interest}
+              </span>
             )}
           </p>
 
           {(event.pricePerPerson || event.rating != null) && (
             <p className="mt-1 flex items-center gap-2 text-xs">
               {event.pricePerPerson && (
-                <span className="font-semibold text-ok">{event.pricePerPerson} / person</span>
+                <span className="font-semibold text-ok">
+                  {event.pricePerPerson} / person
+                </span>
               )}
-              {event.rating != null && <span className="text-muted">⭐ {event.rating}</span>}
+              {event.rating != null && (
+                <span className="text-muted">⭐ {event.rating}</span>
+              )}
             </p>
           )}
 
           <p className="mt-1 text-xs text-ink/80">
-            📅 {event.date || 'TBD'}
-            {event.time ? ` at ${event.time}` : ''} &nbsp;|&nbsp; 📍 {event.location || 'TBD'}
+            📅 {event.date || "TBD"}
+            {event.time ? ` at ${event.time}` : ""} &nbsp;|&nbsp; 📍{" "}
+            {event.location || "TBD"}
           </p>
 
-          {event.description && <p className="mt-1 text-xs text-muted">{event.description}</p>}
+          {event.description && (
+            <p className="mt-1 text-xs text-muted">{event.description}</p>
+          )}
 
           {event.calendarEventUrl && (
             <p className="mt-2">
@@ -104,5 +113,5 @@ export function EventCard({
         />
       )}
     </li>
-  )
+  );
 }

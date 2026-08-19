@@ -1,6 +1,6 @@
 ﻿import { authenticate } from "@google-cloud/local-auth";
-import path from "path";
 import fs from "fs";
+import path from "path";
 
 const credPath = path.join(process.cwd(), "..", "config", "credentials.json");
 const tokenPath = path.join(process.cwd(), "..", "config", "token.json");
@@ -19,6 +19,6 @@ try {
   });
   fs.writeFileSync(tokenPath, JSON.stringify(auth.credentials, null, 2));
   console.log("Token saved successfully to config/token.json");
-} catch(e) {
+} catch (e) {
   console.error("Auth failed:", e.message);
 }

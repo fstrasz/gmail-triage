@@ -20,13 +20,23 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
   const ids = [];
   let pageToken = null;
   do {
-    const params = { userId: "me", q: `from:"${fromEmail}" in:inbox -label:..VIP`, maxResults: 500 };
+    const params = {
+      userId: "me",
+      q: `from:"${fromEmail}" in:inbox -label:..VIP`,
+      maxResults: 500,
+    };
     if (pageToken) params.pageToken = pageToken;
     const result = await gmail.users.messages.list(params);
     for (const m of result.data.messages || []) {
       if (fromName) {
-        const dh = await gmail.users.messages.get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] });
-        const fh = dh.data.payload.headers.find(h => h.name === "From")?.value || "";
+        const dh = await gmail.users.messages.get({
+          userId: "me",
+          id: m.id,
+          format: "metadata",
+          metadataHeaders: ["From"],
+        });
+        const fh =
+          dh.data.payload.headers.find((h) => h.name === "From")?.value || "";
         if (extractName(fh) !== fromName) continue;
       }
       ids.push(m.id);
@@ -43,9 +53,15 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
     try {
       await gmail.users.messages.batchModify({
         userId: "me",
-        requestBody: { ids: ids.slice(i, i + 1000), addLabelIds: [delPendId], removeLabelIds: ["INBOX", "UNREAD"] },
+        requestBody: {
+          ids: ids.slice(i, i + 1000),
+          addLabelIds: [delPendId],
+          removeLabelIds: ["INBOX", "UNREAD"],
+        },
       });
-    } catch(e) { console.error("keep-clean batchModify FAILED:", e.message); }
+    } catch (e) {
+      console.error("keep-clean batchModify FAILED:", e.message);
+    }
   }
 
   return { cleaned: ids.length };

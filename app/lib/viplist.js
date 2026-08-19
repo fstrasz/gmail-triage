@@ -7,4 +7,5 @@ export const loadViplist = vip.load;
 export const saveViplist = vip.save;
 export const addToViplist = vip.add;
 export const removeFromViplist = vip.remove;
-export const isViplisted = (fromEmail, fromName = null) => !!vip.match(fromEmail, fromName);
+export const isViplisted = (fromEmail, fromName = null) =>
+  !!vip.match(fromEmail, fromName);

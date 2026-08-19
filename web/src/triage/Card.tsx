@@ -1,41 +1,55 @@
-import { useState } from 'react'
-import type { TriageEmail } from '../lib/api.ts'
-import { getBodyUrl } from '../lib/api.ts'
-import type { Mode, Dir } from './swipeMap.ts'
-import { swipeAction } from './swipeMap.ts'
-import { ACTION_LABEL, DIR_ARROW } from './actionMeta.ts'
+import { useState } from "react";
+import type { TriageEmail } from "../lib/api.ts";
+import { getBodyUrl } from "../lib/api.ts";
+import { ACTION_LABEL, DIR_ARROW } from "./actionMeta.ts";
+import type { Dir, Mode } from "./swipeMap.ts";
+import { swipeAction } from "./swipeMap.ts";
 
-const DIRS: Dir[] = ['right', 'left', 'up', 'down']
+const DIRS: Dir[] = ["right", "left", "up", "down"];
 
 function senderHref(email: TriageEmail): string {
   // FIX D — match the live /sender route contract (?email=&name=) and the old
   // UI (app/lib/html.js). The previous ?q= param always bounced home because the
   // route reads req.query.email and redirects to / when it's absent.
-  const e = encodeURIComponent(email.fromEmail ?? '')
-  const n = encodeURIComponent(email.fromName ?? '')
-  return `/sender?email=${e}&name=${n}`
+  const e = encodeURIComponent(email.fromEmail ?? "");
+  const n = encodeURIComponent(email.fromName ?? "");
+  return `/sender?email=${e}&name=${n}`;
 }
 
 export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-hairline bg-white p-4 shadow-sm">
       {/* Header: sender + tier/rule badges */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-ink">{email.fromName ?? email.fromEmail ?? 'Unknown sender'}</p>
-          {email.fromEmail && <p className="truncate text-xs text-muted">{email.fromEmail}</p>}
+          <p className="truncate font-semibold text-ink">
+            {email.fromName ?? email.fromEmail ?? "Unknown sender"}
+          </p>
+          {email.fromEmail && (
+            <p className="truncate text-xs text-muted">{email.fromEmail}</p>
+          )}
         </div>
         <div className="flex shrink-0 gap-1">
-          {email.tier === '..VIP' && <span className="rounded bg-vip px-1.5 py-0.5 text-xs font-semibold text-white">VIP</span>}
-          {email.tier === '..OK' && <span className="rounded bg-ok px-1.5 py-0.5 text-xs font-semibold text-white">OK</span>}
+          {email.tier === "..VIP" && (
+            <span className="rounded bg-vip px-1.5 py-0.5 text-xs font-semibold text-white">
+              VIP
+            </span>
+          )}
+          {email.tier === "..OK" && (
+            <span className="rounded bg-ok px-1.5 py-0.5 text-xs font-semibold text-white">
+              OK
+            </span>
+          )}
         </div>
       </div>
 
       {/* Subject + snippet */}
       <p className="mt-3 font-medium text-ink">{email.subject}</p>
-      {!expanded && <p className="mt-1 line-clamp-3 text-sm text-muted">{email.snippet}</p>}
+      {!expanded && (
+        <p className="mt-1 line-clamp-3 text-sm text-muted">{email.snippet}</p>
+      )}
 
       {/* Body — sandboxed iframe ONLY (FIX H4, XSS). Never dangerouslySetInnerHTML. */}
       {expanded && (
@@ -50,15 +64,15 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
       <div className="mt-3 flex items-center justify-between gap-3 text-sm">
         <button
           type="button"
-          aria-label={expanded ? 'Hide email body' : 'Show email body'}
+          aria-label={expanded ? "Hide email body" : "Show email body"}
           className="font-medium text-ink underline underline-offset-2"
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? 'Hide body' : 'Show body'}
+          {expanded ? "Hide body" : "Show body"}
         </button>
         <a
           href={senderHref(email)}
-          aria-label={`View all from this sender (${email.fromEmail ?? email.fromName ?? ''})`}
+          aria-label={`View all from this sender (${email.fromEmail ?? email.fromName ?? ""})`}
           className="text-muted underline underline-offset-2"
         >
           View all from this sender
@@ -66,17 +80,22 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
       </div>
 
       {/* DECK-1: persistent on-card legend of the current mode's four swipe directions. */}
-      <ul aria-label="Swipe legend" className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-hairline pt-3 text-xs text-muted">
+      <ul
+        aria-label="Swipe legend"
+        className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-hairline pt-3 text-xs text-muted"
+      >
         {DIRS.map((d) => {
-          const action = swipeAction(mode, d)
+          const action = swipeAction(mode, d);
           return (
             <li key={d} className="flex items-center gap-1">
-              <span aria-hidden className="font-mono text-ink">{DIR_ARROW[d]}</span>
+              <span aria-hidden className="font-mono text-ink">
+                {DIR_ARROW[d]}
+              </span>
               <span>{ACTION_LABEL[action]}</span>
             </li>
-          )
+          );
         })}
       </ul>
     </div>
-  )
+  );
 }

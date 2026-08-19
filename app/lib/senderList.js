@@ -29,13 +29,15 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
       const raw = JSON.parse(fs.readFileSync(filePath));
       if (!dedupeOnLoad) return raw;
       const seen = new Set();
-      return raw.filter(e => {
+      return raw.filter((e) => {
         const k = e.email.toLowerCase() + "\x00" + (e.name || "");
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
       });
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   function save(list) {
@@ -48,11 +50,15 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
   function remove(email, name) {
     const key = email.toLowerCase().trim();
     if (name == null) {
-      save(load().filter(e => e.email !== email));
+      save(load().filter((e) => e.email !== email));
       return;
     }
     const normName = name.trim();
-    save(load().filter(e => !(e.email === key && (normName ? e.name === normName : !e.name))));
+    save(
+      load().filter(
+        (e) => !(e.email === key && (normName ? e.name === normName : !e.name)),
+      ),
+    );
   }
 
   // Returns the matching entry (or undefined). `@domain` entries match any address in
@@ -62,7 +68,7 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     const addr = fromEmail.toLowerCase().trim();
     const domain = addr.split("@")[1] || "";
     const normName = fromName ? fromName.trim() : null;
-    return list.find(e => {
+    return list.find((e) => {
       if (e.email === "@" + domain) return true;
       if (e.email !== addr) return false;
       return !e.name || !normName || e.name === normName;
@@ -75,10 +81,23 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     const normName = name ? name.trim() : null;
     // Name-scoped: only an exact email+name pair is a duplicate, so the same address
     // can be added under multiple display names (matches `match` and the Blocklist).
-    if (!list.find(e => e.email === key && (normName ? e.name === normName : !e.name)))
+    if (
+      !list.find(
+        (e) => e.email === key && (normName ? e.name === normName : !e.name),
+      )
+    )
       list.push({ email: key, name: normName, date: new Date().toISOString() });
     save(list);
   }
 
-  return { get filePath() { return getPath(); }, load, save, remove, match, add };
+  return {
+    get filePath() {
+      return getPath();
+    },
+    load,
+    save,
+    remove,
+    match,
+    add,
+  };
 }

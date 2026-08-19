@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-const TOKEN_PATH    = path.join(process.cwd(), "token.json");
+const TOKEN_PATH = path.join(process.cwd(), "token.json");
 const SETTINGS_PATH = path.join(process.cwd(), "settings.json");
 
 // I/O at the edge: gather the raw state /health needs. Kept separate from the pure
@@ -46,14 +46,26 @@ export function readWebAsset(webDist, webEnabled) {
 export function resolveWebDist(moduleDir) {
   const candidates = [
     path.join(moduleDir, "..", "web", "dist"), // local:     <repo>/app/triage.js -> <repo>/web/dist
-    path.join(moduleDir, "web", "dist"),        // container: /app/triage.js       -> /app/web/dist
+    path.join(moduleDir, "web", "dist"), // container: /app/triage.js       -> /app/web/dist
   ];
-  return candidates.find((p) => fs.existsSync(path.join(p, "index.html"))) || candidates[0];
+  return (
+    candidates.find((p) => fs.existsSync(path.join(p, "index.html"))) ||
+    candidates[0]
+  );
 }
 
 // Pure: decide the 200/503 verdict from injected state. No I/O, no clock.
 // webAsset: 'ok' | 'missing' | 'disabled' (from caller, computed via fs.existsSync)
-export function getHealthReport({ version, uptimeSec, now, settings, tokenState, configState, webAsset, liveAuth }) {
+export function getHealthReport({
+  version,
+  uptimeSec,
+  now,
+  settings,
+  tokenState,
+  configState,
+  webAsset,
+  liveAuth,
+}) {
   const checks = {};
   let ok = true;
 
@@ -66,18 +78,26 @@ export function getHealthReport({ version, uptimeSec, now, settings, tokenState,
   const schedulerEnabled = settings.schedulerEnabled !== false;
   checks.scheduler = schedulerEnabled ? "enabled" : "disabled";
 
-  const staleThresholdMin = (settings.schedulerIntervalHours ?? 2) * 60 * 2 + 30; // 2× interval + 30 min grace
-  const lastRun = settings.schedulerLastRunAt ? new Date(settings.schedulerLastRunAt).getTime() : null;
-  const lastScanAgeMin = lastRun ? Math.max(0, Math.round((now - lastRun) / 60000)) : null;
+  const staleThresholdMin =
+    (settings.schedulerIntervalHours ?? 2) * 60 * 2 + 30; // 2× interval + 30 min grace
+  const lastRun = settings.schedulerLastRunAt
+    ? new Date(settings.schedulerLastRunAt).getTime()
+    : null;
+  const lastScanAgeMin = lastRun
+    ? Math.max(0, Math.round((now - lastRun) / 60000))
+    : null;
   checks.lastScanAgeMin = lastScanAgeMin;
 
   if (!schedulerEnabled) {
     checks.staleness = "n/a";
   } else if (lastScanAgeMin === null) {
-    if (uptimeSec / 60 > staleThresholdMin) { checks.staleness = "stale"; ok = false; }
-    else checks.staleness = "warming_up";
+    if (uptimeSec / 60 > staleThresholdMin) {
+      checks.staleness = "stale";
+      ok = false;
+    } else checks.staleness = "warming_up";
   } else if (lastScanAgeMin > staleThresholdMin) {
-    checks.staleness = "stale"; ok = false;
+    checks.staleness = "stale";
+    ok = false;
   } else {
     checks.staleness = "ok";
   }
@@ -118,7 +138,8 @@ export async function probeGmailAuth(gmail) {
     await gmail.users.getProfile({ userId: "me" });
     return "ok";
   } catch (e) {
-    if (e?.response?.status === 401 || /invalid_grant/i.test(e?.message || "")) return "invalid";
+    if (e?.response?.status === 401 || /invalid_grant/i.test(e?.message || ""))
+      return "invalid";
     return "error";
   }
 }

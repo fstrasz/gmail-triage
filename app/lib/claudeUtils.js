@@ -3,26 +3,37 @@
 // All pure / side-effect-free: JSON-array salvage from model text, token estimation,
 // token-budget batching, and a bounded-concurrency mapper.
 
-const CHARS_PER_TOKEN = 4;                  // rough English approximation
+const CHARS_PER_TOKEN = 4; // rough English approximation
 
 // Robust JSON-array extraction: walk the text tracking bracket depth, accounting for
 // strings and escapes. Returns the first complete top-level [ ... ] substring, or null.
 export function extractJsonArray(text) {
   if (!text) return null;
-  const i0 = text.indexOf('[');
+  const i0 = text.indexOf("[");
   if (i0 < 0) return null;
-  let depth = 0, inStr = false, esc = false;
+  let depth = 0,
+    inStr = false,
+    esc = false;
   for (let i = i0; i < text.length; i++) {
     const c = text[i];
     if (inStr) {
-      if (esc) { esc = false; continue; }
-      if (c === '\\') { esc = true; continue; }
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (c === "\\") {
+        esc = true;
+        continue;
+      }
       if (c === '"') inStr = false;
       continue;
     }
-    if (c === '"') { inStr = true; continue; }
-    if (c === '[') depth++;
-    else if (c === ']') {
+    if (c === '"') {
+      inStr = true;
+      continue;
+    }
+    if (c === "[") depth++;
+    else if (c === "]") {
       depth--;
       if (depth === 0) return text.slice(i0, i + 1);
     }
@@ -31,13 +42,18 @@ export function extractJsonArray(text) {
 }
 
 export function estimateTokens(text) {
-  return Math.ceil((text || '').length / CHARS_PER_TOKEN);
+  return Math.ceil((text || "").length / CHARS_PER_TOKEN);
 }
 
 // Greedy pack items into batches under a token budget AND (optionally) a max-count cap.
 // Either limit triggers a new batch. The max-count cap improves per-item attention in
 // long Claude contexts, which falls off well before raw token limits are hit.
-export function batchByTokenBudget(items, getTokens, budget, maxCount = Infinity) {
+export function batchByTokenBudget(
+  items,
+  getTokens,
+  budget,
+  maxCount = Infinity,
+) {
   const batches = [];
   let current = [];
   let currentTokens = 0;
@@ -66,11 +82,17 @@ export async function mapWithConcurrency(items, concurrency, fn) {
     while (true) {
       const i = idx++;
       if (i >= items.length) return;
-      try { results[i] = await fn(items[i], i); }
-      catch (e) { results[i] = undefined; }
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (e) {
+        results[i] = undefined;
+      }
     }
   }
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
   await Promise.all(workers);
   return results;
 }

@@ -1,31 +1,37 @@
-import { useSettings } from './settingsQueries.ts'
-import { LocationsSection } from './sections/LocationsSection.tsx'
-import { InterestsSection } from './sections/InterestsSection.tsx'
-import { EventSearchSection } from './sections/EventSearchSection.tsx'
-import { SchedulerSection } from './sections/SchedulerSection.tsx'
-import { DailySummarySection } from './sections/DailySummarySection.tsx'
-import { DisplaySection } from './sections/DisplaySection.tsx'
-import { TimezoneSection } from './sections/TimezoneSection.tsx'
-import { BulkGuardSection } from './sections/BulkGuardSection.tsx'
-import { BackupsSection } from './sections/BackupsSection.tsx'
-import { ActivityLogSection } from './sections/ActivityLogSection.tsx'
-import { StatsCard } from './sections/StatsCard.tsx'
-import { StatsChart } from './sections/StatsChart.tsx'
+import { ActivityLogSection } from "./sections/ActivityLogSection.tsx";
+import { BackupsSection } from "./sections/BackupsSection.tsx";
+import { BulkGuardSection } from "./sections/BulkGuardSection.tsx";
+import { DailySummarySection } from "./sections/DailySummarySection.tsx";
+import { DisplaySection } from "./sections/DisplaySection.tsx";
+import { EventSearchSection } from "./sections/EventSearchSection.tsx";
+import { InterestsSection } from "./sections/InterestsSection.tsx";
+import { LocationsSection } from "./sections/LocationsSection.tsx";
+import { SchedulerSection } from "./sections/SchedulerSection.tsx";
+import { StatsCard } from "./sections/StatsCard.tsx";
+import { StatsChart } from "./sections/StatsChart.tsx";
+import { TimezoneSection } from "./sections/TimezoneSection.tsx";
+import { useSettings } from "./settingsQueries.ts";
 
 export function SettingsPage() {
-  const settings = useSettings()
+  const settings = useSettings();
 
   // Branch order mirrors Slice 1: isError → isPending (skeleton) → data.
   // (No empty state — settings always exist.)
   if (settings.isError) {
-    return <ErrorState />
+    return <ErrorState />;
   }
 
   if (settings.isPending) {
-    return <SettingsSkeleton />
+    return <SettingsSkeleton />;
   }
 
-  const { settings: s, activityLog, backups, stats, bulkGuardThreshold } = settings.data
+  const {
+    settings: s,
+    activityLog,
+    backups,
+    stats,
+    bulkGuardThreshold,
+  } = settings.data;
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -47,17 +53,23 @@ export function SettingsPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function SettingsSkeleton() {
   return (
-    <div data-testid="settings-skeleton" className="grid max-w-4xl grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+    <div
+      data-testid="settings-skeleton"
+      className="grid max-w-4xl grid-cols-1 gap-4 p-4 lg:grid-cols-2"
+    >
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-40 animate-pulse rounded-2xl border border-hairline bg-hairline/40" />
+        <div
+          key={i}
+          className="h-40 animate-pulse rounded-2xl border border-hairline bg-hairline/40"
+        />
       ))}
     </div>
-  )
+  );
 }
 
 function ErrorState() {
@@ -65,11 +77,15 @@ function ErrorState() {
     <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
       <p className="text-lg font-semibold text-ink">Couldn’t load settings</p>
       <p className="text-sm text-muted">
-        The server didn’t respond. If the Gmail connection expired, re-authorize to continue.
+        The server didn’t respond. If the Gmail connection expired, re-authorize
+        to continue.
       </p>
-      <a href="/auth" className="rounded-xl bg-ink px-4 py-2 font-semibold text-white">
+      <a
+        href="/auth"
+        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
+      >
         Reconnect
       </a>
     </div>
-  )
+  );
 }

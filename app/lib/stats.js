@@ -10,7 +10,15 @@ export function loadStats() {
     if (!s.daily) s.daily = [];
     return s;
   } catch {
-    return { kept: 0, cleaned: 0, junked: 0, unsubbed: 0, vip: 0, ok: 0, daily: [] };
+    return {
+      kept: 0,
+      cleaned: 0,
+      junked: 0,
+      unsubbed: 0,
+      vip: 0,
+      ok: 0,
+      daily: [],
+    };
   }
 }
 
@@ -19,7 +27,15 @@ export function saveStats(s) {
 }
 
 export function resetStats() {
-  saveStats({ kept: 0, cleaned: 0, junked: 0, unsubbed: 0, vip: 0, ok: 0, daily: [] });
+  saveStats({
+    kept: 0,
+    cleaned: 0,
+    junked: 0,
+    unsubbed: 0,
+    vip: 0,
+    ok: 0,
+    daily: [],
+  });
 }
 
 function todayStr() {
@@ -28,9 +44,18 @@ function todayStr() {
 
 function ensureTodayEntry(s) {
   const d = todayStr();
-  let e = s.daily.find(e => e.date === d);
+  let e = s.daily.find((e) => e.date === d);
   if (!e) {
-    e = { date: d, kept: 0, cleaned: 0, junked: 0, unsubbed: 0, vip: 0, ok: 0, inboxSize: null };
+    e = {
+      date: d,
+      kept: 0,
+      cleaned: 0,
+      junked: 0,
+      unsubbed: 0,
+      vip: 0,
+      ok: 0,
+      inboxSize: null,
+    };
     s.daily.push(e);
   }
   return e;
@@ -40,7 +65,10 @@ export function addToStats(delta) {
   const s = loadStats();
   const today = ensureTodayEntry(s);
   for (const k of Object.keys(delta)) {
-    if (k === "inboxSize") { today.inboxSize = delta.inboxSize; continue; }
+    if (k === "inboxSize") {
+      today.inboxSize = delta.inboxSize;
+      continue;
+    }
     s[k] = (s[k] || 0) + delta[k];
     today[k] = (today[k] || 0) + delta[k];
   }

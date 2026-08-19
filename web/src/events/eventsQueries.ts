@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { QueryKey } from '@tanstack/react-query'
-import type { CalendarEventInput, EventsData } from './eventsApi.ts'
+import type { QueryKey } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CalendarEventInput, EventsData } from "./eventsApi.ts";
 import {
   addToCalendar,
   getEvents,
@@ -8,20 +8,20 @@ import {
   resetRebuild,
   searchNow,
   sendEventsEmail,
-} from './eventsApi.ts'
+} from "./eventsApi.ts";
 
 // ---------------------------------------------------------------------------
 // Query key — the whole events view is a single cached resource.
 // ---------------------------------------------------------------------------
 
-const eventsKey: QueryKey = ['events']
+const eventsKey: QueryKey = ["events"];
 
 // ---------------------------------------------------------------------------
 // useEvents — fetch the grouped events view.
 // ---------------------------------------------------------------------------
 
 export function useEvents() {
-  return useQuery({ queryKey: eventsKey, queryFn: getEvents })
+  return useQuery({ queryKey: eventsKey, queryFn: getEvents });
 }
 
 // ---------------------------------------------------------------------------
@@ -29,28 +29,28 @@ export function useEvents() {
 // ---------------------------------------------------------------------------
 
 export function useIgnoreEvent() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ignoreEvent,
     onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: eventsKey })
-      const snapshot = queryClient.getQueryData<EventsData>(eventsKey)
+      await queryClient.cancelQueries({ queryKey: eventsKey });
+      const snapshot = queryClient.getQueryData<EventsData>(eventsKey);
       queryClient.setQueryData<EventsData>(eventsKey, (prev) => {
-        if (!prev) return prev
+        if (!prev) return prev;
         const groups = prev.groups
           .map((g) => ({ ...g, events: g.events.filter((e) => e.id !== id) }))
-          .filter((g) => g.events.length > 0)
-        return { ...prev, groups }
-      })
-      return { snapshot }
+          .filter((g) => g.events.length > 0);
+        return { ...prev, groups };
+      });
+      return { snapshot };
     },
     onError: (_err, _id, context) => {
       if (context?.snapshot !== undefined) {
-        queryClient.setQueryData(eventsKey, context.snapshot)
+        queryClient.setQueryData(eventsKey, context.snapshot);
       }
     },
-  })
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -59,15 +59,16 @@ export function useIgnoreEvent() {
 // ---------------------------------------------------------------------------
 
 export function useAddToCalendar() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (vars: { id: string; event: CalendarEventInput }) =>
       addToCalendar(vars.id, vars.event),
     onSuccess: (result) => {
-      if (result.ok) void queryClient.invalidateQueries({ queryKey: eventsKey })
+      if (result.ok)
+        void queryClient.invalidateQueries({ queryKey: eventsKey });
     },
-  })
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -75,31 +76,34 @@ export function useAddToCalendar() {
 // ---------------------------------------------------------------------------
 
 export function useSearchNow() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => searchNow(),
     onSuccess: (result) => {
-      if (result.ok) void queryClient.invalidateQueries({ queryKey: eventsKey })
+      if (result.ok)
+        void queryClient.invalidateQueries({ queryKey: eventsKey });
     },
-  })
+  });
 }
 
 export function useSendEmail() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => sendEventsEmail(),
     onSuccess: (result) => {
-      if (result.ok) void queryClient.invalidateQueries({ queryKey: eventsKey })
+      if (result.ok)
+        void queryClient.invalidateQueries({ queryKey: eventsKey });
     },
-  })
+  });
 }
 
 export function useResetRebuild() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => resetRebuild(),
     onSuccess: (result) => {
-      if (result.ok) void queryClient.invalidateQueries({ queryKey: eventsKey })
+      if (result.ok)
+        void queryClient.invalidateQueries({ queryKey: eventsKey });
     },
-  })
+  });
 }
