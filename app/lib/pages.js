@@ -77,12 +77,12 @@ function sidebar({ active = '' } = {}) {
     return `<a href="${href}" class="sb-item${isActive ? ' sb-active' : ''}">${icon} ${label}${badgeHtml}</a>`;
   };
   return `<div class="sidebar">
-    <a href="/" class="sb-logo" style="text-decoration:none;color:inherit;display:block">
+    <a href="/legacy" class="sb-logo" style="text-decoration:none;color:inherit;display:block">
       <div style="font-size:.9rem;font-weight:700;color:#1e293b">📧 Gmail Triage</div>
       <div style="font-size:.68rem;color:#94a3b8;margin-top:1px">${APP_VERSION}</div>
     </a>
     <div class="sb-nav">
-      ${item('/','🏠','Home','',active==='home')}
+      ${item('/legacy','🏠','Home','',active==='home')}
       ${item('/triage','▶','Start Triage','',active==='triage')}
       ${item('/stats','📊','Stats',null,active==='stats')}
       ${item('/review','🤖','Review',null,active==='review')}
@@ -180,7 +180,7 @@ export function triagePage(emails, blocklist, savedStats, scanResults, hideListe
             <div class="done-banner">
               <h2>✅ Triage complete!</h2>
               <p id="done-summary"></p>
-              <a href="/" class="home-btn">← Back to Home</a>
+              <a href="/legacy" class="home-btn">← Back to Home</a>
             </div>
           </div>
         </div>
