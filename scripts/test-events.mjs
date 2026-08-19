@@ -54,6 +54,9 @@ const activityLogModulePath = url.pathToFileURL(
 const atomicWriteModulePath = url.pathToFileURL(
   path.join(projectDir, 'app', 'lib', 'atomicWrite.js')
 ).href;
+const keepCleanModulePath = url.pathToFileURL(
+  path.join(projectDir, 'app', 'lib', 'keepClean.js')
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -1008,6 +1011,48 @@ test('undoReapply chunks ids at <=1000 per batchModify call', async () => {
   assert.equal(g._calls.length, 2);
   assert.equal(g._calls[0].ids.length, 1000);
   assert.equal(g._calls[1].ids.length, 500);
+});
+
+// ─── keepAndClean: ..OK exclusion is retired, pin it by test ──────────────────
+// The sweep excludes ..VIP but must NOT exclude ..OK — that exclusion shipped
+// once (9b68106) and was reverted 8 minutes later (dc08356); F19/v1.0.42
+// reinforced the uniform wipe. Mock ".DelPend" -> "LBL_DEL" to match the id
+// ensureLabel's module-level cache already holds from the reapply-undo tests
+// above, so the assertion holds whether or not labels.list gets called again.
+function keepCleanMockGmail(listedIds) {
+  const queries = [];
+  const batches = [];
+  return {
+    _queries: queries,
+    _batches: batches,
+    users: {
+      labels: { list: async () => ({ data: { labels: [{ name: '.DelPend', id: 'LBL_DEL' }] } }) },
+      messages: {
+        list: async (params) => { queries.push(params.q); return { data: { messages: listedIds.map(id => ({ id })) } }; },
+        batchModify: async (p) => { batches.push(p.requestBody); },
+      },
+    },
+  };
+}
+
+test('keepAndClean: sweep query excludes ..VIP and does not exclude ..OK', async () => {
+  const { keepAndClean } = await import(keepCleanModulePath);
+  const g = keepCleanMockGmail([]);
+  await keepAndClean(g, 'm3', 'sender@example.com', null);
+  const q = g._queries[0];
+  assert.ok(q.includes('-label:..VIP'));
+  assert.ok(!q.includes('..OK'), 'a ..OK exclusion was re-added; see the retired Phase 9 criterion in roadmap.md before changing this');
+});
+
+test('keepAndClean: force-includes the clicked id and archives all three via one batchModify', async () => {
+  const { keepAndClean } = await import(keepCleanModulePath);
+  const g = keepCleanMockGmail(['m1', 'm2']);
+  const { cleaned } = await keepAndClean(g, 'm3', 'sender@example.com', null);
+  assert.equal(cleaned, 3);
+  assert.equal(g._batches.length, 1);
+  assert.deepEqual(g._batches[0].ids, ['m1', 'm2', 'm3']);
+  assert.deepEqual(g._batches[0].addLabelIds, ['LBL_DEL']);
+  assert.deepEqual(g._batches[0].removeLabelIds, ['INBOX', 'UNREAD']);
 });
 
 test('setLastReapply / clearLastReapply round-trip through settings.json', async () => {
