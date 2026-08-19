@@ -1,7 +1,9 @@
 import { Card } from '../Card.tsx'
 import type { Stats } from '../settingsApi.ts'
 
-const ITEMS: { key: keyof Stats; label: string }[] = [
+type StatsTotalKey = 'vip' | 'ok' | 'cleaned' | 'junked' | 'unsubbed'
+
+const ITEMS: { key: StatsTotalKey; label: string }[] = [
   { key: 'vip', label: 'VIP' },
   { key: 'ok', label: 'OK' },
   { key: 'cleaned', label: 'Cleaned' },
