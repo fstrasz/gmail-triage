@@ -1,6 +1,6 @@
-﻿import { authenticate } from "@google-cloud/local-auth";
-import fs from "fs";
-import path from "path";
+﻿import fs from "node:fs";
+import path from "node:path";
+import { authenticate } from "@google-cloud/local-auth";
 
 const credPath = path.join(process.cwd(), "..", "config", "credentials.json");
 const tokenPath = path.join(process.cwd(), "..", "config", "token.json");

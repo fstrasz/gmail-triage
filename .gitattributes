@@ -1,0 +1,16 @@
+# Pin line endings to LF in the working tree as well as in the index.
+#
+# Without this, core.autocrlf=true (the default on this Windows machine) wants
+# CRLF in the working tree while Biome's formatter writes LF. Git then reports
+# every formatted file as modified even though the committed bytes are
+# identical -- 80 files at once after the first `biome check --write`, with an
+# empty `git diff`, which is alarming and completely spurious. Pinning LF makes
+# the formatter and git agree, and matches CI, which runs on Linux.
+* text=auto eol=lf
+
+# Binary assets: never touch these.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

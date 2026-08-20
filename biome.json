@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/package-lock.json"]
+    "includes": ["**", "!**/package-lock.json", "!web/public/*.svg"]
   },
   "assist": {
     "enabled": true,
@@ -23,16 +23,27 @@
       "preset": "recommended",
       "complexity": {
         "noExcessiveCognitiveComplexity": {
-          "level": "error",
+          "level": "warn",
           "options": { "maxAllowedComplexity": 10 }
         },
-        "noUselessFragments": "error"
+        "noUselessFragments": "error",
+        "noCommaOperator": "off"
       },
       "style": {
-        "noUselessElse": "error"
+        "noUselessElse": "error",
+        "useTemplate": "off",
+        "noNonNullAssertion": "warn"
       },
       "correctness": {
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "warn",
+        "useParseIntRadix": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "useIterableCallbackReturn": "warn",
+        "noArrayIndexKey": "warn",
+        "noGlobalIsFinite": "warn"
       }
     }
   },

@@ -1163,6 +1163,7 @@ test("buildReapplyQuery: returns null when nothing to query", async () => {
   // -label:Empty -in:sent -in:trash is valid, but rules with no match criteria...
   // Actually the helper checks if the trimmed query equals just -in:sent -in:trash.
   // A label-only rules entry produces "-label:Empty -in:sent -in:trash" which is NOT null.
+  assert.notEqual(q, null);
   // The null case is rules with no senders, no subjects, AND no label.
   const empty = buildReapplyQuery("rules", {});
   assert.equal(empty, null);
@@ -2489,11 +2490,11 @@ test("ACTION_DISPATCH: has all nine actions, each with the correct undo kind", a
     );
   }
   // List actions carry their list name so undo knows which remover to call.
-  assert.equal(ACTION_DISPATCH["ok"].listName, "ok");
-  assert.equal(ACTION_DISPATCH["vip"].listName, "vip");
+  assert.equal(ACTION_DISPATCH.ok.listName, "ok");
+  assert.equal(ACTION_DISPATCH.vip.listName, "vip");
   assert.equal(ACTION_DISPATCH["ok-clean"].listName, "ok");
   assert.equal(ACTION_DISPATCH["vip-clean"].listName, "vip");
-  assert.equal(ACTION_DISPATCH["junk"].listName, "blocklist");
+  assert.equal(ACTION_DISPATCH.junk.listName, "blocklist");
 });
 
 test("normalizeGuard: flattens a guard response; passes success through unchanged", async () => {

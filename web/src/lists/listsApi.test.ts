@@ -130,16 +130,14 @@ describe("list mutations", () => {
 
 describe("runReapply", () => {
   test("resolves a flat guard JSON as data (does not throw)", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonRes(200, {
-          ok: false,
-          guard: true,
-          count: 250,
-          message: "confirm?",
-        }),
-      );
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(
+      jsonRes(200, {
+        ok: false,
+        guard: true,
+        count: 250,
+        message: "confirm?",
+      }),
+    );
     const result = await runReapply("blocklist");
     expect(result).toEqual({ kind: "guard", count: 250, message: "confirm?" });
   });

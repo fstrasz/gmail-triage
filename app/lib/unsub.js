@@ -13,7 +13,7 @@ function extractAngleBracket(header, prefix) {
 
 export async function tryUnsubscribe(gmail, unsubUrl, unsubPost, fromEmail) {
   // No header — open Gmail compose pre-filled so user can send manually
-  if (!unsubUrl || !unsubUrl.trim()) {
+  if (!unsubUrl?.trim()) {
     const openTabUrl =
       "https://mail.google.com/mail/?view=cm" +
       "&to=" +

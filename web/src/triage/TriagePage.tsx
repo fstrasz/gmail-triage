@@ -1,4 +1,11 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import type {
   ActionResult,
   TriageAction,
@@ -57,7 +64,13 @@ const KEY_DIR: Record<string, Dir> = {
 export function TriagePage() {
   const [mode, setMode] = useState<Mode>(loadMode); // filter default ON (hidden); persisted across visits (#28)
   const hideListed = mode === "hidden";
-  const queueParams = { hideListed, limit: QUEUE_LIMIT };
+  // Memoized so it only changes identity when hideListed actually flips —
+  // `commit` below depends on it, and a fresh object every render would
+  // defeat that memoization.
+  const queueParams = useMemo(
+    () => ({ hideListed, limit: QUEUE_LIMIT }),
+    [hideListed],
+  );
 
   const queue = useQueue(queueParams);
   const action = useAction();
@@ -128,75 +141,95 @@ export function TriagePage() {
     setAnnounce(`${verb} done. ${next}`);
   }, [deck.cards, deck.selectedId, active]);
 
-  function handleResult(
-    result: ActionResult,
-    committed: TriageAction,
-    card: TriageEmail,
-    labeled?: number,
-  ) {
-    if (result.ok) {
-      // FIX E — a successful action proves the Gmail connection is live again;
-      // clear any stale Reconnect banner.
-      setAuthError(false);
-      setToast({ undo: result.undo, labeled: result.labeled ?? labeled });
-      // FIX G — announce ONLY on the committed-success path, reading the new top
-      // post-dispatch (the effect below). A guard/auth result never announces.
-      pendingAnnounce.current = committed;
-      return;
-    }
-    if ("error" in result) {
-      // M1 — distinct auth state, NOT empty.
-      setAuthError(true);
-      // Restore the card we optimistically advanced past.
+  // Memoized with an empty dependency array — every value it closes over
+  // (setAuthError/setToast/setGuard, dispatch, the pending/pendingAnnounce
+  // refs) is stable across renders, so this identity never needs to change.
+  // `commit` below depends on it; without that stability `commit` would be
+  // forced to recreate on every render regardless of its own real deps.
+  const handleResult = useCallback(
+    (
+      result: ActionResult,
+      committed: TriageAction,
+      card: TriageEmail,
+      labeled?: number,
+    ) => {
+      if (result.ok) {
+        // FIX E — a successful action proves the Gmail connection is live again;
+        // clear any stale Reconnect banner.
+        setAuthError(false);
+        setToast({ undo: result.undo, labeled: result.labeled ?? labeled });
+        // FIX G — announce ONLY on the committed-success path, reading the new top
+        // post-dispatch (the effect below). A guard/auth result never announces.
+        pendingAnnounce.current = committed;
+        return;
+      }
+      if ("error" in result) {
+        // M1 — distinct auth state, NOT empty.
+        setAuthError(true);
+        // Restore the card we optimistically advanced past.
+        dispatch({ type: "undo" });
+        return;
+      }
+      // guard — restore the card and open the confirm dialog.
       dispatch({ type: "undo" });
-      return;
-    }
-    // guard — restore the card and open the confirm dialog.
-    dispatch({ type: "undo" });
-    pending.current = { action: committed, card };
-    setGuard(result.guard);
-  }
+      pending.current = { action: committed, card };
+      setGuard(result.guard);
+    },
+    [],
+  );
 
-  function commit(act: TriageAction, confirmed = false) {
-    // FIX B — single-in-flight guard at the TOP so EVERY path inherits it
-    // (button taps, swipe, More sheet, keyboard). The ref closes the same-tick
-    // double-fire window before action.isPending can flip.
-    if (committing.current || action.isPending) return;
+  // O1 fix — memoized on its REAL dependencies (active, action, queueParams,
+  // handleResult). Previously this was a plain function recreated on every
+  // render, but the keyboard-shortcut effect below closed over whatever
+  // `commit` existed when the effect last ran and did NOT re-run when only
+  // `deck.selectedId` changed (selecting a queue row leaves the `deck.cards`
+  // array referentially identical). A shortcut fired after clicking a
+  // different row then acted on the STALE previously-active card. Listing
+  // this stable callback in the effect's dependency array fixes that: the
+  // effect now re-runs whenever the active card actually changes.
+  const commit = useCallback(
+    (act: TriageAction, confirmed = false) => {
+      // FIX B — single-in-flight guard at the TOP so EVERY path inherits it
+      // (button taps, swipe, More sheet, keyboard). The ref closes the same-tick
+      // double-fire window before action.isPending can flip.
+      if (committing.current || action.isPending) return;
 
-    const card = confirmed ? pending.current?.card : active;
-    if (!card) return;
-    committing.current = true;
+      const card = confirmed ? pending.current?.card : active;
+      if (!card) return;
+      committing.current = true;
 
-    // Dispatch exactly ONE `act` per user gesture for the ACTIVE card (by id, so
-    // it works regardless of position). The reducer removes it, keeps the cursor
-    // at that position, and advances. On the confirmed path the guard revert put
-    // the card back, so we re-remove it here. Announce set later, on success only.
-    dispatch({ type: "act", action: act, id: card.id });
+      // Dispatch exactly ONE `act` per user gesture for the ACTIVE card (by id, so
+      // it works regardless of position). The reducer removes it, keeps the cursor
+      // at that position, and advances. On the confirmed path the guard revert put
+      // the card back, so we re-remove it here. Announce set later, on success only.
+      dispatch({ type: "act", action: act, id: card.id });
 
-    action.mutate(
-      {
-        id: card.id,
-        action: act,
-        fromEmail: card.fromEmail,
-        fromName: card.fromName,
-        unsubUrl: card.unsubUrl,
-        unsubPost: card.unsubPost,
-        confirmed: confirmed || undefined,
-        queueParams,
-      },
-      {
-        onSuccess: (result: ActionResult) => handleResult(result, act, card),
-        onError: () => {
-          // Unexpected failure: restore the card.
-          dispatch({ type: "undo" });
+      action.mutate(
+        {
+          id: card.id,
+          action: act,
+          fromEmail: card.fromEmail,
+          fromName: card.fromName,
+          unsubUrl: card.unsubUrl,
+          unsubPost: card.unsubPost,
+          confirmed: confirmed || undefined,
+          queueParams,
         },
-        onSettled: () => {
-          // FIX B — release the lock once the mutation finishes (success or error).
-          committing.current = false;
+        {
+          onSuccess: (result: ActionResult) => handleResult(result, act, card),
+          onError: () => {
+            // Unexpected failure: restore the card.
+            dispatch({ type: "undo" });
+          },
+          onSettled: () => {
+            // FIX B — release the lock once the mutation finishes (success or error).
+            committing.current = false;
+          },
         },
-      },
-    );
-  }
+      );
+    },
+    [active, action, queueParams, handleResult],
+  );
 
   // Select a queue item in place (highlight it) — no reorder. The active card
   // moves to this row; the queue keeps its order. Acting on it removes it and
@@ -205,10 +238,16 @@ export function TriagePage() {
     dispatch({ type: "select", id });
   }
 
-  function onUndo(descriptor: UndoDescriptor) {
-    setToast(null);
-    undo.mutate(descriptor);
-  }
+  // Memoized so the keyboard effect below (which calls this on 'u') doesn't
+  // need to rebuild on every render for a callback that only actually
+  // depends on `undo`.
+  const onUndo = useCallback(
+    (descriptor: UndoDescriptor) => {
+      setToast(null);
+      undo.mutate(descriptor);
+    },
+    [undo],
+  );
 
   function confirmGuard() {
     const p = pending.current;
@@ -278,9 +317,12 @@ export function TriagePage() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-    // Rebuild the listener whenever any of the captured state changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, action.isPending, guard, moreOpen, toast, deck.cards]);
+    // Exhaustive: mode/guard/moreOpen/toast/action.isPending are read directly
+    // in handleKeyDown above; `commit`/`onUndo` are the stable callbacks it
+    // calls, and each rebuilds when ITS real dependencies change (including
+    // the active/selected card for `commit` — see its useCallback above). So
+    // this effect now correctly re-runs on a selection change, fixing O1.
+  }, [mode, action.isPending, guard, moreOpen, toast, commit, onUndo]);
 
   // ---- States --------------------------------------------------------------
 

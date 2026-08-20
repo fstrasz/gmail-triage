@@ -91,7 +91,7 @@ export function SchedulerSection({ settings }: { settings: Settings }) {
         >
           {runScan.isPending ? "Running…" : "Run Auto-Clean Now"}
         </button>
-        {scan && scan.ok && (
+        {scan?.ok && (
           <p className="mt-2 text-sm text-muted" role="status">
             Moved {scan.totalMoved} ({scan.blocklistMoved} block /{" "}
             {scan.vipMoved} VIP / {scan.okMoved} OK / {scan.rulesMoved} rules)

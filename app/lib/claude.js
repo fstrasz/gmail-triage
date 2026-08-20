@@ -1,7 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
 import { loadSettings } from "./settings.js";
 
 dotenv.config();

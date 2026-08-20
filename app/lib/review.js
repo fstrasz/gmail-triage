@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const REVIEW_PATH = path.join(process.cwd(), "review.json");

@@ -267,7 +267,9 @@ if (-not $WhatIf) {
 
     Write-Host "Probing /legacy..." -ForegroundColor Cyan
     try {
-        $legacyProbe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/legacy" -TimeoutSec 15 -ErrorAction Stop
+        # Measured 16.4s on a healthy page - /legacy renders the old server-rendered
+        # home, which makes live Gmail API calls. Do not trim this back to 15.
+        $legacyProbe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/legacy" -TimeoutSec 45 -ErrorAction Stop
         if ($legacyProbe.StatusCode -eq 200 -and $legacyProbe.Content -match 'Gmail Triage') {
             Write-Host "  /legacy probe OK (HTTP $($legacyProbe.StatusCode), content contains 'Gmail Triage')." -ForegroundColor Green
         } else {
@@ -281,7 +283,9 @@ if (-not $WhatIf) {
 
     Write-Host "Probing /api/labeled..." -ForegroundColor Cyan
     try {
-        $labeledProbe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/api/labeled?label=..VIP" -TimeoutSec 15 -ErrorAction Stop
+        # /api/labeled can issue up to 200 messages.get calls to Gmail, so 15s is
+        # too tight - raised to 60s. Do not trim this back down.
+        $labeledProbe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/api/labeled?label=..VIP" -TimeoutSec 60 -ErrorAction Stop
         if ($labeledProbe.StatusCode -eq 200 -and $labeledProbe.Content -match '"ok":true') {
             Write-Host "  /api/labeled probe OK (HTTP $($labeledProbe.StatusCode), content contains '`"ok`":true')." -ForegroundColor Green
         } else {

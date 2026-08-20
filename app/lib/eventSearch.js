@@ -166,7 +166,7 @@ const INTERPRETATION_RULES = `INTERPRETATION RULES (apply liberally):
 // text content (the rare case where the model emits prose instead of the tool).
 // Returns { events, source, text, parseError } — events is null on failure.
 export function extractBodyScanEvents(response) {
-  const blocks = (response && response.content) || [];
+  const blocks = response?.content || [];
   const toolBlock = blocks.find(
     (b) => b.type === "tool_use" && b.name === "record_events",
   );
@@ -379,7 +379,7 @@ const CANONICAL_CLAUDE_FALLBACK_CAP = 50; // generous cap on the Claude fallback
 export function pickCanonicalFromCandidates(candidates, eventTitle, opts = {}) {
   const minClear = opts.minClearScore ?? CANONICAL_MIN_CLEAR_SCORE;
   const cap = opts.maxClaudeCandidates ?? CANONICAL_CLAUDE_FALLBACK_CAP;
-  if (!candidates || !candidates.length) return { kind: "none" };
+  if (!candidates?.length) return { kind: "none" };
   if (candidates.length === 1)
     return { kind: "direct", href: candidates[0].href };
 

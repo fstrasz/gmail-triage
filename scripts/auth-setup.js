@@ -9,11 +9,11 @@
  * covers both Gmail and Google Calendar scopes.
  */
 
-import fs from "fs";
+import fs from "node:fs";
+import path from "node:path";
+import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import { google } from "googleapis";
-import path from "path";
-import readline from "readline";
-import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CRED_PATH = path.join(__dirname, "../config/credentials.json");

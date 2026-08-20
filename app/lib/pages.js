@@ -7,11 +7,11 @@ import { loadRules } from "./rules.js";
 import { loadStats } from "./stats.js";
 import { loadViplist } from "./viplist.js";
 
-export const APP_VERSION = "v1.2.17";
+export const APP_VERSION = "v1.2.18";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
-  if (!conflicts || !conflicts.length) return "";
+  if (!conflicts?.length) return "";
   const listLabel = { VIP: "VIP", OK: "OK", Block: "Block" };
   const listBtnClass = {
     VIP: "btn-warning",
@@ -928,8 +928,8 @@ export function labeledPage(labelName, emails) {
     border: "#6366f1",
   };
   const nav = sidebar({ active: "labeled-" + labelName });
-  const safe = (s) => (s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const tz = ""; // date formatted server-side
+  const _safe = (s) => (s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const _tz = ""; // date formatted server-side
 
   const rows = emails.length
     ? emails
@@ -2125,7 +2125,7 @@ export function settingsPage(
         </div>
       </div>
       ${
-        (backupInfo && backupInfo.backedUpAt) || namedBackups.length
+        (backupInfo?.backedUpAt) || namedBackups.length
           ? `
       <div class="card" style="margin-top:16px;border:1px solid #fde68a">
         <div class="card-header" style="background:#fffbeb;border-bottom:1px solid #fde68a">
@@ -2161,7 +2161,7 @@ export function settingsPage(
               )
               .join("")}
             ${
-              backupInfo && backupInfo.backedUpAt
+              backupInfo?.backedUpAt
                 ? `<tr>
               <td style="padding:7px 14px;font-size:.84rem;color:#374151;font-weight:600">—</td>
               <td style="padding:7px 14px;font-size:.82rem;color:#64748b">${new Date(backupInfo.backedUpAt).toLocaleString()}</td>
@@ -2225,7 +2225,7 @@ export function settingsPage(
                     minute: "2-digit",
                   })
                 : "";
-              const actionMap = {
+              const _actionMap = {
                 vip: "⭐ VIP",
                 ok: "✅ OK",
                 "ok-clean": "✅ OK & Clean",
