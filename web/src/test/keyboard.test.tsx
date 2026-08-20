@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ActionResult, TriageEmail, UndoDescriptor } from "../lib/api.ts";
 
@@ -250,5 +250,41 @@ describe("Keyboard shortcuts", () => {
 
     expect(undoMutate).toHaveBeenCalledTimes(1);
     expect(undoMutate.mock.calls[0][0]).toEqual(desc);
+  });
+
+  test("11. O1: a shortcut fired after selecting a DIFFERENT queue row acts on the newly-selected card, not the stale first card", () => {
+    // Desktop capability (hover + fine pointer) → the clickable queue pane
+    // (Pane 1) renders, the same as deckui.test.tsx test 11.
+    const orig = window.matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      media: "",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+    try {
+      render(<TriagePage />);
+
+      // Select the SECOND queue row (e2) the way a user clicks it — this does
+      // NOT reorder the queue, it only highlights e2 as the active card.
+      fireEvent.click(screen.getByRole("button", { name: /Name e2/ }));
+
+      // Now fire a keyboard shortcut. It must act on e2 (the active/selected
+      // card), not e1 (the original top card).
+      fireEvent.keyDown(document, { key: "ArrowRight" });
+
+      expect(actionMutate).toHaveBeenCalledTimes(1);
+      const payload = actionMutate.mock.calls[0][0] as {
+        action: string;
+        id: string;
+      };
+      expect(payload.id).toBe("e2");
+    } finally {
+      window.matchMedia = orig;
+    }
   });
 });
