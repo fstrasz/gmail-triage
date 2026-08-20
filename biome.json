@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/package-lock.json"]
+    "includes": ["**", "!**/package-lock.json", "!web/public/*.svg"]
   },
   "assist": {
     "enabled": true,
@@ -41,9 +41,9 @@
       },
       "suspicious": {
         "noAssignInExpressions": "off",
-        "useIterableCallbackReturn": "off",
-        "noArrayIndexKey": "off",
-        "noGlobalIsFinite": "off"
+        "useIterableCallbackReturn": "warn",
+        "noArrayIndexKey": "warn",
+        "noGlobalIsFinite": "warn"
       }
     }
   },
