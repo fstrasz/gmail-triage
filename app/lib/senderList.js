@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
 // Factory for a JSON-backed sender list. Collapses the load/save/remove/match logic

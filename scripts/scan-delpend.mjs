@@ -1,17 +1,17 @@
 // Scan .DelPend label for senders not already in blocklist
-import { createRequire } from "module";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const {
   google,
 } = require("C:/Users/frank/gmail-triage/app/node_modules/googleapis");
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const configDir = path.join(__dirname, "../../app/../config"); // Y:\gmail-triage\config via worktree path — use absolute
+const _configDir = path.join(__dirname, "../../app/../config"); // Y:\gmail-triage\config via worktree path — use absolute
 
 // Load from Y:\gmail-triage\config
 const CONFIG_DIR = "Y:\\gmail-triage\\config";
@@ -84,7 +84,7 @@ do {
       const fromHdr = hdrs.find((h) => h.name === "From")?.value || "";
       const subjHdr = hdrs.find((h) => h.name === "Subject")?.value || "";
       // Parse "Name <email>" or just "email"
-      const m =
+      const _m =
         fromHdr.match(/^(?:"?([^"<]+)"?\s+)?<([^>]+)>$/) ||
         fromHdr.match(/^([^\s@]+@[^\s]+)$/);
       let email, name;

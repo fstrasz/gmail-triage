@@ -26,7 +26,8 @@
           "level": "warn",
           "options": { "maxAllowedComplexity": 10 }
         },
-        "noUselessFragments": "error"
+        "noUselessFragments": "error",
+        "noCommaOperator": "off"
       },
       "style": {
         "noUselessElse": "error",
@@ -35,7 +36,14 @@
       },
       "correctness": {
         "noUnusedVariables": "error",
-        "noUnusedFunctionParameters": "warn"
+        "noUnusedFunctionParameters": "warn",
+        "useParseIntRadix": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "useIterableCallbackReturn": "off",
+        "noArrayIndexKey": "off",
+        "noGlobalIsFinite": "off"
       }
     }
   },

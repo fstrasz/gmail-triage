@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
-import fs from "fs";
-import path from "path";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
 const RULES_PATH = path.join(process.cwd(), "rules.json");
@@ -32,8 +32,7 @@ export function addRule({ name, senders, subjects, label, skipInbox }) {
 export function toggleRule(id) {
   const rules = loadRules();
   const idx = rules.findIndex((r) => r.id === id);
-  if (idx >= 0)
-    rules[idx].enabled = rules[idx].enabled === false ? true : false;
+  if (idx >= 0) rules[idx].enabled = rules[idx].enabled === false;
   saveRules(rules);
   return idx >= 0 ? rules[idx].enabled : null;
 }

@@ -84,7 +84,7 @@ export async function mapWithConcurrency(items, concurrency, fn) {
       if (i >= items.length) return;
       try {
         results[i] = await fn(items[i], i);
-      } catch (e) {
+      } catch (_e) {
         results[i] = undefined;
       }
     }

@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "node:fs";
 
 const BLOCKLIST = "Y:\\gmail-triage\\config\\blocklist.json";
 const now = new Date().toISOString();

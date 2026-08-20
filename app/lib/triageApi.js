@@ -54,6 +54,6 @@ export const ACTION_DISPATCH = {
 // Flattens the old flat guard shape into the React API's nested form. A success
 // result (anything without guard:true) passes through unchanged.
 export function normalizeGuard(result) {
-  if (!result || result.guard !== true) return result;
+  if (result?.guard !== true) return result;
   return { ok: false, guard: { count: result.count, message: result.message } };
 }

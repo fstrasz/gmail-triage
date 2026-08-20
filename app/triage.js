@@ -1,6 +1,6 @@
+import pathmod from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
-import pathmod from "path";
-import { fileURLToPath } from "url";
 import { appendLog, loadLog } from "./lib/activityLog.js";
 import {
   addToBlocklist,
@@ -50,9 +50,6 @@ import {
   reapplyBlocklist,
   reapplyRules,
   reapplyTier,
-  scanAndApplyRules,
-  scanAndCleanBlocklist,
-  scanAndLabelTier,
   snapshotInboxSize,
   trashDelPend,
   trashMessage,
@@ -207,7 +204,7 @@ async function renderLegacyHome(req, res) {
   try {
     const gmail = await getGmailClient();
     delPendSummary = await getDelPendSummary(gmail);
-  } catch (e) {
+  } catch (_e) {
     /* show home page without Gmail sections if Gmail fails */
   }
   const bl = loadBlocklist(),
@@ -1171,7 +1168,7 @@ app.get("/api/preview/:id", async (req, res) => {
 
 // ─── Claude Review ─────────────────────────────────────────────────────────────
 app.post("/api/review", async (req, res) => {
-  const { id, fromEmail, fromName, subject } = req.body;
+  const { id, subject } = req.body;
   try {
     const gmail = await getGmailClient();
     // Fetch full email body (plain text preferred for Claude)
@@ -1265,7 +1262,7 @@ app.post("/api/review/execute", async (req, res) => {
         userId: "me",
         requestBody: { ids: [id], removeLabelIds: [labelId] },
       });
-    } catch (e) {
+    } catch (_e) {
       /* label removal is best-effort */
     }
 
@@ -1308,7 +1305,7 @@ app.post("/api/review/dismiss", async (req, res) => {
         userId: "me",
         requestBody: { ids: [id], removeLabelIds: [labelId] },
       });
-    } catch (e) {
+    } catch (_e) {
       /* best-effort */
     }
     removeFromReview(id);
@@ -1519,7 +1516,7 @@ app.post("/settings/restore-blocklist-backup", (req, res) => {
   try {
     restoreBlocklistBackup(req.body.merge === "true");
     res.redirect("/settings");
-  } catch (e) {
+  } catch (_e) {
     res.redirect("/settings");
   }
 });
@@ -1527,14 +1524,14 @@ app.post("/settings/restore-named-backup", (req, res) => {
   try {
     restoreNamedBackup(parseInt(req.body.n), req.body.merge === "true");
     res.redirect("/settings");
-  } catch (e) {
+  } catch (_e) {
     res.redirect("/settings");
   }
 });
 app.post("/settings/delete-named-backup", (req, res) => {
   try {
     deleteNamedBackup(parseInt(req.body.n));
-  } catch (e) {}
+  } catch (_e) {}
   res.redirect("/settings");
 });
 app.get("/reset", (req, res) => {

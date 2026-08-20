@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 // Atomic file write via temp + rename. POSIX rename is atomic — readers see old
 // file or new file, never half-written. Prevents the load-X / save-X corruption

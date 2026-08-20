@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { appendLog } from "./activityLog.js";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 import { loadBlocklist } from "./blocklist.js";
@@ -69,7 +69,7 @@ function tzParts(date) {
   );
 }
 
-function msUntilHour(targetHour) {
+function _msUntilHour(targetHour) {
   const parts = tzParts(new Date());
   const curHour = parseInt(parts.hour);
   const curMin = parseInt(parts.minute);
@@ -221,7 +221,7 @@ export async function sendDailySummary(gmail, { force = false } = {}) {
   const s = loadSettings();
   if (!s.dailySummaryEnabled && !force) return false;
 
-  const tz = s.timezone || "America/Los_Angeles";
+  const _tz = s.timezone || "America/Los_Angeles";
   const now = new Date();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const log = loadScanLog().filter(

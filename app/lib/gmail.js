@@ -1,7 +1,6 @@
-import fs from "fs";
+import fs from "node:fs";
+import path from "node:path";
 import { google } from "googleapis";
-import path from "path";
-import { isBlocked } from "./blocklist.js";
 import { loadRules } from "./rules.js";
 
 const TOKEN_PATH = path.join(process.cwd(), "token.json");
@@ -414,7 +413,7 @@ export async function fetchEmails(
       // Skip senders the caller wants hidden (e.g. VIP/OK-listed when the triage
       // filter is on) — catches listed-but-not-yet-labeled stragglers that the
       // query exclusion misses.
-      if (skipSender && skipSender(fromEmail, fromName)) continue;
+      if (skipSender?.(fromEmail, fromName)) continue;
 
       const lbls = d.data.labelIds || [];
       const tier = lbls.includes(vipId)
@@ -573,16 +572,14 @@ export async function getDelPendSummary(gmail) {
   const details = [];
   for (let i = 0; i < sampledIds.length; i += CHUNK) {
     const batch = await Promise.all(
-      sampledIds
-        .slice(i, i + CHUNK)
-        .map((id) =>
-          gmail.users.messages.get({
-            userId: "me",
-            id,
-            format: "metadata",
-            metadataHeaders: ["From"],
-          }),
-        ),
+      sampledIds.slice(i, i + CHUNK).map((id) =>
+        gmail.users.messages.get({
+          userId: "me",
+          id,
+          format: "metadata",
+          metadataHeaders: ["From"],
+        }),
+      ),
     );
     details.push(...batch);
   }
@@ -721,16 +718,14 @@ export async function scanAndLabelTier(gmail, list, tierName) {
       // For entries without name filter, fetch subjects + dates for first 5 messages
       if (!entry.name && ids.length) {
         const fetched = await Promise.all(
-          ids
-            .slice(0, 5)
-            .map((id) =>
-              gmail.users.messages.get({
-                userId: "me",
-                id,
-                format: "metadata",
-                metadataHeaders: ["Subject"],
-              }),
-            ),
+          ids.slice(0, 5).map((id) =>
+            gmail.users.messages.get({
+              userId: "me",
+              id,
+              format: "metadata",
+              metadataHeaders: ["Subject"],
+            }),
+          ),
         );
         subjects.push(
           ...fetched.map(
