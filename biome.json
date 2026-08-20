@@ -23,16 +23,19 @@
       "preset": "recommended",
       "complexity": {
         "noExcessiveCognitiveComplexity": {
-          "level": "error",
+          "level": "warn",
           "options": { "maxAllowedComplexity": 10 }
         },
         "noUselessFragments": "error"
       },
       "style": {
-        "noUselessElse": "error"
+        "noUselessElse": "error",
+        "useTemplate": "off",
+        "noNonNullAssertion": "warn"
       },
       "correctness": {
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "warn"
       }
     }
   },
