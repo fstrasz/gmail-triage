@@ -29,7 +29,14 @@ const DEFAULTS = {
   schedulerLastRunAt: null,
   scannedEmailIds: [],
   lastReapply: {},
-  readTriageEnabled: true,
+  // Ships DISABLED until the three HIGH review findings are fixed: the fail-safe
+  // is untested at both layers (mutation-proved green while broken), the
+  // injection defence is escapable because email bodies are interpolated between
+  // literal delimiters unsanitised, and the run is unbounded so a backlog past
+  // ~90 candidates blows Haiku's context and the pass silently does nothing.
+  // The operator chose live-immediately; that choice predates these findings.
+  // Flip to true (or set readTriageEnabled in settings) once they are closed.
+  readTriageEnabled: false,
   lastReadTriage: null,
 };
 

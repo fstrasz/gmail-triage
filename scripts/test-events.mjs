@@ -1436,7 +1436,7 @@ test("setLastReapply / clearLastReapply round-trip through settings.json", async
   }
 });
 
-test("readTriageEnabled defaults to true and round-trips through setReadTriageEnabled", async () => {
+test("readTriageEnabled defaults to FALSE until the review findings are closed, and round-trips", async () => {
   const dir = fs.mkdtempSync(
     path.join(os.tmpdir(), "gmail-triage-read-triage-enabled-"),
   );
@@ -1448,8 +1448,9 @@ test("readTriageEnabled defaults to true and round-trips through setReadTriageEn
     );
     assert.equal(
       loadSettings().readTriageEnabled,
-      true,
-      "a flag nobody turns on is not a feature",
+      false,
+      "ships disabled: the fail-safe is untested, the injection defence is " +
+        "escapable, and the batch is unbounded. Flip to true once those close.",
     );
     setReadTriageEnabled(false);
     assert.equal(loadSettings().readTriageEnabled, false);
