@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
-const SETTINGS_PATH = path.join(process.cwd(), "settings.json");
+// Computed lazily (not at module load) so a test that chdir()s into a temp dir after
+// this module is already cached (e.g. via another module's static import of
+// settings.js, which import-caching can't re-freshen) still reads/writes the right
+// file — same lazy-path pattern senderList.js's getPath() uses.
+const getSettingsPath = () => path.join(process.cwd(), "settings.json");
 const DEFAULTS = {
   locations: [],
   timezone: "America/Los_Angeles",
@@ -45,7 +49,7 @@ const DEFAULTS = {
 
 export function loadSettings() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) };
+    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(getSettingsPath())) };
   } catch {
     return { ...DEFAULTS };
   }
@@ -68,8 +72,15 @@ export function setBulkGuardThreshold(n) {
   else delete s.bulkGuardThreshold;
   saveSettings(s);
 }
+// Name-fragmentation trigger: live-tunable threshold, same per-check-read pattern as
+// getBulkGuardThreshold. A positive number in settings.json wins; otherwise the
+// caller's fallback (senderList.js's NAME_FRAGMENTATION_THRESHOLD) is used.
+export function getNameFragmentationThreshold(fallback) {
+  const v = loadSettings().nameFragmentationThreshold;
+  return typeof v === "number" && v > 0 ? v : fallback;
+}
 export function saveSettings(s) {
-  atomicWriteFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
+  atomicWriteFileSync(getSettingsPath(), JSON.stringify(s, null, 2));
 }
 export function addLocation(loc) {
   const s = loadSettings();

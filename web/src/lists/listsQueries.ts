@@ -24,7 +24,9 @@ export function useLists() {
 // None are optimistic: a list edit re-derives the merged view, and the read is
 // cheap, so a plain invalidate is simpler and correct.
 
-function useInvalidatingMutation<TVars>(fn: (vars: TVars) => Promise<unknown>) {
+function useInvalidatingMutation<TVars, TData>(
+  fn: (vars: TVars) => Promise<TData>,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,

@@ -1,6 +1,40 @@
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
+import { getNameFragmentationThreshold } from "./settings.js";
+
+// Name-fragmentation trigger (Session 9): default threshold for "distinct display
+// names sharing one address" before it reads as a rotating campaign label rather than
+// a genuine identity. Overridable via settings.json (getNameFragmentationThreshold in
+// settings.js), read per check — same live-tunable pattern as
+// BULK_GUARD_THRESHOLD/getBulkGuardThreshold. Validated against the real lists at 3
+// (see docs/superpowers/specs/2026-08-26-name-fragmentation-trigger-design.md).
+export const NAME_FRAGMENTATION_THRESHOLD = 3;
+
+function loadRawList(filename) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), filename)));
+  } catch {
+    return [];
+  }
+}
+
+// Distinct display names for one address across the VIP + OK lists combined —
+// fragmentation is a property of the address, not of one list (a name split across
+// VIP and OK still trips it). Nameless entries are excluded: a null name is the
+// wildcard that matches every sender name, i.e. the resolution, not the symptom.
+// Read-only: never writes either list.
+export function distinctNameCount(email) {
+  const key = email.toLowerCase().trim();
+  const names = new Set();
+  for (const e of [
+    ...loadRawList("viplist.json"),
+    ...loadRawList("oklist.json"),
+  ]) {
+    if (e.email === key && e.name) names.add(e.name);
+  }
+  return names.size;
+}
 
 // Factory for a JSON-backed sender list. Collapses the load/save/remove/match logic
 // shared by the VIP, OK, and Blocklist modules into one place. Each consumer module
@@ -75,10 +109,15 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     });
   }
 
+  // Returns whether this specific add just crossed the name-fragmentation threshold
+  // (see distinctNameCount) — false for a nameless add (can't fragment), and false for
+  // an add to an address already at/over threshold (fires on the TRANSITION only, so
+  // a further add to an already-flagged address doesn't re-fire as noise).
   function add(email, name = null) {
     const list = load();
     const key = email.toLowerCase().trim();
     const normName = name ? name.trim() : null;
+    const before = normName ? distinctNameCount(key) : null;
     // Name-scoped: only an exact email+name pair is a duplicate, so the same address
     // can be added under multiple display names (matches `match` and the Blocklist).
     if (
@@ -88,6 +127,9 @@ export function senderList(filename, { dedupeOnLoad = true } = {}) {
     )
       list.push({ email: key, name: normName, date: new Date().toISOString() });
     save(list);
+    if (before === null) return false;
+    const threshold = getNameFragmentationThreshold(NAME_FRAGMENTATION_THRESHOLD);
+    return before < threshold && distinctNameCount(key) >= threshold;
   }
 
   return {

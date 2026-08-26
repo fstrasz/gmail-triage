@@ -2636,6 +2636,245 @@ test("senderList.remove: name-scoped removes only the exact pair; name-blind rem
   }
 });
 
+// ─── Name-fragmentation trigger (Session 9) ────────────────────────────────────
+// distinctNameCount + the factory add()'s transition check read viplist.json and
+// oklist.json directly (fragmentation is address-wide across VIP+OK, not per-store),
+// so these tests build stores against those two exact filenames in the temp cwd.
+
+test("name-fragmentation: 3 distinct names fires the transition, 2 does not", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-namefrag-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(
+      senderListModulePath + "?t=" + Date.now() + Math.random()
+    );
+    const vip = senderList("viplist.json");
+    const ok = senderList("oklist.json");
+
+    assert.equal(vip.add("a@x.com", "Name One"), false, "1st distinct name: no fire");
+    assert.equal(
+      ok.add("a@x.com", "Name Two"),
+      false,
+      "2nd distinct name: still below threshold, no fire",
+    );
+    assert.equal(
+      vip.add("a@x.com", "Name Three"),
+      true,
+      "3rd distinct name crosses the threshold: fires",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("name-fragmentation: nameless entries are excluded from the count", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-nameless-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList, distinctNameCount } = await import(
+      senderListModulePath + "?t=" + Date.now() + Math.random()
+    );
+    const vip = senderList("viplist.json");
+    const ok = senderList("oklist.json");
+
+    assert.equal(vip.add("a@x.com", null), false, "nameless add never fires");
+    assert.equal(ok.add("a@x.com", "Name One"), false);
+    assert.equal(
+      vip.add("a@x.com", null),
+      false,
+      "a second nameless add still doesn't fire",
+    );
+    assert.equal(
+      ok.add("a@x.com", "Name Two"),
+      false,
+      "only 2 distinct NAMED names so far — the 2 nameless adds didn't count",
+    );
+    assert.equal(
+      vip.add("a@x.com", "Name Three"),
+      true,
+      "the 3rd distinct NAMED name fires",
+    );
+    assert.equal(
+      distinctNameCount("a@x.com"),
+      3,
+      "the nameless entries never contributed to the count",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("name-fragmentation: a further add to an already-flagged address does not re-fire", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-refire-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList } = await import(
+      senderListModulePath + "?t=" + Date.now() + Math.random()
+    );
+    const vip = senderList("viplist.json");
+    const ok = senderList("oklist.json");
+    vip.add("a@x.com", "One");
+    ok.add("a@x.com", "Two");
+    assert.equal(
+      vip.add("a@x.com", "Three"),
+      true,
+      "crosses the threshold at the 3rd distinct name",
+    );
+    assert.equal(
+      ok.add("a@x.com", "Four"),
+      false,
+      "already at/over threshold: a further add does not re-fire",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("name-fragmentation: threshold is read from settings.json per check", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-threshold-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync(
+      path.join(dir, "settings.json"),
+      JSON.stringify({ nameFragmentationThreshold: 2 }),
+    );
+    const { senderList } = await import(
+      senderListModulePath + "?t=" + Date.now() + Math.random()
+    );
+    const vip = senderList("viplist.json");
+    const ok = senderList("oklist.json");
+    assert.equal(vip.add("a@x.com", "One"), false);
+    assert.equal(
+      ok.add("a@x.com", "Two"),
+      true,
+      "with a settings.json override of 2, the 2nd distinct name fires",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("name-fragmentation: checking distinct-name count never writes a list file", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-readonly-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { senderList, distinctNameCount } = await import(
+      senderListModulePath + "?t=" + Date.now() + Math.random()
+    );
+    const vip = senderList("viplist.json");
+    const ok = senderList("oklist.json");
+    vip.add("a@x.com", "One");
+    ok.add("a@x.com", "Two");
+    const vipBefore = fs.readFileSync(path.join(dir, "viplist.json"), "utf8");
+    const okBefore = fs.readFileSync(path.join(dir, "oklist.json"), "utf8");
+    distinctNameCount("a@x.com");
+    distinctNameCount("nobody@x.com");
+    assert.equal(
+      fs.readFileSync(path.join(dir, "viplist.json"), "utf8"),
+      vipBefore,
+      "distinctNameCount never writes viplist.json",
+    );
+    assert.equal(
+      fs.readFileSync(path.join(dir, "oklist.json"), "utf8"),
+      okBefore,
+      "distinctNameCount never writes oklist.json",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── getNameFragmentationThreshold: live-tunable threshold, falls back to the constant ──
+test("getNameFragmentationThreshold: returns the fallback when unset", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-getter-unset-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { getNameFragmentationThreshold } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getNameFragmentationThreshold(3), 3);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("getNameFragmentationThreshold: a positive setting overrides the fallback", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-getter-override-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync(
+      path.join(dir, "settings.json"),
+      JSON.stringify({ nameFragmentationThreshold: 5 }),
+    );
+    const { getNameFragmentationThreshold } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getNameFragmentationThreshold(3), 5);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("getNameFragmentationThreshold: invalid setting (0 / non-number) falls back to the constant", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "gmail-triage-namefrag-getter-invalid-"),
+  );
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync(
+      path.join(dir, "settings.json"),
+      JSON.stringify({ nameFragmentationThreshold: 0 }),
+    );
+    const m1 = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(m1.getNameFragmentationThreshold(3), 3, "0 is rejected");
+
+    fs.writeFileSync(
+      path.join(dir, "settings.json"),
+      JSON.stringify({ nameFragmentationThreshold: "lots" }),
+    );
+    const m2 = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(
+      m2.getNameFragmentationThreshold(3),
+      3,
+      "non-number is rejected",
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("untrashMessage: untrashes then re-adds INBOX via batchModify", async () => {
   const { untrashMessage } = await import(gmailModulePath);
   const calls = [];

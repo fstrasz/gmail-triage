@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ListsResponse } from "./listsApi.ts";
 
@@ -52,6 +52,7 @@ const emptyData: ListsResponse = {
   rules: [],
   backups: { single: null, named: [] },
   counts: { vip: 0, ok: 0, blocklist: 0 },
+  nameFragmentationThreshold: 3,
 };
 
 beforeEach(() => {
@@ -134,6 +135,43 @@ describe("ListsPage", () => {
     ).toBeInTheDocument();
   });
 
+  test("a row at/over the name-fragmentation threshold shows the standing marker", () => {
+    // 3 distinct names for one address across VIP+OK, threshold 3 — must fire.
+    state.lists = {
+      data: {
+        ...emptyData,
+        nameFragmentationThreshold: 3,
+        oklist: [
+          { email: "rei_email@email.rei.com", name: "REI Membership", date: "" },
+          { email: "rei_email@email.rei.com", name: "REI", date: "" },
+          { email: "rei_email@email.rei.com", name: "REI Outlet", date: "" },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    };
+    render(<ListsPage />);
+    expect(screen.getByText(/fragmented/i)).toBeInTheDocument();
+  });
+
+  test("a row under the name-fragmentation threshold shows no marker", () => {
+    // Only 2 distinct names — below the default threshold of 3.
+    state.lists = {
+      data: {
+        ...emptyData,
+        nameFragmentationThreshold: 3,
+        vip: [{ email: "freequote@buckleyfence.com", name: "Buckley Fence", date: "" }],
+        oklist: [
+          { email: "freequote@buckleyfence.com", name: "Kyle Buckley", date: "" },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    };
+    render(<ListsPage />);
+    expect(screen.queryByText(/fragmented/i)).not.toBeInTheDocument();
+  });
+
   test("a nameless entry is labelled 'any name', not left blank", () => {
     // A nameless entry matches EVERY display name from that address, which is
     // the fix for the inert-entry problem (O2). It must be visibly different
@@ -188,6 +226,25 @@ describe("ListsPage", () => {
       email: "new@x.com",
       name: "New",
     });
+  });
+
+  test("add-sender form shows an inline notice when the add crosses the fragmentation threshold", () => {
+    state.lists = { data: emptyData, isPending: false, isError: false };
+    render(<ListsPage />);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "new@x.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    // The component passes { onSuccess } as the mutate() 2nd arg; invoke it the way
+    // TanStack Query would once the POST /api/lists/add response comes back.
+    const onSuccess = addMutate.mock.calls[0][1].onSuccess;
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "" },
+    });
+    act(() => {
+      onSuccess({ ok: true, fragmented: true });
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(/new@x\.com/i);
   });
 
   test("accepts a domain-wildcard entry (@domain); Email field is not type=email", () => {

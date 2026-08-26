@@ -28,7 +28,7 @@ export function ListsPage() {
   if (lists.isPending) return <ListsSkeleton />;
 
   const data = lists.data;
-  const rows = mergeLists(data);
+  const rows = mergeLists(data, data.nameFragmentationThreshold);
   const counts = chipCounts(rows);
   const visible = filterRows(rows, filter, search);
 
