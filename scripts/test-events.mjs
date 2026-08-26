@@ -63,6 +63,9 @@ const claudeModulePath = url.pathToFileURL(
 const readTriageModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "readTriage.js"),
 ).href;
+const schedulerModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "scheduler.js"),
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -3265,4 +3268,87 @@ test("triageReadState: readTriageEnabled false does nothing — no Gmail calls, 
   assert.deepEqual(result, { enabled: false, cleared: 0, kept: [] });
   assert.deepEqual(gmail._calls, []);
   assert.equal(anthropicClient._calls.length, 0);
+});
+
+// ─── runReadTriagePass: scheduler integration (triage → conditional report) ─
+function readTriageReportMockGmail() {
+  const sendCalls = [];
+  return {
+    _sendCalls: sendCalls,
+    users: {
+      // loadSettings() reads the real (module-cached-cwd) settings.json, which
+      // has no dailySummaryEmail set in the test environment, so
+      // sendReadTriageReport falls back to getProfile for the recipient.
+      getProfile: async () => ({
+        data: { emailAddress: "max-cos@strasz.com" },
+      }),
+      messages: {
+        send: async (p) => {
+          sendCalls.push(p);
+        },
+      },
+    },
+  };
+}
+
+function decodeRawEmail(raw) {
+  const b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(b64, "base64").toString("utf-8");
+}
+
+test("runReadTriagePass: report body contains a kept message's sender/subject/reason and the cleared count", async () => {
+  const { runReadTriagePass } = await import(
+    schedulerModulePath + "?t=" + Date.now()
+  );
+  const gmail = readTriageReportMockGmail();
+  const triage = async () => ({
+    enabled: true,
+    cleared: 3,
+    kept: [
+      {
+        from: "billing@example.com",
+        subject: "Invoice due",
+        reason: "invoice due, manual payment",
+        amounts: ["$450.00"],
+        dates: ["2026-09-01"],
+        uncertain: false,
+      },
+    ],
+  });
+  await runReadTriagePass(gmail, { triage });
+  assert.equal(gmail._sendCalls.length, 1);
+  const raw = decodeRawEmail(gmail._sendCalls[0].requestBody.raw);
+  assert.ok(raw.includes("billing@example.com"), "sender present");
+  assert.ok(raw.includes("Invoice due"), "subject present");
+  assert.ok(raw.includes("invoice due, manual payment"), "reason present");
+  assert.ok(raw.includes("3 email"), "cleared count present");
+  assert.ok(raw.includes("/api/read-triage/undo"), "undo endpoint named");
+});
+
+test("runReadTriagePass: a run with no candidates sends no email", async () => {
+  const { runReadTriagePass } = await import(
+    schedulerModulePath + "?t=" + Date.now()
+  );
+  const gmail = readTriageReportMockGmail();
+  const triage = async () => ({ enabled: true, cleared: 0, kept: [] });
+  const send = async () => {
+    throw new Error("send must not be called when nothing happened");
+  };
+  await runReadTriagePass(gmail, { triage, send });
+  assert.equal(gmail._sendCalls.length, 0);
+});
+
+test("runReadTriagePass: a thrown error inside triage does not prevent completion", async () => {
+  const { runReadTriagePass } = await import(
+    schedulerModulePath + "?t=" + Date.now()
+  );
+  const gmail = readTriageReportMockGmail();
+  const triage = async () => {
+    throw new Error("classifier exploded");
+  };
+  const send = async () => {
+    throw new Error("send must not be called when triage threw");
+  };
+  await assert.doesNotReject(runReadTriagePass(gmail, { triage, send }));
+  assert.equal(gmail._sendCalls.length, 0);
 });
