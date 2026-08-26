@@ -60,6 +60,9 @@ const keepCleanModulePath = url.pathToFileURL(
 const claudeModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "claude.js"),
 ).href;
+const readTriageModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "readTriage.js"),
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -3091,4 +3094,175 @@ test("classifyReadState: empty messages array makes zero API calls", async () =>
   const out = await classifyReadState([], mockClient);
   assert.deepEqual(out, []);
   assert.equal(mockClient._calls.length, 0);
+});
+
+// ─── triageReadState: orchestration (candidates → classify → clear) ─────────
+// Mock Gmail: `list` returns one id per key in messagesById; `get` (format:
+// "full") returns a real text/plain payload so getEmailBodyText decodes it;
+// `batchModify` captures every requestBody verbatim. `_calls` tracks which
+// operations ran, for the zero-candidates / disabled "nothing happens" tests.
+function readTriageMockGmail(messagesById) {
+  const calls = [];
+  const batchCalls = [];
+  return {
+    _calls: calls,
+    _batchCalls: batchCalls,
+    users: {
+      messages: {
+        list: async () => {
+          calls.push("list");
+          return { data: { messages: Object.keys(messagesById).map((id) => ({ id })) } };
+        },
+        get: async ({ id }) => {
+          calls.push("get:" + id);
+          const m = messagesById[id];
+          return {
+            data: {
+              id,
+              snippet: m.snippet || "",
+              payload: {
+                mimeType: "text/plain",
+                headers: [
+                  { name: "From", value: m.from },
+                  { name: "Subject", value: m.subject },
+                  { name: "Date", value: m.date },
+                ],
+                body: {
+                  data: Buffer.from(m.bodyText || "", "utf-8").toString("base64"),
+                },
+              },
+            },
+          };
+        },
+        batchModify: async (p) => {
+          calls.push("batchModify");
+          batchCalls.push(p.requestBody);
+        },
+      },
+    },
+  };
+}
+
+test("triageReadState: a confidently-read message clears UNREAD with the exact batchModify payload", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "news@example.com", subject: "Weekly Digest", date: "2026-08-20", bodyText: "roundup" },
+  });
+  const anthropicClient = readTriageMockClient({
+    decisions: [
+      { id: "m1", decision: "read", reason: "newsletter, no action", amounts: [], dates: [], uncertain: false },
+    ],
+  });
+  let recorded = null;
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: (ids) => (recorded = ids),
+  });
+  assert.equal(gmail._batchCalls.length, 1);
+  assert.deepEqual(gmail._batchCalls[0], { ids: ["m1"], removeLabelIds: ["UNREAD"] });
+  assert.equal(result.cleared, 1);
+  assert.deepEqual(result.kept, []);
+  assert.deepEqual(recorded, ["m1"]);
+});
+
+test("triageReadState: a message the classifier marks unread is never sent to batchModify", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "news@example.com", subject: "Weekly Digest", date: "2026-08-20", bodyText: "roundup" },
+    m2: { from: "billing@example.com", subject: "Invoice due", date: "2026-08-20", bodyText: "pay $450" },
+  });
+  const anthropicClient = readTriageMockClient({
+    decisions: [
+      { id: "m1", decision: "read", reason: "newsletter, no action", amounts: [], dates: [], uncertain: false },
+      { id: "m2", decision: "unread", reason: "invoice due, manual payment", amounts: ["$450"], dates: [], uncertain: false },
+    ],
+  });
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {},
+  });
+  assert.equal(gmail._batchCalls.length, 1);
+  assert.deepEqual(gmail._batchCalls[0].ids, ["m1"]);
+  assert.equal(result.cleared, 1);
+  assert.equal(result.kept.length, 1);
+  assert.equal(result.kept[0].from, "billing@example.com");
+  assert.equal(result.kept[0].reason, "invoice due, manual payment");
+});
+
+test("triageReadState: zero candidates makes zero classifier calls and zero batchModify calls", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({});
+  const anthropicClient = readTriageMockClient({ decisions: [] });
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {
+      throw new Error("recordClear must not be called on a zero-candidate run");
+    },
+  });
+  assert.deepEqual(result, { enabled: true, cleared: 0, kept: [] });
+  assert.deepEqual(gmail._calls, ["list"]);
+  assert.equal(anthropicClient._calls.length, 0);
+});
+
+test("triageReadState: a message omitted from the classifier result stays unread (fail-safe)", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "vendor@example.com", subject: "Hi", date: "2026-08-20", bodyText: "hello" },
+  });
+  const anthropicClient = readTriageMockClient({ decisions: [] });
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {
+      throw new Error("recordClear must not be called when nothing clears");
+    },
+  });
+  assert.equal(gmail._batchCalls.length, 0);
+  assert.equal(result.cleared, 0);
+  assert.deepEqual(result.kept, [
+    { from: "vendor@example.com", subject: "Hi", reason: "", amounts: [], dates: [], uncertain: false },
+  ]);
+});
+
+test("triageReadState: a 'read' decision marked uncertain stays unread", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "vendor@example.com", subject: "Renewal", date: "2026-08-20", bodyText: "close call" },
+  });
+  const anthropicClient = readTriageMockClient({
+    decisions: [
+      { id: "m1", decision: "read", reason: "close call", amounts: [], dates: [], uncertain: true },
+    ],
+  });
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {
+      throw new Error("recordClear must not be called when the only decision is uncertain");
+    },
+  });
+  assert.equal(gmail._batchCalls.length, 0);
+  assert.equal(result.cleared, 0);
+  assert.equal(result.kept[0].uncertain, true);
+});
+
+test("triageReadState: readTriageEnabled false does nothing — no Gmail calls, no classifier call", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "vendor@example.com", subject: "Hi", date: "2026-08-20", bodyText: "hello" },
+  });
+  const anthropicClient = readTriageMockClient({ decisions: [] });
+  const result = await triageReadState(gmail, {
+    anthropicClient,
+    getSettings: () => ({ readTriageEnabled: false }),
+    recordClear: () => {
+      throw new Error("recordClear must not be called when disabled");
+    },
+  });
+  assert.deepEqual(result, { enabled: false, cleared: 0, kept: [] });
+  assert.deepEqual(gmail._calls, []);
+  assert.equal(anthropicClient._calls.length, 0);
 });
