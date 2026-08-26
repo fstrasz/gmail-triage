@@ -20,6 +20,7 @@ import {
   scanAndLabelTier,
 } from "./gmail.js";
 import { loadOklist } from "./oklist.js";
+import { triageReadState } from "./readTriage.js";
 import { loadRules } from "./rules.js";
 import {
   loadSettings,
@@ -30,6 +31,12 @@ import {
   setWebSearchLastRunAt,
 } from "./settings.js";
 import { loadViplist } from "./viplist.js";
+
+const escHtml = (s) =>
+  String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
 const LOG_PATH = path.join(process.cwd(), "scan-log.json");
 
@@ -132,11 +139,111 @@ export async function scanAll(gmail) {
   return { scanClean, scanVip, scanOk, scanRules };
 }
 
+// ─── Read/unread triage report ─────────────────────────────────────────────────
+// Builds the report email body for docs/superpowers/specs/2026-08-20-read-unread-triage-design.md.
+// Per the spec: every kept (left-unread) message with sender/subject/reason, the
+// cleared count, every amount/date the classifier surfaced, an uncertain callout,
+// and the undo endpoint.
+function buildReadTriageReportHtml(result) {
+  const amounts = [];
+  const dates = [];
+  for (const m of result.kept) {
+    amounts.push(...m.amounts);
+    dates.push(...m.dates);
+  }
+  const keptRows = result.kept
+    .map((m) => {
+      const flag = m.uncertain
+        ? ` <span style="color:#b45309;font-weight:600">(uncertain)</span>`
+        : "";
+      return `<tr><td style="padding:4px 12px;font-size:13px;color:#374151">${escHtml(m.from)}${flag}</td>
+        <td style="padding:4px 12px;font-size:13px;color:#374151">${escHtml(m.subject)}</td>
+        <td style="padding:4px 12px;font-size:13px;color:#6b7280">${escHtml(m.reason)}</td></tr>`;
+    })
+    .join("");
+  const amountsDatesHtml =
+    amounts.length || dates.length
+      ? `<p style="color:#374151;font-size:13px"><strong>Amounts/dates surfaced:</strong> ${[...amounts, ...dates].map(escHtml).join(", ")}</p>`
+      : "";
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1e293b;font-size:18px;margin-bottom:4px">Gmail Triage – Read/Unread Report</h2>
+      <p style="color:#6b7280;font-size:13px;margin-top:0">${result.cleared} email(s) marked read</p>
+      <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+        <thead><tr style="background:#f8fafc">
+          <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600">Sender</th>
+          <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600">Subject</th>
+          <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600">Reason left unread</th>
+        </tr></thead>
+        <tbody>${keptRows}</tbody>
+      </table>
+      ${amountsDatesHtml}
+      <p style="color:#9ca3af;font-size:11px;margin-top:16px">To reverse this run: POST /api/read-triage/undo</p>
+    </div>`;
+}
+
+// Reuses the same MIME-construction + recipient-resolution path as sendDailySummary.
+async function sendReadTriageReport(gmail, result) {
+  const s = loadSettings();
+  let to = s.dailySummaryEmail;
+  if (!to) {
+    const profile = await gmail.users.getProfile({ userId: "me" });
+    to = profile.data.emailAddress;
+  }
+
+  const dateStr = fmtDate(new Date());
+  const subject = `Gmail Triage - Read/Unread Report (${dateStr})`;
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`;
+  const bodyHtml = buildReadTriageReportHtml(result);
+
+  const message = [
+    `To: ${to}`,
+    `Subject: ${subjectEncoded}`,
+    `Content-Type: text/html; charset=utf-8`,
+    `MIME-Version: 1.0`,
+    ``,
+    bodyHtml,
+  ].join("\r\n");
+
+  const encoded = Buffer.from(message)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encoded },
+  });
+  console.log(`[scheduler] read-triage report sent to ${to}`);
+}
+
+// Runs the read/unread pass and, if anything happened, emails the report.
+// A failure here must never abort the rest of the scan — caught and logged.
+// `triage`/`send` are injectable for tests; production callers just pass gmail.
+export async function runReadTriagePass(
+  gmail,
+  { triage = triageReadState, send = sendReadTriageReport } = {},
+) {
+  try {
+    const result = await triage(gmail);
+    // Nothing cleared and nothing kept ⇒ nothing happened this run — an empty
+    // report every cycle is how a useful report gets filtered into oblivion.
+    if (!result.enabled) return;
+    if (result.cleared === 0 && result.kept.length === 0) return;
+    await send(gmail, result);
+  } catch (e) {
+    console.error(`[scheduler] read-triage failed: ${e.message}`);
+  }
+}
+
 // ─── Scheduled scan ────────────────────────────────────────────────────────────
 export async function runScheduledScan(getGmailClient) {
   const timeLabel = fmtTime(new Date());
   const gmail = await getGmailClient();
   const { scanClean, scanVip, scanOk, scanRules } = await scanAll(gmail);
+  await runReadTriagePass(gmail);
   setSchedulerLastRunAt(); // stamp on every successful scan (even no-op) so /health staleness is trustworthy
   const results = [...scanClean, ...scanVip, ...scanOk, ...scanRules];
   if (results.length) {

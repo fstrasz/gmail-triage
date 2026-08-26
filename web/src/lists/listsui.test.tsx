@@ -103,6 +103,58 @@ describe("ListsPage", () => {
     ).toBeInTheDocument();
   });
 
+  test("one address under several names shows each name on its own badge", () => {
+    // Regression: the row used to render `memberships.find(m => m.name)` — the
+    // FIRST name only — above a row of identical "OK" chips, so three REI
+    // entries were indistinguishable and there was no way to tell which chip
+    // removed which. The name was present only in the aria-label, so a screen
+    // reader got more information than a sighted user.
+    state.lists = {
+      data: {
+        ...emptyData,
+        oklist: [
+          { email: "rei_email@email.rei.com", name: "REI Membership", date: "" },
+          { email: "rei_email@email.rei.com", name: "REI", date: "" },
+          { email: "rei_email@email.rei.com", name: "REI Outlet", date: "" },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    };
+    render(<ListsPage />);
+    for (const n of ["REI Membership", "REI Outlet"]) {
+      expect(screen.getByText(new RegExp(`OK · ${n}`))).toBeInTheDocument();
+    }
+    // Three distinct remove controls, one per entry, each naming its own entry.
+    expect(
+      screen.getByRole("button", { name: /remove REI Membership from OK/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /remove REI Outlet from OK/i }),
+    ).toBeInTheDocument();
+  });
+
+  test("a nameless entry is labelled 'any name', not left blank", () => {
+    // A nameless entry matches EVERY display name from that address, which is
+    // the fix for the inert-entry problem (O2). It must be visibly different
+    // from a named entry, or the two cannot be told apart.
+    // Uses "" rather than null deliberately: the stored JSON holds null, and
+    // mergeLists normalises it with `e.name || ""` (listsApi.ts:324), so "" is
+    // exactly what the component receives. NOTE: the raw entry types declare
+    // `name: string` while the API really returns null — inaccurate, but latent,
+    // since every consumer goes through that normalisation.
+    state.lists = {
+      data: {
+        ...emptyData,
+        oklist: [{ email: "a@x.com", name: "", date: "" }],
+      },
+      isPending: false,
+      isError: false,
+    };
+    render(<ListsPage />);
+    expect(screen.getByText(/OK · any name/)).toBeInTheDocument();
+  });
+
   test("clicking a badge remove calls removeSender name-scoped", () => {
     state.lists = {
       data: { ...emptyData, vip: [{ email: "a@x.com", name: "Al", date: "" }] },

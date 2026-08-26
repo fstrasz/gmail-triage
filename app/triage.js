@@ -116,6 +116,7 @@ import {
   addEventInterest,
   addLocation,
   clearLastReapply,
+  clearLastReadTriage,
   clearScannedEmailIds,
   clearWebSearchLastRunAt,
   getBulkGuardThreshold,
@@ -2471,6 +2472,28 @@ app.get("/api/labeled", async (req, res) => {
     res.json({ ok: true, label, items });
   } catch (e) {
     triageServerError(res, e, "/api/labeled");
+  }
+});
+
+// ─── API: Undo the last read-triage run ────────────────────────────────────────
+// Restores UNREAD on exactly the ids from the last read-triage pass; removes nothing.
+// No record, or an empty ids array, is not an error — it means nothing to undo.
+app.post("/api/read-triage/undo", async (req, res) => {
+  try {
+    const record = loadSettings().lastReadTriage;
+    if (!record?.ids?.length)
+      return res.json({ ok: true, restored: 0, message: "Nothing to undo." });
+    const gmail = await getGmailClient();
+    await gmail.users.messages.batchModify({
+      userId: "me",
+      requestBody: { ids: record.ids, addLabelIds: ["UNREAD"] },
+    });
+    clearLastReadTriage();
+    res.json({ ok: true, restored: record.ids.length });
+  } catch (e) {
+    if (isAuthError(e))
+      return res.status(503).json({ ok: false, error: "gmail_auth" });
+    triageServerError(res, e, "/api/read-triage/undo", true);
   }
 });
 
