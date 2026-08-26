@@ -29,6 +29,8 @@ const DEFAULTS = {
   schedulerLastRunAt: null,
   scannedEmailIds: [],
   lastReapply: {},
+  readTriageEnabled: true,
+  lastReadTriage: null,
 };
 
 export function loadSettings() {
@@ -144,6 +146,26 @@ export function clearLastReapply(list) {
     delete s.lastReapply[list];
     saveSettings(s);
   }
+}
+// Read/unread triage (Session 9): default TRUE — the operator chose live-immediately,
+// and a flag nobody turns on is not a feature. Set false to disable without a redeploy.
+export function setReadTriageEnabled(enabled) {
+  const s = loadSettings();
+  s.readTriageEnabled = !!enabled;
+  saveSettings(s);
+}
+// Read-triage undo record: mirrors the reapply undo pattern (setLastReapply), but a
+// single last-run record rather than one per list — one run of history is enough to
+// catch a bad batch, which is what the operator asked for.
+export function setLastReadTriage(ids) {
+  const s = loadSettings();
+  s.lastReadTriage = { runAt: new Date().toISOString(), ids: [...ids] };
+  saveSettings(s);
+}
+export function clearLastReadTriage() {
+  const s = loadSettings();
+  s.lastReadTriage = null;
+  saveSettings(s);
 }
 export function setWebSearchLastRunAt() {
   const s = loadSettings();
