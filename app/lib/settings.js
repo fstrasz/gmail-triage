@@ -29,14 +29,17 @@ const DEFAULTS = {
   schedulerLastRunAt: null,
   scannedEmailIds: [],
   lastReapply: {},
-  // Ships DISABLED until the three HIGH review findings are fixed: the fail-safe
-  // is untested at both layers (mutation-proved green while broken), the
-  // injection defence is escapable because email bodies are interpolated between
-  // literal delimiters unsanitised, and the run is unbounded so a backlog past
-  // ~90 candidates blows Haiku's context and the pass silently does nothing.
-  // The operator chose live-immediately; that choice predates these findings.
-  // Flip to true (or set readTriageEnabled in settings) once they are closed.
-  readTriageEnabled: false,
+  // Default TRUE — the operator chose live-immediately. Shipped disabled for a
+  // period while three HIGH adversarial-review findings were closed: the
+  // injection defence (claude.js neutralizeReadTriageDelimiters strips the
+  // literal data-block markers out of body/subject/snippet before
+  // interpolation), the unbounded batch (claude.js classifyReadState chunks
+  // at READ_TRIAGE_CHUNK_SIZE=25 messages/call; a failing chunk leaves only
+  // its own messages unread and does not abort the rest), and the untested
+  // fail-safe (mutation-proved at both the claude.js filter and the
+  // readTriage.js partition). Set false in settings.json to disable without
+  // a redeploy.
+  readTriageEnabled: true,
   lastReadTriage: null,
 };
 
