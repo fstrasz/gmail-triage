@@ -3,7 +3,10 @@ import type { TriageAction } from "../lib/api.ts";
 export type Mode = "hidden" | "shown";
 export type Dir = "left" | "right" | "up" | "down";
 
-// All nine actions in canonical order (order matters for MORE derivation)
+// All eleven actions in canonical order (order matters for MORE derivation).
+// delete-all/archive-all (sender-wide, no swipe assigned — too destructive for
+// an accidental gesture) sit right after delete, matching their desktop
+// placement "under Delete".
 export const ALL9: readonly TriageAction[] = [
   "ok",
   "vip",
@@ -13,6 +16,8 @@ export const ALL9: readonly TriageAction[] = [
   "unsub",
   "archive",
   "delete",
+  "delete-all",
+  "archive-all",
   "review",
 ];
 

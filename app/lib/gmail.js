@@ -261,6 +261,53 @@ export async function blockSender(
   return ids.length;
 }
 
+// ─── Delete all / Archive all (address-wide, no name filter) ──────────────────
+// Both share the same reach as Junk (fromQuery: entire mailbox, any display
+// name) — deliberately UN-scoped by name, unlike labelSender/blockSender/
+// keepAndClean. "Delete All" must mean all; a destructive action that silently
+// skips messages sent under a different display name is the failure mode this
+// feature exists to prevent.
+export async function deleteAllFromSender(gmail, fromEmail) {
+  const ids = await collectMatchingIds(gmail, fromQuery(fromEmail));
+  for (let i = 0; i < ids.length; i += 1000) {
+    try {
+      // To TRASH via batchModify — never the permanent/irreversible bulk-delete
+      // API. That is the whole point of this function.
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: {
+          ids: ids.slice(i, i + 1000),
+          addLabelIds: ["TRASH"],
+        },
+      });
+    } catch (e) {
+      console.error("deleteAllFromSender batchModify FAILED:", e.message);
+    }
+  }
+  return ids.length;
+}
+
+// Removes INBOX only — deliberately does NOT remove UNREAD. Archiving is not
+// reading; conflating them is how mail disappears unreviewed. This differs
+// from archiveMessage (single message), which removes both.
+export async function archiveAllFromSender(gmail, fromEmail) {
+  const ids = await collectMatchingIds(gmail, fromQuery(fromEmail));
+  for (let i = 0; i < ids.length; i += 1000) {
+    try {
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: {
+          ids: ids.slice(i, i + 1000),
+          removeLabelIds: ["INBOX"],
+        },
+      });
+    } catch (e) {
+      console.error("archiveAllFromSender batchModify FAILED:", e.message);
+    }
+  }
+  return ids.length;
+}
+
 // ─── Scan inbox for blocked senders ───────────────────────────────────────────
 export async function scanAndCleanBlocklist(gmail, blocklist) {
   if (!blocklist.length) return [];

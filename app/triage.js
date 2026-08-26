@@ -30,6 +30,7 @@ import {
   setEventCalendarLink,
 } from "./lib/foundEvents.js";
 import {
+  archiveAllFromSender,
   archiveMessage,
   archiveThread,
   BULK_GUARD_THRESHOLD,
@@ -37,12 +38,14 @@ import {
   buildQueueQuery,
   buildReapplyQuery,
   countMatchingEmails,
+  deleteAllFromSender,
   ensureLabel,
   extractEmail,
   extractName,
   fetchEmails,
   fetchLabeledEmails,
   fetchSenderEmails,
+  fromQuery,
   getDelPendSummary,
   getGmailClient,
   getLabelId,
@@ -141,6 +144,7 @@ import { addToStats, loadStats, resetStats } from "./lib/stats.js";
 import {
   ACTION_DISPATCH,
   filterHidden,
+  guardScope,
   normalizeGuard,
   shapeTriageEmail,
 } from "./lib/triageApi.js";
@@ -1852,6 +1856,7 @@ app.post("/api/triage/action", async (req, res) => {
               guard: true,
               count,
               email: fromEmail,
+              scope: guardScope(action, name),
               message: `This will clean ${count} emails from ${fromEmail}. Confirm?`,
             }),
           );
@@ -1883,7 +1888,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "junk") {
       if (!confirmed) {
-        const q = `from:"${fromEmail}" -in:sent -in:trash`;
+        const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
           return res.json(
@@ -1892,6 +1897,7 @@ app.post("/api/triage/action", async (req, res) => {
               guard: true,
               count,
               email: fromEmail,
+              scope: guardScope(action, name),
               message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?`,
             }),
           );
@@ -1915,6 +1921,40 @@ app.post("/api/triage/action", async (req, res) => {
           addedToList: !alreadyListed,
           listName: "blocklist",
         },
+      });
+    }
+
+    if (action === "delete-all" || action === "archive-all") {
+      const isDelete = action === "delete-all";
+      if (!confirmed) {
+        const q = fromQuery(fromEmail);
+        const count = await countMatchingEmails(gmail, q);
+        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
+          return res.json(
+            normalizeGuard({
+              ok: false,
+              guard: true,
+              count,
+              email: fromEmail,
+              scope: guardScope(action, name),
+              message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+            }),
+          );
+      }
+      const moved = isDelete
+        ? await deleteAllFromSender(gmail, fromEmail)
+        : await archiveAllFromSender(gmail, fromEmail);
+      appendLog({
+        type: "triage",
+        action,
+        sender: fromEmail,
+        senderName: name,
+        count: moved,
+      });
+      return res.json({
+        ok: true,
+        labeled: moved,
+        undo: { ...undoBase, addedToList: false },
       });
     }
 

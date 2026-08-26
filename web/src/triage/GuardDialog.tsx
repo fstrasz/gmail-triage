@@ -3,6 +3,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 export interface GuardInfo {
   count: number;
   message: string;
+  /** What the count covers — reach + name scope (search-scope visibility). */
+  scope?: string;
 }
 
 export function GuardDialog({
@@ -30,6 +32,9 @@ export function GuardDialog({
           <Dialog.Description className="mt-2 text-sm text-muted">
             {guard?.message}
           </Dialog.Description>
+          {guard?.scope && (
+            <p className="mt-1 text-xs text-muted">{guard.scope}</p>
+          )}
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
               <button

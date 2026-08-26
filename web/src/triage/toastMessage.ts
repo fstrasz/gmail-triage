@@ -17,6 +17,8 @@ const ACTION_VERB: Record<TriageAction, string> = {
   unsub: "Unsubscribed",
   archive: "Archived",
   delete: "Deleted",
+  "delete-all": "Deleted all",
+  "archive-all": "Archived all",
   review: "Queued for review",
 };
 
@@ -30,6 +32,10 @@ export function toastMessage(info: ToastInfo): string {
   if (!isUndoable(action)) {
     if (action === "unsub")
       return "Unsubscribed — sender blocklisted (not reversible here)";
+    if (action === "delete-all" || action === "archive-all") {
+      const n = info.labeled ?? 0;
+      return `${ACTION_VERB[action]} — ${n} messages, not reversible here`;
+    }
     return "Queued for review";
   }
   return `${ACTION_VERB[action]} — undo available`;

@@ -38,7 +38,7 @@ export function filterHidden(emails, { hideListed }) {
 //   listOnly        — same list-membership undo; bulk .DelPend is NOT reversed
 //   untrash         — undo via untrashMessage (re-adds INBOX)
 //   addInbox        — undo re-adds INBOX via batchModify
-//   none            — no compensating action (unsub/review)
+//   none            — no compensating action (unsub/review/delete-all/archive-all)
 export const ACTION_DISPATCH = {
   ok: { undo: "removeListEntry", listName: "ok" },
   vip: { undo: "removeListEntry", listName: "vip" },
@@ -49,11 +49,35 @@ export const ACTION_DISPATCH = {
   archive: { undo: "addInbox" },
   delete: { undo: "untrash" },
   review: { undo: "none" },
+  "delete-all": { undo: "none" },
+  "archive-all": { undo: "none" },
 };
+
+// ─── Search-scope visibility (sender-wide-actions spec) ───────────────────────
+// Wherever a bulk-guard count is shown before a destructive action, the guard
+// also carries WHAT that count covers — reach + name scope — so a name-scoped
+// sweep (Clean) is visibly partial rather than silently so. Computed from the
+// same `action`/`fromName` the guard's own query is built from, so it cannot
+// drift from the query it describes.
+export function guardScope(action, fromName) {
+  if (action === "ok-clean" || action === "vip-clean") {
+    return fromName
+      ? `inbox only · only messages named "${fromName}"`
+      : "inbox only · any display name";
+  }
+  return "entire mailbox · any display name";
+}
 
 // Flattens the old flat guard shape into the React API's nested form. A success
 // result (anything without guard:true) passes through unchanged.
 export function normalizeGuard(result) {
   if (result?.guard !== true) return result;
-  return { ok: false, guard: { count: result.count, message: result.message } };
+  return {
+    ok: false,
+    guard: {
+      count: result.count,
+      message: result.message,
+      scope: result.scope,
+    },
+  };
 }

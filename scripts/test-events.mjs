@@ -1410,6 +1410,109 @@ test("keepAndClean: force-includes the clicked id and archives all three via one
   assert.deepEqual(g._batches[0].removeLabelIds, ["INBOX", "UNREAD"]);
 });
 
+// ─── deleteAllFromSender / archiveAllFromSender (sender-wide-actions spec) ────
+// Both share the exact same reach as Junk — entire mailbox, no name filter —
+// and page to the end via collectMatchingIds (already proven above). A mock
+// with 2 pages exercises that both actions harvest across the whole result set
+// before acting, not just the first page.
+function senderWideMockGmail(pages) {
+  const queries = [];
+  const batches = [];
+  let i = 0;
+  return {
+    _queries: queries,
+    _batches: batches,
+    users: {
+      messages: {
+        list: async (params) => {
+          queries.push(params.q);
+          return pages[i++];
+        },
+        batchModify: async (p) => {
+          batches.push(p.requestBody);
+        },
+      },
+    },
+  };
+}
+
+test("deleteAllFromSender: query has no name filter — entire mailbox, any display name", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([{ data: { messages: [] } }]);
+  await deleteAllFromSender(g, "sender@example.com");
+  assert.equal(g._queries[0], 'from:"sender@example.com" -in:sent -in:trash');
+});
+
+test("deleteAllFromSender: exact batchModify payload — TRASH added, no other labels touched", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([
+    { data: { messages: [{ id: "m1" }, { id: "m2" }] } },
+  ]);
+  const moved = await deleteAllFromSender(g, "sender@example.com");
+  assert.equal(moved, 2);
+  assert.equal(g._batches.length, 1);
+  assert.deepEqual(g._batches[0], {
+    ids: ["m1", "m2"],
+    addLabelIds: ["TRASH"],
+  });
+});
+
+test("deleteAllFromSender: pages past a single result page — both pages acted on", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([
+    { data: { messages: [{ id: "m1" }], nextPageToken: "next" } },
+    { data: { messages: [{ id: "m2" }] } },
+  ]);
+  const moved = await deleteAllFromSender(g, "sender@example.com");
+  assert.equal(moved, 2);
+  assert.deepEqual(g._batches[0].ids, ["m1", "m2"]);
+});
+
+test("deleteAllFromSender: chunks ids at <=1000 per batchModify call", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const ids = Array.from({ length: 1500 }, (_, i) => ({ id: "m" + i }));
+  const g = senderWideMockGmail([{ data: { messages: ids } }]);
+  const moved = await deleteAllFromSender(g, "sender@example.com");
+  assert.equal(moved, 1500);
+  assert.equal(g._batches.length, 2);
+  assert.equal(g._batches[0].ids.length, 1000);
+  assert.equal(g._batches[1].ids.length, 500);
+});
+
+test("archiveAllFromSender: query has no name filter — entire mailbox, any display name", async () => {
+  const { archiveAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([{ data: { messages: [] } }]);
+  await archiveAllFromSender(g, "sender@example.com");
+  assert.equal(g._queries[0], 'from:"sender@example.com" -in:sent -in:trash');
+});
+
+test("archiveAllFromSender: exact batchModify payload — removes INBOX only, never UNREAD", async () => {
+  const { archiveAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([
+    { data: { messages: [{ id: "m1" }, { id: "m2" }] } },
+  ]);
+  const moved = await archiveAllFromSender(g, "sender@example.com");
+  assert.equal(moved, 2);
+  assert.equal(g._batches.length, 1);
+  // deepEqual is exact: this alone proves UNREAD is untouched — Archive All
+  // must not remove it, since archiving is not reading.
+  assert.deepEqual(g._batches[0], {
+    ids: ["m1", "m2"],
+    removeLabelIds: ["INBOX"],
+  });
+});
+
+test("archiveAllFromSender: pages past a single result page — both pages acted on", async () => {
+  const { archiveAllFromSender } = await import(gmailModulePath);
+  const g = senderWideMockGmail([
+    { data: { messages: [{ id: "m1" }], nextPageToken: "next" } },
+    { data: { messages: [{ id: "m2" }] } },
+  ]);
+  const moved = await archiveAllFromSender(g, "sender@example.com");
+  assert.equal(moved, 2);
+  assert.deepEqual(g._batches[0].ids, ["m1", "m2"]);
+});
+
 test("setLastReapply / clearLastReapply round-trip through settings.json", async () => {
   const dir = fs.mkdtempSync(
     path.join(os.tmpdir(), "gmail-triage-reapply-undo-"),
@@ -2541,7 +2644,7 @@ test("setSchedulerLastRunAt: writes an ISO timestamp readable by loadSettings", 
 
 // ─── Task 4: Triage API (unified action + stateless undo) ──────────────────────
 
-test("ACTION_DISPATCH: has all nine actions, each with the correct undo kind", async () => {
+test("ACTION_DISPATCH: has all eleven actions, each with the correct undo kind", async () => {
   const { ACTION_DISPATCH } = await import(triageApiModulePath);
   const expected = {
     ok: "removeListEntry",
@@ -2552,12 +2655,14 @@ test("ACTION_DISPATCH: has all nine actions, each with the correct undo kind", a
     unsub: "none",
     archive: "addInbox",
     delete: "untrash",
+    "delete-all": "none",
+    "archive-all": "none",
     review: "none",
   };
   assert.deepEqual(
     Object.keys(ACTION_DISPATCH).sort(),
     Object.keys(expected).sort(),
-    "dispatch has exactly the nine action keys",
+    "dispatch has exactly the eleven action keys",
   );
   for (const [action, undo] of Object.entries(expected)) {
     assert.equal(
@@ -2583,10 +2688,51 @@ test("normalizeGuard: flattens a guard response; passes success through unchange
     email: "x@y.com",
     message: "m",
   });
-  assert.deepEqual(guarded, { ok: false, guard: { count: 120, message: "m" } });
+  assert.deepEqual(guarded, {
+    ok: false,
+    guard: { count: 120, message: "m", scope: undefined },
+  });
   // A success result (no guard:true) is returned untouched.
   const success = { ok: true, labeled: 3, undo: { action: "ok", id: "i" } };
   assert.equal(normalizeGuard(success), success);
+});
+
+test("normalizeGuard: carries the scope string through when present", async () => {
+  const { normalizeGuard } = await import(triageApiModulePath);
+  const guarded = normalizeGuard({
+    ok: false,
+    guard: true,
+    count: 250,
+    email: "x@y.com",
+    message: "m",
+    scope: "entire mailbox · any display name",
+  });
+  assert.equal(guarded.guard.scope, "entire mailbox · any display name");
+});
+
+test("guardScope: Clean names the display name it is restricted to", async () => {
+  const { guardScope } = await import(triageApiModulePath);
+  assert.equal(
+    guardScope("ok-clean", "REI"),
+    'inbox only · only messages named "REI"',
+  );
+  assert.equal(
+    guardScope("vip-clean", "Acme Corp"),
+    'inbox only · only messages named "Acme Corp"',
+  );
+});
+
+test("guardScope: Delete All / Archive All / Junk say any display name, entire mailbox", async () => {
+  const { guardScope } = await import(triageApiModulePath);
+  assert.equal(
+    guardScope("delete-all", "REI"),
+    "entire mailbox · any display name",
+  );
+  assert.equal(
+    guardScope("archive-all", "REI"),
+    "entire mailbox · any display name",
+  );
+  assert.equal(guardScope("junk", "REI"), "entire mailbox · any display name");
 });
 
 test("senderList.remove: name-scoped removes only the exact pair; name-blind removes all", async () => {

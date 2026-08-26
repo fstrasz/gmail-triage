@@ -11,6 +11,8 @@ export type TriageAction =
   | "unsub"
   | "archive"
   | "delete"
+  | "delete-all"
+  | "archive-all"
   | "review";
 
 export type Tier = "..VIP" | "..OK" | null;
@@ -58,7 +60,7 @@ export type ActionResult =
       openTabUrl?: string | null;
       analysis?: unknown;
     }
-  | { ok: false; guard: { count: number; message: string } }
+  | { ok: false; guard: { count: number; message: string; scope?: string } }
   | { ok: false; error: "gmail_auth" };
 
 // ---------------------------------------------------------------------------
