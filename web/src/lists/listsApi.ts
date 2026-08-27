@@ -40,9 +40,10 @@ export interface Backups {
   named: { n: string; backedUpAt: string; count: number }[];
 }
 
-// GET /api/lists returns { ok:true, vip, oklist, blocklist, rules, backups, counts }.
-// The OK list is under `oklist` (not `ok`) to avoid colliding with the `ok:true`
-// success flag; success itself is 2xx-vs-throw, exactly like lib/api.ts getQueue.
+// GET /api/lists returns { ok:true, vip, oklist, blocklist, rules, backups, counts,
+// nameFragmentationThreshold }. The OK list is under `oklist` (not `ok`) to avoid
+// colliding with the `ok:true` success flag; success itself is 2xx-vs-throw, exactly
+// like lib/api.ts getQueue.
 export interface ListsResponse {
   vip: Entry[];
   oklist: Entry[];
@@ -50,6 +51,9 @@ export interface ListsResponse {
   rules: Rule[];
   backups: Backups;
   counts: { vip: number; ok: number; blocklist: number };
+  // Live-tunable via settings.json (read per check on the backend). Falls back to
+  // NAME_FRAGMENTATION_THRESHOLD below when the caller doesn't have a live value yet.
+  nameFragmentationThreshold: number;
 }
 
 export interface AuthError {
@@ -58,6 +62,10 @@ export interface AuthError {
 }
 
 export type OkResult = { ok: true };
+
+// POST /api/lists/add additionally reports whether this add just crossed the
+// name-fragmentation threshold (fires on the transition only — see the backend).
+export type AddSenderResult = { ok: true; fragmented: boolean };
 
 // ---- Shared fetch helper ---------------------------------------------------
 
@@ -95,8 +103,8 @@ export function addSender(input: {
   email: string;
   name?: string;
   reason?: string;
-}): Promise<OkResult | AuthError> {
-  return postJson<OkResult>("/api/lists/add", input);
+}): Promise<AddSenderResult | AuthError> {
+  return postJson<AddSenderResult>("/api/lists/add", input);
 }
 
 export function removeSender(input: {
@@ -299,15 +307,25 @@ export interface Membership {
 export interface MergedRow {
   email: string;
   memberships: Membership[];
+  // At/over the name-fragmentation threshold — distinct display names for this
+  // address across its VIP + OK memberships (blocklist excluded; nameless excluded).
+  fragmented: boolean;
 }
 
 export type Filter = "all" | "blocklist" | "vip" | "ok";
 
+// Mirrors senderList.js's NAME_FRAGMENTATION_THRESHOLD — used only as the fallback
+// when a caller doesn't pass the live settings.json-backed value from GET /api/lists.
+export const NAME_FRAGMENTATION_THRESHOLD = 3;
+
 /** Merge the three lists into one row per lowercased email, sorted by email.
  * Each list membership is preserved so the row can render name-scoped remove
- * buttons per badge. */
+ * buttons per badge. `nameFragmentationThreshold` should be the live value from
+ * ListsResponse; it defaults to NAME_FRAGMENTATION_THRESHOLD for callers that
+ * don't have it. */
 export function mergeLists(
   data: Pick<ListsResponse, "vip" | "oklist" | "blocklist">,
+  nameFragmentationThreshold: number = NAME_FRAGMENTATION_THRESHOLD,
 ): MergedRow[] {
   const byEmail = new Map<string, MergedRow>();
   const push = (list: ListName, entries: Array<Entry | BlockEntry>) => {
@@ -316,7 +334,7 @@ export function mergeLists(
       if (!key) continue;
       let row = byEmail.get(key);
       if (!row) {
-        row = { email: key, memberships: [] };
+        row = { email: key, memberships: [], fragmented: false };
         byEmail.set(key, row);
       }
       row.memberships.push({
@@ -330,6 +348,15 @@ export function mergeLists(
   push("vip", Array.isArray(data.vip) ? data.vip : []);
   push("ok", Array.isArray(data.oklist) ? data.oklist : []);
   push("blocklist", Array.isArray(data.blocklist) ? data.blocklist : []);
+  for (const row of byEmail.values()) {
+    const names = new Set(
+      row.memberships
+        .filter((m) => m.list === "vip" || m.list === "ok")
+        .map((m) => m.name)
+        .filter((n) => n),
+    );
+    row.fragmented = names.size >= nameFragmentationThreshold;
+  }
   return Array.from(byEmail.values()).sort((a, b) =>
     a.email.localeCompare(b.email),
   );

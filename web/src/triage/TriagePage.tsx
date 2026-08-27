@@ -44,6 +44,8 @@ const DESKTOP_COL: ColItem[] = [
   "gap",
   "junk",
   "delete",
+  "delete-all",
+  "archive-all",
 ];
 
 // A pending action: the payload we'd re-send on guard-confirm, kept so the

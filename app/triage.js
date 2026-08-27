@@ -30,6 +30,7 @@ import {
   setEventCalendarLink,
 } from "./lib/foundEvents.js";
 import {
+  archiveAllFromSender,
   archiveMessage,
   archiveThread,
   BULK_GUARD_THRESHOLD,
@@ -37,12 +38,14 @@ import {
   buildQueueQuery,
   buildReapplyQuery,
   countMatchingEmails,
+  deleteAllFromSender,
   ensureLabel,
   extractEmail,
   extractName,
   fetchEmails,
   fetchLabeledEmails,
   fetchSenderEmails,
+  fromQuery,
   getDelPendSummary,
   getGmailClient,
   getLabelId,
@@ -66,6 +69,7 @@ import {
 import { esc, shell, triageEmailRow } from "./lib/html.js";
 import { keepAndClean } from "./lib/keepClean.js";
 import { isListedSender } from "./lib/listedSender.js";
+import { NAME_FRAGMENTATION_THRESHOLD } from "./lib/senderList.js";
 import {
   addToOklist,
   isOklisted,
@@ -120,6 +124,7 @@ import {
   clearScannedEmailIds,
   clearWebSearchLastRunAt,
   getBulkGuardThreshold,
+  getNameFragmentationThreshold,
   loadSettings,
   removeEventInterest,
   removeLocation,
@@ -139,6 +144,7 @@ import { addToStats, loadStats, resetStats } from "./lib/stats.js";
 import {
   ACTION_DISPATCH,
   filterHidden,
+  guardScope,
   normalizeGuard,
   shapeTriageEmail,
 } from "./lib/triageApi.js";
@@ -1850,6 +1856,7 @@ app.post("/api/triage/action", async (req, res) => {
               guard: true,
               count,
               email: fromEmail,
+              scope: guardScope(action, name),
               message: `This will clean ${count} emails from ${fromEmail}. Confirm?`,
             }),
           );
@@ -1881,7 +1888,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "junk") {
       if (!confirmed) {
-        const q = `from:"${fromEmail}" -in:sent -in:trash`;
+        const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
           return res.json(
@@ -1890,6 +1897,7 @@ app.post("/api/triage/action", async (req, res) => {
               guard: true,
               count,
               email: fromEmail,
+              scope: guardScope(action, name),
               message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?`,
             }),
           );
@@ -1913,6 +1921,40 @@ app.post("/api/triage/action", async (req, res) => {
           addedToList: !alreadyListed,
           listName: "blocklist",
         },
+      });
+    }
+
+    if (action === "delete-all" || action === "archive-all") {
+      const isDelete = action === "delete-all";
+      if (!confirmed) {
+        const q = fromQuery(fromEmail);
+        const count = await countMatchingEmails(gmail, q);
+        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
+          return res.json(
+            normalizeGuard({
+              ok: false,
+              guard: true,
+              count,
+              email: fromEmail,
+              scope: guardScope(action, name),
+              message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+            }),
+          );
+      }
+      const moved = isDelete
+        ? await deleteAllFromSender(gmail, fromEmail)
+        : await archiveAllFromSender(gmail, fromEmail);
+      appendLog({
+        type: "triage",
+        action,
+        sender: fromEmail,
+        senderName: name,
+        count: moved,
+      });
+      return res.json({
+        ok: true,
+        labeled: moved,
+        undo: { ...undoBase, addedToList: false },
       });
     }
 
@@ -2075,6 +2117,9 @@ app.get("/api/lists", (req, res) => {
       rules,
       backups: { single, named },
       counts: { vip: vip.length, ok: ok.length, blocklist: blocklist.length },
+      nameFragmentationThreshold: getNameFragmentationThreshold(
+        NAME_FRAGMENTATION_THRESHOLD,
+      ),
     });
   } catch (e) {
     triageServerError(res, e, "/api/lists");
@@ -2086,11 +2131,15 @@ app.post("/api/lists/add", (req, res) => {
   try {
     const addr = String(email).trim().toLowerCase();
     const nm = name != null ? String(name).trim() || null : null;
-    if (list === "vip") addToViplist(addr, nm);
-    else if (list === "ok") addToOklist(addr, nm);
+    // addToViplist/addToOklist return whether this add just crossed the
+    // name-fragmentation threshold (fires on the transition only) — carried in the
+    // response so the Lists page can surface it. Not applicable to the blocklist.
+    let fragmented = false;
+    if (list === "vip") fragmented = addToViplist(addr, nm);
+    else if (list === "ok") fragmented = addToOklist(addr, nm);
     else if (list === "blocklist") addToBlocklist(addr, reason || "manual", nm);
     else return res.status(400).json({ error: "Invalid list" });
-    res.json({ ok: true });
+    res.json({ ok: true, fragmented });
   } catch (e) {
     triageServerError(res, e, "/api/lists/add");
   }

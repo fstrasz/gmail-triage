@@ -165,11 +165,18 @@ function buildReadTriageReportHtml(result) {
     amounts.length || dates.length
       ? `<p style="color:#374151;font-size:13px"><strong>Amounts/dates surfaced:</strong> ${[...amounts, ...dates].map(escHtml).join(", ")}</p>`
       : "";
+  // Surface a classifier failure in the report itself, not only in a server
+  // log — a silent no-op on exactly the backlog this feature exists to clear
+  // is the defect a console.error alone leaves in place.
+  const failureHtml = result.failedCount
+    ? `<p style="color:#b91c1c;font-size:13px;font-weight:600">${result.failedCount} message(s) could not be classified this run due to a classifier error and were left unread.</p>`
+    : "";
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#1e293b;font-size:18px;margin-bottom:4px">Gmail Triage – Read/Unread Report</h2>
       <p style="color:#6b7280;font-size:13px;margin-top:0">${result.cleared} email(s) marked read</p>
+      ${failureHtml}
       <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
         <thead><tr style="background:#f8fafc">
           <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600">Sender</th>

@@ -51,11 +51,17 @@ async function hydrateCandidate(gmail, id) {
 }
 
 // `deps` overrides are for tests only — defaults are the real settings.js
-// functions and the real Anthropic client (via classifyReadState's own
-// default). Production callers just call triageReadState(gmail).
+// functions and the real classifier (via classifyReadState, itself defaulting
+// to the real Anthropic client). Production callers just call
+// triageReadState(gmail).
 export async function triageReadState(
   gmail,
-  { anthropicClient, getSettings = loadSettings, recordClear = setLastReadTriage } = {},
+  {
+    anthropicClient,
+    getSettings = loadSettings,
+    recordClear = setLastReadTriage,
+    classify = classifyReadState,
+  } = {},
 ) {
   if (!getSettings().readTriageEnabled) {
     return { enabled: false, cleared: 0, kept: [] };
@@ -69,8 +75,9 @@ export async function triageReadState(
   const messages = await Promise.all(
     ids.map((id) => hydrateCandidate(gmail, id)),
   );
-  const decisions = await classifyReadState(messages, anthropicClient);
+  const { decisions, failedIds } = await classify(messages, anthropicClient);
   const byId = new Map(decisions.map((d) => [d.id, d]));
+  const failedSet = new Set(failedIds);
 
   const clearIds = [];
   const kept = [];
@@ -85,7 +92,9 @@ export async function triageReadState(
     kept.push({
       from: m.from,
       subject: m.subject,
-      reason: d?.reason || "",
+      reason: failedSet.has(m.id)
+        ? "classifier error this run — left unread"
+        : d?.reason || "",
       amounts: d?.amounts || [],
       dates: d?.dates || [],
       uncertain: d?.uncertain || false,
@@ -105,5 +114,10 @@ export async function triageReadState(
   // clobber a previous run's undo record.
   if (clearIds.length) recordClear(clearIds);
 
-  return { enabled: true, cleared: clearIds.length, kept };
+  return {
+    enabled: true,
+    cleared: clearIds.length,
+    kept,
+    failedCount: failedIds.length,
+  };
 }

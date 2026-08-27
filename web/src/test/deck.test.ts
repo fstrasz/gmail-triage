@@ -16,6 +16,8 @@ const ALL9 = [
   "unsub",
   "archive",
   "delete",
+  "delete-all",
+  "archive-all",
   "review",
 ];
 
@@ -26,7 +28,12 @@ test("hidden", () => {
   expect(swipeAction("hidden", "down")).toBe("delete");
   // Operator-chosen tap row; ⋯ holds only the actions no button/swipe covers.
   expect(BUTTONS.hidden).toEqual(["ok", "archive", "review"]);
-  expect(MORE.hidden).toEqual(["vip-clean", "unsub"]);
+  expect(MORE.hidden).toEqual([
+    "vip-clean",
+    "unsub",
+    "delete-all",
+    "archive-all",
+  ]);
 });
 
 test("shown", () => {
@@ -41,6 +48,8 @@ test("shown", () => {
     "junk",
     "archive",
     "delete",
+    "delete-all",
+    "archive-all",
     "review",
   ]);
 });
@@ -56,11 +65,16 @@ test("a11y parity: every action reachable via button ∪ swipe ∪ More (DECK-3)
   }
 });
 
-test("hidden ⋯ is lean: exactly the 2 actions no button or swipe covers", () => {
+test("hidden ⋯ holds exactly the actions no button or swipe covers (DECK-3)", () => {
   const swipes = (["left", "right", "up", "down"] as const).map((d) =>
     swipeAction("hidden", d),
   );
-  expect(MORE.hidden).toEqual(["vip-clean", "unsub"]);
+  expect(MORE.hidden).toEqual([
+    "vip-clean",
+    "unsub",
+    "delete-all",
+    "archive-all",
+  ]);
   for (const a of MORE.hidden) {
     expect(BUTTONS.hidden).not.toContain(a);
     expect(swipes).not.toContain(a);

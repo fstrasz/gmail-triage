@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
-const SETTINGS_PATH = path.join(process.cwd(), "settings.json");
+// Computed lazily (not at module load) so a test that chdir()s into a temp dir after
+// this module is already cached (e.g. via another module's static import of
+// settings.js, which import-caching can't re-freshen) still reads/writes the right
+// file — same lazy-path pattern senderList.js's getPath() uses.
+const getSettingsPath = () => path.join(process.cwd(), "settings.json");
 const DEFAULTS = {
   locations: [],
   timezone: "America/Los_Angeles",
@@ -29,20 +33,23 @@ const DEFAULTS = {
   schedulerLastRunAt: null,
   scannedEmailIds: [],
   lastReapply: {},
-  // Ships DISABLED until the three HIGH review findings are fixed: the fail-safe
-  // is untested at both layers (mutation-proved green while broken), the
-  // injection defence is escapable because email bodies are interpolated between
-  // literal delimiters unsanitised, and the run is unbounded so a backlog past
-  // ~90 candidates blows Haiku's context and the pass silently does nothing.
-  // The operator chose live-immediately; that choice predates these findings.
-  // Flip to true (or set readTriageEnabled in settings) once they are closed.
-  readTriageEnabled: false,
+  // Default TRUE — the operator chose live-immediately. Shipped disabled for a
+  // period while three HIGH adversarial-review findings were closed: the
+  // injection defence (claude.js neutralizeReadTriageDelimiters strips the
+  // literal data-block markers out of body/subject/snippet before
+  // interpolation), the unbounded batch (claude.js classifyReadState chunks
+  // at READ_TRIAGE_CHUNK_SIZE=25 messages/call; a failing chunk leaves only
+  // its own messages unread and does not abort the rest), and the untested
+  // fail-safe (mutation-proved at both the claude.js filter and the
+  // readTriage.js partition). Set false in settings.json to disable without
+  // a redeploy.
+  readTriageEnabled: true,
   lastReadTriage: null,
 };
 
 export function loadSettings() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH)) };
+    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(getSettingsPath())) };
   } catch {
     return { ...DEFAULTS };
   }
@@ -65,8 +72,15 @@ export function setBulkGuardThreshold(n) {
   else delete s.bulkGuardThreshold;
   saveSettings(s);
 }
+// Name-fragmentation trigger: live-tunable threshold, same per-check-read pattern as
+// getBulkGuardThreshold. A positive number in settings.json wins; otherwise the
+// caller's fallback (senderList.js's NAME_FRAGMENTATION_THRESHOLD) is used.
+export function getNameFragmentationThreshold(fallback) {
+  const v = loadSettings().nameFragmentationThreshold;
+  return typeof v === "number" && v > 0 ? v : fallback;
+}
 export function saveSettings(s) {
-  atomicWriteFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2));
+  atomicWriteFileSync(getSettingsPath(), JSON.stringify(s, null, 2));
 }
 export function addLocation(loc) {
   const s = loadSettings();

@@ -48,7 +48,23 @@ export function ListRow({
         ))}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-ink">{row.email}</p>
+        <p className="truncate font-medium text-ink">
+          {row.email}
+          {row.fragmented && (
+            // Standing marker: this address is at/over the name-fragmentation
+            // threshold (3+ distinct display names across VIP/OK — see
+            // docs/superpowers/specs/2026-08-26-name-fragmentation-trigger-design.md).
+            // The badges above already show each name; this makes the row findable
+            // without scrolling to read them. Report-only — never changes the list.
+            <span
+              title="3 or more distinct names for this address — possible name fragmentation"
+              aria-label={`${row.email} has 3 or more distinct names — possible name fragmentation`}
+              className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 align-middle text-xs font-bold text-amber-700"
+            >
+              Fragmented
+            </span>
+          )}
+        </p>
         {reason && (
           <p className="truncate text-xs text-muted">Reason: {reason}</p>
         )}

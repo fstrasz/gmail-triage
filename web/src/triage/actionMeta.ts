@@ -13,6 +13,8 @@ export const ACTION_LABEL: Record<TriageAction, string> = {
   unsub: "Unsub",
   archive: "Archive",
   delete: "Delete",
+  "delete-all": "Delete All",
+  "archive-all": "Archive All",
   review: "Review",
 };
 
@@ -27,6 +29,8 @@ export const ACTION_BG: Record<TriageAction, string> = {
   unsub: "bg-muted",
   archive: "bg-ink",
   delete: "bg-junk",
+  "delete-all": "bg-junk",
+  "archive-all": "bg-ink",
   review: "bg-review",
 };
 
@@ -40,6 +44,8 @@ export const ACTION_COLOR: Record<TriageAction, string> = {
   unsub: "text-muted",
   archive: "text-ink",
   delete: "text-junk",
+  "delete-all": "text-junk",
+  "archive-all": "text-ink",
   review: "text-review",
 };
 
@@ -51,13 +57,15 @@ export const DIR_ARROW: Record<Dir, string> = {
 };
 
 // Single source of truth for undoability, mirroring the backend
-// ACTION_DISPATCH[...].undo === 'none' (app/lib/triageApi.js). unsub/review have
-// no compensating server call, so the UI must NOT promise undo for them (FIX H3).
-// Everything else (ok/vip/archive/delete reversible; ok-clean/vip-clean/junk
-// reverse list membership only) IS undoable.
+// ACTION_DISPATCH[...].undo === 'none' (app/lib/triageApi.js). unsub/review/
+// delete-all/archive-all have no compensating server call, so the UI must NOT
+// promise undo for them (FIX H3). Everything else (ok/vip/archive/delete
+// reversible; ok-clean/vip-clean/junk reverse list membership only) IS undoable.
 const NON_UNDOABLE: ReadonlySet<TriageAction> = new Set<TriageAction>([
   "unsub",
   "review",
+  "delete-all",
+  "archive-all",
 ]);
 
 export function isUndoable(action: TriageAction): boolean {

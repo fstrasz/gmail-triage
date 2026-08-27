@@ -10,11 +10,15 @@ export function AddSenderForm() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [reason, setReason] = useState("");
+  // Trigger point 1 (design spec): surfaced once, right where the add happened,
+  // rather than waiting for the standing Lists-row marker or the weekly digest.
+  const [fragmentedNotice, setFragmentedNotice] = useState<string | null>(null);
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const trimmed = email.trim();
     if (!trimmed) return;
+    setFragmentedNotice(null);
     addSender.mutate(
       {
         list,
@@ -23,20 +27,26 @@ export function AddSenderForm() {
         reason: list === "blocklist" ? reason.trim() || undefined : undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setEmail("");
           setName("");
           setReason("");
+          if (result && "fragmented" in result && result.fragmented) {
+            setFragmentedNotice(
+              `${trimmed} now has 3 or more distinct names across VIP/OK — possible name fragmentation.`,
+            );
+          }
         },
       },
     );
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="flex flex-wrap items-end gap-2 rounded-xl border border-hairline p-3"
-    >
+    <div className="flex flex-col gap-2">
+      <form
+        onSubmit={submit}
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-hairline p-3"
+      >
       <label className="flex flex-col text-xs text-muted">
         List
         <select
@@ -92,6 +102,12 @@ export function AddSenderForm() {
       >
         Add
       </button>
-    </form>
+      </form>
+      {fragmentedNotice && (
+        <p role="status" className="text-xs font-medium text-amber-700">
+          {fragmentedNotice}
+        </p>
+      )}
+    </div>
   );
 }

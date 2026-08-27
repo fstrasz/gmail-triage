@@ -111,6 +111,8 @@ const ACTION_LABELS: Record<string, string> = {
   unsub: "Unsub",
   archive: "Archive",
   delete: "Delete",
+  "delete-all": "Delete All",
+  "archive-all": "Archive All",
   review: "Review",
 };
 
@@ -368,6 +370,65 @@ describe("TriagePage / Deck UI", () => {
     } finally {
       window.matchMedia = orig;
     }
+  });
+
+  test("12. Delete All / Archive All sit under Delete in the desktop action column and dispatch their own action", () => {
+    const orig = window.matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      media: "",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+    try {
+      render(<TriagePage />);
+      const deleteBtn = screen.getByRole("button", {
+        name: ACTION_LABELS.delete,
+      });
+      const deleteAllBtn = screen.getByRole("button", {
+        name: ACTION_LABELS["delete-all"],
+      });
+      const archiveAllBtn = screen.getByRole("button", {
+        name: ACTION_LABELS["archive-all"],
+      });
+      // "Under Delete": both new buttons come after Delete in DOM order, with
+      // Delete All immediately following it.
+      const buttons = screen.getAllByRole("button");
+      const deleteIdx = buttons.indexOf(deleteBtn);
+      const deleteAllIdx = buttons.indexOf(deleteAllBtn);
+      const archiveAllIdx = buttons.indexOf(archiveAllBtn);
+      expect(deleteAllIdx).toBe(deleteIdx + 1);
+      expect(archiveAllIdx).toBeGreaterThan(deleteAllIdx);
+
+      fireEvent.click(deleteAllBtn);
+      expect(actionMutate).toHaveBeenCalledTimes(1);
+      const payload = actionMutate.mock.calls[0][0] as { action: string };
+      expect(payload.action).toBe("delete-all");
+    } finally {
+      window.matchMedia = orig;
+    }
+  });
+
+  test("13. search-scope visibility: a guard result's scope string renders in the dialog", () => {
+    hookState.actionResult = {
+      ok: false,
+      guard: {
+        count: 340,
+        message: "This will delete 340 emails from a@b.com. Confirm?",
+        scope: "entire mailbox · any display name",
+      },
+    };
+    render(<TriagePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+    );
+    expect(
+      screen.getByText(/entire mailbox · any display name/i),
+    ).toBeInTheDocument();
   });
 });
 
