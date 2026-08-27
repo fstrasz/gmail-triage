@@ -12,7 +12,23 @@
 // never touches ..OK/..VIP as a label target, only as a query filter.
 import { getEmailBodyText } from "./eventSearch.js";
 import { classifyReadState } from "./claude.js";
+import { mapWithConcurrency } from "./claudeUtils.js";
 import { loadSettings, setLastReadTriage } from "./settings.js";
+
+// Gmail enforces a per-minute per-user quota. Hydrating every candidate at once
+// with Promise.all blew it on the first production run ("Quota exceeded for
+// quota metric 'Queries' and limit 'Units per minute per user'"), and because
+// runReadTriagePass fails soft, the pass silently did nothing — on exactly the
+// accumulated backlog it exists to clear (F29). Same class as F18, where the
+// DelPend summary blew the same quota on 1000+ messages and was fixed with a
+// top-N cap.
+//
+// Two bounds, both needed: a cap on how many messages one run will touch, and
+// bounded concurrency on the fetches themselves. The cap alone would still
+// fire 100 simultaneous requests; the concurrency alone would still walk a
+// 2000-message backlog in one run.
+const READ_TRIAGE_MAX_PER_RUN = 100;
+const READ_TRIAGE_FETCH_CONCURRENCY = 5;
 
 // One call, the app's own working label-query syntax (corrected from the
 // spec's MCP-connector wording — see the design doc's mechanics table).
@@ -67,13 +83,20 @@ export async function triageReadState(
     return { enabled: false, cleared: 0, kept: [] };
   }
 
-  const ids = await fetchCandidateIds(gmail);
-  if (!ids.length) {
-    return { enabled: true, cleared: 0, kept: [] };
+  const allIds = await fetchCandidateIds(gmail);
+  if (!allIds.length) {
+    return { enabled: true, cleared: 0, kept: [], skipped: 0 };
   }
 
-  const messages = await Promise.all(
-    ids.map((id) => hydrateCandidate(gmail, id)),
+  // Oldest first: a backlog should drain from the far end, and the newest mail
+  // is the most likely to still be sitting in front of the operator anyway.
+  const ids = allIds.slice(-READ_TRIAGE_MAX_PER_RUN);
+  const skipped = allIds.length - ids.length;
+
+  const messages = await mapWithConcurrency(
+    ids,
+    READ_TRIAGE_FETCH_CONCURRENCY,
+    (id) => hydrateCandidate(gmail, id),
   );
   const { decisions, failedIds } = await classify(messages, anthropicClient);
   const byId = new Map(decisions.map((d) => [d.id, d]));
@@ -119,5 +142,8 @@ export async function triageReadState(
     cleared: clearIds.length,
     kept,
     failedCount: failedIds.length,
+    // Surfaced so a capped run is visible in the report rather than looking
+    // like the whole backlog was handled.
+    skipped,
   };
 }

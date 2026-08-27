@@ -3719,6 +3719,64 @@ test("triageReadState: a message the classifier marks unread is never sent to ba
   assert.equal(result.kept[0].reason, "invoice due, manual payment");
 });
 
+test("triageReadState: hydration never exceeds the fetch-concurrency cap", async () => {
+  // THE regression test for the production quota failure. The first live run
+  // died with "Quota exceeded ... Units per minute per user" because hydration
+  // was Promise.all over every candidate — hundreds of simultaneous
+  // messages.get calls. Because the pass fails soft, it then did nothing at
+  // all, silently, on exactly the backlog it exists to clear. Asserting the
+  // PEAK in-flight count is what pins the fix; asserting a total call count
+  // would still pass against the unbounded version.
+  const { triageReadState } = await import(readTriageModulePath);
+  const byId = {};
+  for (let i = 0; i < 40; i++) {
+    byId["m" + i] = { from: "a@b.com", subject: "s", date: "d", bodyText: "x" };
+  }
+  const gmail = readTriageMockGmail(byId);
+  let inFlight = 0;
+  let peak = 0;
+  const realGet = gmail.users.messages.get;
+  gmail.users.messages.get = async (args) => {
+    inFlight++;
+    peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 1));
+    try {
+      return await realGet(args);
+    } finally {
+      inFlight--;
+    }
+  };
+  await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({ decisions: [] }),
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {},
+  });
+  assert.ok(
+    peak <= 5,
+    `hydration peaked at ${peak} concurrent messages.get calls; the cap is 5 — ` +
+      "unbounded fetching is what blew the Gmail per-minute quota in production",
+  );
+});
+
+test("triageReadState: caps candidates per run and reports the remainder as skipped", async () => {
+  // The concurrency cap alone would still walk a 2000-message backlog in one
+  // run. Both bounds are needed; this pins the second.
+  const { triageReadState } = await import(readTriageModulePath);
+  const byId = {};
+  for (let i = 0; i < 130; i++) {
+    byId["m" + i] = { from: "a@b.com", subject: "s", date: "d", bodyText: "x" };
+  }
+  const gmail = readTriageMockGmail(byId);
+  const result = await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({ decisions: [] }),
+    getSettings: () => ({ readTriageEnabled: true }),
+    recordClear: () => {},
+  });
+  const gets = gmail._calls.filter((c) => c.startsWith("get:")).length;
+  assert.equal(gets, 100, "should hydrate at most READ_TRIAGE_MAX_PER_RUN");
+  assert.equal(result.skipped, 30, "the remainder must be visible, not silent");
+});
+
 test("triageReadState: zero candidates makes zero classifier calls and zero batchModify calls", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({});
@@ -3730,7 +3788,7 @@ test("triageReadState: zero candidates makes zero classifier calls and zero batc
       throw new Error("recordClear must not be called on a zero-candidate run");
     },
   });
-  assert.deepEqual(result, { enabled: true, cleared: 0, kept: [] });
+  assert.deepEqual(result, { enabled: true, cleared: 0, kept: [], skipped: 0 });
   assert.deepEqual(gmail._calls, ["list"]);
   assert.equal(anthropicClient._calls.length, 0);
 });
