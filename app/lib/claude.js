@@ -73,12 +73,12 @@ const READ_TRIAGE_MODEL = "claude-haiku-4-5";
 
 // Per-message body cap before sending — mirrors the truncate-and-mark pattern
 // the body-scan uses for its own per-email cap (eventSearch.js MAX_BODY_CHARS_PER_EMAIL).
-const READ_TRIAGE_MAX_BODY_CHARS = 8000;
+export const READ_TRIAGE_MAX_BODY_CHARS = 8000;
 
 // Messages per classifier call. Sending every candidate in one call is
 // unbounded — past ~90 messages the request exceeds Haiku's 200K context and
 // the whole call 400s. 25 keeps each call comfortably within context.
-const READ_TRIAGE_CHUNK_SIZE = 25;
+export const READ_TRIAGE_CHUNK_SIZE = 25;
 
 // The data-block delimiters below are the only thing separating "this is
 // data" for the model from "this is trusted framing". A body, subject, or
@@ -97,9 +97,23 @@ function neutralizeReadTriageDelimiters(text) {
     .replaceAll(READ_TRIAGE_END_MARKER, "[EMAIL DATA MARKER REMOVED]");
 }
 
+// A lone (unpaired) UTF-16 surrogate breaks the request at Anthropic's API
+// layer ("no low surrogate in string") even though V8 will happily
+// stringify/round-trip it locally — the failure surfaces server-side, not
+// here. `truncateReadTriageBody`'s slice() can produce one by cutting a
+// surrogate pair (e.g. an emoji) in half at the truncation boundary, but any
+// field can carry one from malformed source encoding — so this is applied
+// once, to the fully-assembled message, rather than patched per-field.
+function stripLoneSurrogates(text) {
+  return text.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "�",
+  );
+}
+
 // Structured-output tool — forces a validated decision list instead of prose
 // we'd have to parse, matching the body-scan's record_events pattern.
-const READ_TRIAGE_TOOL = {
+export const READ_TRIAGE_TOOL = {
   name: "record_read_state",
   description:
     "Record the read/unread decision for every message you can confidently classify. Call exactly once. Omit a message entirely if you cannot confidently decide either way — never guess.",
@@ -153,7 +167,7 @@ const READ_TRIAGE_TOOL = {
 // Operator policy, reproduced verbatim from
 // docs/superpowers/specs/2026-08-20-read-unread-triage-design.md — this wording
 // IS the acceptance criteria. Do not paraphrase or condense it.
-const READ_TRIAGE_SYSTEM_PROMPT = `You are triaging Frank's inbox to decide which emails he still needs to see unread, and which are safe to mark read. Judge each message against the policy below and record your decision with the record_read_state tool.
+export const READ_TRIAGE_SYSTEM_PROMPT = `You are triaging Frank's inbox to decide which emails he still needs to see unread, and which are safe to mark read. Judge each message against the policy below and record your decision with the record_read_state tool.
 
 LEAVE UNREAD when any of these is true
 - Someone is asking Frank a question or waiting on his reply
@@ -211,10 +225,35 @@ ${READ_TRIAGE_END_MARKER}`;
 // missing entry means "stays unread" and is the caller's fail-safe to
 // apply, not a default this function invents. An unrecognised decision
 // value is dropped here, at the source, so nothing downstream ever sees it.
-async function classifyReadStateChunk(messages, anthropicClient) {
-  const userPrompt = `Classify each of the following ${messages.length} message(s) per the policy above.
+// Builds the user-turn prompt for one chunk — shared with any provider
+// implementing this same classification (e.g. a local-model comparison
+// harness) so the prompt sent for comparison is byte-identical to production.
+export function buildReadTriageUserPrompt(messages) {
+  const prompt = `Classify each of the following ${messages.length} message(s) per the policy above.
 
 ${messages.map(formatReadTriageMessage).join("\n\n")}`;
+  return stripLoneSurrogates(prompt);
+}
+
+// Validates + normalizes a raw `decisions` array from any provider's tool-call
+// arguments. Shared so every provider is held to the exact same fail-safe
+// rule: an unrecognised decision value is dropped here, at the source.
+export function parseReadTriageDecisions(rawDecisions) {
+  if (!Array.isArray(rawDecisions)) return [];
+  return rawDecisions
+    .filter((d) => d && (d.decision === "read" || d.decision === "unread"))
+    .map((d) => ({
+      id: d.id,
+      decision: d.decision,
+      reason: d.reason || "",
+      amounts: Array.isArray(d.amounts) ? d.amounts : [],
+      dates: Array.isArray(d.dates) ? d.dates : [],
+      uncertain: Boolean(d.uncertain),
+    }));
+}
+
+async function classifyReadStateChunk(messages, anthropicClient) {
+  const userPrompt = buildReadTriageUserPrompt(messages);
 
   const msg = await anthropicClient.messages.create({
     model: READ_TRIAGE_MODEL,
@@ -228,19 +267,7 @@ ${messages.map(formatReadTriageMessage).join("\n\n")}`;
   const toolBlock = (msg.content || []).find(
     (b) => b.type === "tool_use" && b.name === READ_TRIAGE_TOOL.name,
   );
-  const decisions = toolBlock?.input?.decisions;
-  if (!Array.isArray(decisions)) return [];
-
-  return decisions
-    .filter((d) => d && (d.decision === "read" || d.decision === "unread"))
-    .map((d) => ({
-      id: d.id,
-      decision: d.decision,
-      reason: d.reason || "",
-      amounts: Array.isArray(d.amounts) ? d.amounts : [],
-      dates: Array.isArray(d.dates) ? d.dates : [],
-      uncertain: Boolean(d.uncertain),
-    }));
+  return parseReadTriageDecisions(toolBlock?.input?.decisions);
 }
 
 // Batched read/unread classification against the operator policy above,
