@@ -66,6 +66,9 @@ const readTriageModulePath = url.pathToFileURL(
 const schedulerModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "scheduler.js"),
 ).href;
+const localLlmModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "localLlm.js"),
+).href;
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
@@ -3522,6 +3525,7 @@ test("classifyReadState: mocked tool response maps cleanly onto the contract sha
       amounts: [],
       dates: [],
       uncertain: false,
+      provider: "haiku",
     },
     {
       id: "m2",
@@ -3530,6 +3534,7 @@ test("classifyReadState: mocked tool response maps cleanly onto the contract sha
       amounts: ["$450.00"],
       dates: ["2026-09-01"],
       uncertain: true,
+      provider: "haiku",
     },
   ]);
   assert.deepEqual(out.failedIds, []);
@@ -3724,9 +3729,27 @@ function readTriageMockGmail(messagesById) {
           batchCalls.push(p.requestBody);
         },
       },
+      // ensureLabel resolves the .QWN/.HKU marker labels through this.
+      labels: {
+        list: async () => ({
+          data: {
+            labels: [
+              { id: "Label_QWN", name: ".QWN" },
+              { id: "Label_HKU", name: ".HKU" },
+            ],
+          },
+        }),
+      },
     },
   };
 }
+
+// The pass now issues two KINDS of batchModify: marker-label adds and the
+// UNREAD clear. Tests that care about clearing must not accidentally assert
+// against a label call, and vice versa.
+const clearCalls = (gmail) =>
+  gmail._batchCalls.filter((b) => b.removeLabelIds);
+const labelCalls = (gmail) => gmail._batchCalls.filter((b) => b.addLabelIds);
 
 test("triageReadState: a confidently-read message clears UNREAD with the exact batchModify payload", async () => {
   const { triageReadState } = await import(readTriageModulePath);
@@ -3745,11 +3768,17 @@ test("triageReadState: a confidently-read message clears UNREAD with the exact b
     recordClear: (ids) => (recorded = ids),
     recordCooldown: () => {},
   });
-  assert.equal(gmail._batchCalls.length, 1);
-  assert.deepEqual(gmail._batchCalls[0], { ids: ["m1"], removeLabelIds: ["UNREAD"] });
+  assert.deepEqual(clearCalls(gmail), [
+    { ids: ["m1"], removeLabelIds: ["UNREAD"] },
+  ]);
   assert.equal(result.cleared, 1);
   assert.deepEqual(result.kept, []);
   assert.deepEqual(recorded, ["m1"]);
+  // Reviewed by Haiku ⇒ marked .HKU so it is never a candidate again.
+  assert.deepEqual(labelCalls(gmail), [
+    { ids: ["m1"], addLabelIds: ["Label_HKU"] },
+  ]);
+  assert.equal(result.labeled, 1);
 });
 
 test("triageReadState: a message the classifier marks unread is never sent to batchModify", async () => {
@@ -3770,12 +3799,18 @@ test("triageReadState: a message the classifier marks unread is never sent to ba
     recordClear: () => {},
     recordCooldown: () => {},
   });
-  assert.equal(gmail._batchCalls.length, 1);
-  assert.deepEqual(gmail._batchCalls[0].ids, ["m1"]);
+  assert.deepEqual(clearCalls(gmail), [
+    { ids: ["m1"], removeLabelIds: ["UNREAD"] },
+  ]);
   assert.equal(result.cleared, 1);
   assert.equal(result.kept.length, 1);
   assert.equal(result.kept[0].from, "billing@example.com");
   assert.equal(result.kept[0].reason, "invoice due, manual payment");
+  // BOTH were reviewed, so both get marked — the kept one especially, since
+  // it stays unread and would otherwise be re-billed on every future run.
+  assert.deepEqual(labelCalls(gmail), [
+    { ids: ["m1", "m2"], addLabelIds: ["Label_HKU"] },
+  ]);
 });
 
 test("triageReadState: hydration never exceeds the fetch-concurrency cap", async () => {
@@ -3899,9 +3934,14 @@ test("triageReadState: a 'read' decision marked uncertain stays unread", async (
     },
     recordCooldown: () => {},
   });
-  assert.equal(gmail._batchCalls.length, 0);
+  assert.deepEqual(clearCalls(gmail), [], "an uncertain 'read' must not clear");
   assert.equal(result.cleared, 0);
   assert.equal(result.kept[0].uncertain, true);
+  // Uncertain still counts as reviewed — an engine gave a real answer, so it
+  // is marked and will not be asked again.
+  assert.deepEqual(labelCalls(gmail), [
+    { ids: ["m1"], addLabelIds: ["Label_HKU"] },
+  ]);
 });
 
 test("triageReadState: readTriageEnabled false does nothing — no Gmail calls, no classifier call", async () => {
@@ -3968,19 +4008,32 @@ test("triageReadState: a failing classifier chunk leaves only its own messages u
     recordCooldown: () => {},
   });
   assert.equal(result.failedCount, 25);
-  const clearedIds = gmail._batchCalls.flatMap((b) => b.ids);
+  const clearedIds = clearCalls(gmail).flatMap((b) => b.ids);
   assert.equal(clearedIds.length, 35);
   for (let i = 25; i < 50; i++) {
     assert.ok(!clearedIds.includes(`m${i}`), `m${i} from the failed chunk must not clear`);
   }
+  // The failed chunk got no answer from anything, so it must NOT be marked —
+  // marking it would exclude it from future runs without it ever being
+  // reviewed.
+  const labeledIds = labelCalls(gmail).flatMap((b) => b.ids);
+  for (let i = 25; i < 50; i++) {
+    assert.ok(
+      !labeledIds.includes(`m${i}`),
+      `m${i} was never classified and must not be marked reviewed`,
+    );
+  }
 });
 
-// ─── triageReadState: cooldown (regression — permanent keepers never re-drain) ──
-// Without a cooldown, a message that's genuinely a permanent keeper (e.g. an
-// @strasz.com deadline) sits at the oldest end of the unread pool forever and
-// is re-selected by the oldest-first slice on every run — re-billed to the
-// classifier for an identical answer indefinitely, while newer candidates
-// beyond the ever-growing wall of keepers are never reached.
+// ─── triageReadState: marker labels + failure cooldown ─────────────────────
+// A message that's genuinely a permanent keeper (an @strasz.com deadline)
+// never clears, so without an exclusion it sits at the oldest end of the
+// unread pool forever, is re-selected by the oldest-first slice on every run,
+// and is re-billed for an identical answer while newer candidates behind the
+// wall of keepers are never reached. The marker label is the permanent
+// exclusion (enforced in CANDIDATE_QUERY, so Gmail never returns it again);
+// the cooldown map is only a short throttle for messages NOTHING could
+// classify.
 test("triageReadState: a message still within its cooldown window is excluded from candidate selection", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
@@ -4004,7 +4057,8 @@ test("triageReadState: a message still within its cooldown window is excluded fr
 });
 
 test("triageReadState: an expired cooldown entry no longer excludes the candidate", async () => {
-  const { triageReadState, READ_TRIAGE_COOLDOWN_HOURS } = await import(readTriageModulePath);
+  const { triageReadState, READ_TRIAGE_FAILURE_COOLDOWN_HOURS: READ_TRIAGE_COOLDOWN_HOURS } =
+    await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
     m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
   });
@@ -4024,7 +4078,9 @@ test("triageReadState: an expired cooldown entry no longer excludes the candidat
   assert.deepEqual(gets, ["get:m1"], "an expired cooldown entry must not suppress re-examination");
 });
 
-test("triageReadState: a message that stays unread this run is recorded into the cooldown map", async () => {
+test("triageReadState: a reviewed-but-kept message is marked, NOT cooled down", async () => {
+  // This is the permanent-keeper case. The marker is what stops it being
+  // re-billed forever; a cooldown would only delay that by its window.
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
     m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
@@ -4038,7 +4094,34 @@ test("triageReadState: a message that stays unread this run is recorded into the
     recordClear: () => {},
     recordCooldown: (map) => (savedCooldown = map),
   });
-  assert.ok(savedCooldown.m1, "m1 must be recorded so it isn't re-examined next run");
+  assert.deepEqual(labelCalls(gmail), [
+    { ids: ["m1"], addLabelIds: ["Label_HKU"] },
+  ]);
+  assert.equal(
+    savedCooldown.m1,
+    undefined,
+    "a reviewed message is excluded by its marker label, not by a cooldown",
+  );
+});
+
+test("triageReadState: a message NOTHING could classify is cooled down and NOT marked", async () => {
+  // No engine answered, so it must stay eligible — but a short throttle
+  // keeps a deterministically-failing chunk from parking at the head of the
+  // oldest-first queue and blocking every later run.
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "vendor@example.com", subject: "Hi", date: "d", bodyText: "hello" },
+  });
+  let savedCooldown = null;
+  await triageReadState(gmail, {
+    classify: async () => ({ decisions: [], failedIds: ["m1"] }),
+    getSettings: () => ({ readTriageEnabled: true, readTriageCooldown: {} }),
+    recordClear: () => {},
+    recordCooldown: (map) => (savedCooldown = map),
+  });
+  assert.deepEqual(labelCalls(gmail), [], "an unreviewed message must not be marked");
+  assert.deepEqual(clearCalls(gmail), []);
+  assert.ok(savedCooldown.m1, "a failed message must be throttled");
   assert.ok(!Number.isNaN(new Date(savedCooldown.m1).getTime()));
 });
 
@@ -4087,6 +4170,167 @@ test("triageReadState: a cooldown entry for a message no longer in the candidate
   assert.equal(savedCooldown.ghost, undefined);
 });
 
+// ─── classifyReadStateHybrid: local model first, Claude per-chunk fallback ──
+// Stubs global fetch so the Ollama call is deterministic. Each entry in
+// `responses` is one /api/chat body, consumed in order.
+function withStubbedOllama(responses, fn) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  let i = 0;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url, body: JSON.parse(opts.body) });
+    const r = responses[i++];
+    if (r instanceof Error) throw r;
+    return {
+      ok: r.ok !== false,
+      status: r.status || 200,
+      text: async () => r.text || "",
+      json: async () => r.json,
+    };
+  };
+  return fn(calls).finally(() => {
+    globalThis.fetch = realFetch;
+  });
+}
+
+function ollamaToolResponse(decisions, extra = {}) {
+  return {
+    json: {
+      done_reason: "stop",
+      message: {
+        tool_calls: [
+          {
+            function: { name: "record_read_state", arguments: { decisions } },
+          },
+        ],
+      },
+      ...extra,
+    },
+  };
+}
+
+const hybridMessages = [
+  { id: "m1", from: "a@b.com", subject: "s", date: "d", snippet: "", body: "x" },
+];
+
+test("classifyReadStateHybrid: local disabled ⇒ delegates entirely to Claude, no Ollama call", async () => {
+  const { classifyReadStateHybrid } = await import(localLlmModulePath);
+  let cloudCalled = 0;
+  await withStubbedOllama([], async (calls) => {
+    const out = await classifyReadStateHybrid(hybridMessages, null, {
+      getSettings: () => ({ readTriageLocalModelEnabled: false }),
+      classifyCloud: async () => {
+        cloudCalled++;
+        return { decisions: [{ id: "m1", decision: "read", provider: "haiku" }], failedIds: [] };
+      },
+    });
+    assert.equal(calls.length, 0, "must not call Ollama when disabled");
+    assert.equal(cloudCalled, 1);
+    assert.equal(out.decisions[0].provider, "haiku");
+  });
+});
+
+test("classifyReadStateHybrid: local succeeds ⇒ Claude is never called and decisions are tagged qwen", async () => {
+  const { classifyReadStateHybrid } = await import(localLlmModulePath);
+  process.env.OLLAMA_HOST = "test-host";
+  let cloudCalled = 0;
+  await withStubbedOllama(
+    [ollamaToolResponse([{ id: "m1", decision: "read", reason: "newsletter" }])],
+    async (calls) => {
+      const out = await classifyReadStateHybrid(hybridMessages, null, {
+        getSettings: () => ({
+          readTriageLocalModelEnabled: true,
+          readTriageLocalModel: "qwen3.8:27b",
+        }),
+        classifyCloud: async () => {
+          cloudCalled++;
+          return { decisions: [], failedIds: [] };
+        },
+      });
+      assert.equal(calls.length, 1);
+      assert.equal(cloudCalled, 0, "no Claude spend when the local model works");
+      assert.equal(out.decisions[0].provider, "qwen");
+    },
+  );
+  delete process.env.OLLAMA_HOST;
+});
+
+test("classifyReadStateHybrid: local returns decisions as a STRING ⇒ falls back to Claude for that chunk", async () => {
+  // The exact malformed shape observed against a real chunk during
+  // evaluation: a JSON-encoded string where the schema requires an array.
+  const { classifyReadStateHybrid } = await import(localLlmModulePath);
+  process.env.OLLAMA_HOST = "test-host";
+  let cloudCalled = 0;
+  await withStubbedOllama(
+    [ollamaToolResponse('[{"id":"m1","decision":"read"}]')],
+    async () => {
+      const out = await classifyReadStateHybrid(hybridMessages, null, {
+        getSettings: () => ({ readTriageLocalModelEnabled: true }),
+        classifyCloud: async (chunk) => {
+          cloudCalled++;
+          assert.equal(chunk.length, 1, "only the failed chunk goes to Claude");
+          return {
+            decisions: [{ id: "m1", decision: "read", provider: "haiku" }],
+            failedIds: [],
+          };
+        },
+      });
+      assert.equal(cloudCalled, 1);
+      assert.equal(out.decisions[0].provider, "haiku");
+    },
+  );
+  delete process.env.OLLAMA_HOST;
+});
+
+test("classifyReadStateHybrid: local truncates (done_reason=length) ⇒ falls back to Claude", async () => {
+  // The other observed failure: the model spent its whole budget reasoning
+  // and never emitted the tool call. Returning [] here would silently drop
+  // the chunk; it must fall back instead.
+  const { classifyReadStateHybrid } = await import(localLlmModulePath);
+  process.env.OLLAMA_HOST = "test-host";
+  let cloudCalled = 0;
+  // Deliberately returns a well-formed tool call ALONGSIDE done_reason=length
+  // — a partial answer truncated mid-array. Only the done_reason check can
+  // catch this; a stub with no tool call at all would pass even if that check
+  // were deleted, because the missing-tool-call throw would cover for it.
+  await withStubbedOllama(
+    [
+      ollamaToolResponse([{ id: "m1", decision: "read", reason: "partial" }], {
+        done_reason: "length",
+        eval_count: 8192,
+      }),
+    ],
+    async () => {
+      await classifyReadStateHybrid(hybridMessages, null, {
+        getSettings: () => ({ readTriageLocalModelEnabled: true }),
+        classifyCloud: async () => {
+          cloudCalled++;
+          return { decisions: [], failedIds: ["m1"] };
+        },
+      });
+      assert.equal(cloudCalled, 1, "a truncated response must fall back, not return empty");
+    },
+  );
+  delete process.env.OLLAMA_HOST;
+});
+
+test("classifyReadStateHybrid: enabled but OLLAMA_HOST unset ⇒ Claude only, no crash", async () => {
+  const { classifyReadStateHybrid } = await import(localLlmModulePath);
+  delete process.env.OLLAMA_HOST;
+  let cloudCalled = 0;
+  await withStubbedOllama([], async (calls) => {
+    await classifyReadStateHybrid(hybridMessages, null, {
+      getSettings: () => ({ readTriageLocalModelEnabled: true }),
+      classifyCloud: async () => {
+        cloudCalled++;
+        return { decisions: [], failedIds: [] };
+      },
+    });
+    assert.equal(calls.length, 0);
+    assert.equal(cloudCalled, 1);
+  });
+});
+
 // ─── runReadTriagePass: scheduler integration (triage → conditional report) ─
 function readTriageReportMockGmail() {
   const sendCalls = [];
@@ -4132,7 +4376,10 @@ test("runReadTriagePass: report body contains a kept message's sender/subject/re
       },
     ],
   });
-  await runReadTriagePass(gmail, { triage });
+  await runReadTriagePass(gmail, {
+    triage,
+    getSettings: () => ({ readTriageReportEnabled: true }),
+  });
   assert.equal(gmail._sendCalls.length, 1);
   const raw = decodeRawEmail(gmail._sendCalls[0].requestBody.raw);
   assert.ok(raw.includes("billing@example.com"), "sender present");
@@ -4162,7 +4409,10 @@ test("runReadTriagePass: report body surfaces a classifier chunk failure, not ju
     ],
     failedCount: 25,
   });
-  await runReadTriagePass(gmail, { triage });
+  await runReadTriagePass(gmail, {
+    triage,
+    getSettings: () => ({ readTriageReportEnabled: true }),
+  });
   assert.equal(gmail._sendCalls.length, 1);
   const raw = decodeRawEmail(gmail._sendCalls[0].requestBody.raw);
   assert.ok(raw.includes("25"), "failed count present");
@@ -4181,7 +4431,13 @@ test("runReadTriagePass: a run with no candidates sends no email", async () => {
   const send = async () => {
     throw new Error("send must not be called when nothing happened");
   };
-  await runReadTriagePass(gmail, { triage, send });
+  // Report explicitly ENABLED, so this proves the no-op guard itself, not
+  // just that the report defaults off.
+  await runReadTriagePass(gmail, {
+    triage,
+    send,
+    getSettings: () => ({ readTriageReportEnabled: true }),
+  });
   assert.equal(gmail._sendCalls.length, 0);
 });
 
@@ -4196,6 +4452,12 @@ test("runReadTriagePass: a thrown error inside triage does not prevent completio
   const send = async () => {
     throw new Error("send must not be called when triage threw");
   };
-  await assert.doesNotReject(runReadTriagePass(gmail, { triage, send }));
+  await assert.doesNotReject(
+    runReadTriagePass(gmail, {
+      triage,
+      send,
+      getSettings: () => ({ readTriageReportEnabled: true }),
+    }),
+  );
   assert.equal(gmail._sendCalls.length, 0);
 });

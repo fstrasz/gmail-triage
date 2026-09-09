@@ -238,7 +238,10 @@ ${messages.map(formatReadTriageMessage).join("\n\n")}`;
 // Validates + normalizes a raw `decisions` array from any provider's tool-call
 // arguments. Shared so every provider is held to the exact same fail-safe
 // rule: an unrecognised decision value is dropped here, at the source.
-export function parseReadTriageDecisions(rawDecisions) {
+// `provider` records WHICH engine actually answered ("haiku" | "qwen") so the
+// caller can label the message accordingly — with a hybrid that silently
+// falls back mid-run, the provider is otherwise invisible after the fact.
+export function parseReadTriageDecisions(rawDecisions, provider) {
   if (!Array.isArray(rawDecisions)) return [];
   return rawDecisions
     .filter((d) => d && (d.decision === "read" || d.decision === "unread"))
@@ -249,8 +252,15 @@ export function parseReadTriageDecisions(rawDecisions) {
       amounts: Array.isArray(d.amounts) ? d.amounts : [],
       dates: Array.isArray(d.dates) ? d.dates : [],
       uncertain: Boolean(d.uncertain),
+      provider,
     }));
 }
+
+// Provider tags — these map to the Gmail marker labels applied in
+// readTriage.js so a reviewed message is excluded from future candidate
+// queries permanently.
+export const PROVIDER_HAIKU = "haiku";
+export const PROVIDER_QWEN = "qwen";
 
 async function classifyReadStateChunk(messages, anthropicClient) {
   const userPrompt = buildReadTriageUserPrompt(messages);
@@ -267,7 +277,7 @@ async function classifyReadStateChunk(messages, anthropicClient) {
   const toolBlock = (msg.content || []).find(
     (b) => b.type === "tool_use" && b.name === READ_TRIAGE_TOOL.name,
   );
-  return parseReadTriageDecisions(toolBlock?.input?.decisions);
+  return parseReadTriageDecisions(toolBlock?.input?.decisions, PROVIDER_HAIKU);
 }
 
 // Batched read/unread classification against the operator policy above,

@@ -54,6 +54,19 @@ const DEFAULTS = {
   // while the classifier never reaches anything newer once the backlog of
   // permanent keepers exceeds READ_TRIAGE_MAX_PER_RUN.
   readTriageCooldown: {},
+  // Opt-in: route read-triage classification through the local Ollama model
+  // first, falling back to Claude per-chunk when the local model returns
+  // something malformed or truncated. Defaults FALSE — local-model
+  // reliability is only proven on ~100 real messages so far, and the safe
+  // current behaviour is Claude-only. Requires OLLAMA_HOST in the env.
+  readTriageLocalModelEnabled: false,
+  readTriageLocalModel: "qwen3.8:27b",
+  // The per-run report email. Default FALSE: at a 30-minute scheduler
+  // interval this arrives 48x/day, which is why the whole feature was
+  // switched off in the first place. The .QWN/.HKU marker labels are the
+  // durable record of what was reviewed and by which engine, visible in
+  // Gmail without an email.
+  readTriageReportEnabled: false,
 };
 
 export function loadSettings() {

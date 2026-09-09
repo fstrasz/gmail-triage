@@ -5,13 +5,22 @@
 // it confidently marks "read". Fail-safe: anything missing from the
 // classifier result, anything uncertain, and anything "unread" stays UNREAD.
 //
-// Only ever removes the UNREAD label — never adds/removes anything else,
-// never archives/trashes/moves. UNREAD is a Gmail system label whose id is
-// its own name (used literally everywhere else in this codebase, e.g.
-// keepClean.js), so no ensureLabel resolution is needed here: this module
-// never touches ..OK/..VIP as a label target, only as a query filter.
+// Removes the UNREAD label, and adds a provider marker label (.QWN / .HKU)
+// recording which engine reviewed the message. Never archives/trashes/moves,
+// and never touches ..OK/..VIP as a label target — only as a query filter.
+// UNREAD is a Gmail system label whose id is its own name (used literally
+// everywhere else in this codebase, e.g. keepClean.js); the marker labels are
+// real user labels and so need ensureLabel resolution.
+//
+// The marker label is what makes a reviewed message permanently ineligible:
+// CANDIDATE_QUERY excludes both markers, so Gmail's own index stops returning
+// it. That matters most for messages the classifier KEEPS — they stay unread
+// forever by design, so without the marker they sit at the oldest end of the
+// pool and are re-billed for an identical answer on every future run.
 import { getEmailBodyText } from "./eventSearch.js";
-import { classifyReadState } from "./claude.js";
+import { PROVIDER_HAIKU, PROVIDER_QWEN } from "./claude.js";
+import { classifyReadStateHybrid } from "./localLlm.js";
+import { ensureLabel } from "./gmail.js";
 import { mapWithConcurrency } from "./claudeUtils.js";
 import {
   loadSettings,
@@ -34,27 +43,42 @@ import {
 export const READ_TRIAGE_MAX_PER_RUN = 100;
 export const READ_TRIAGE_FETCH_CONCURRENCY = 5;
 
-// A message that's genuinely a permanent keeper (e.g. an @strasz.com
-// deadline) never clears, so without a cooldown it sits at the oldest end
-// of the unread pool forever and is re-selected by the oldest-first slice
-// below on every run — re-billed to the classifier for an identical answer
-// indefinitely, while the classifier never reaches anything newer once the
-// backlog of permanent keepers exceeds READ_TRIAGE_MAX_PER_RUN. 24h means a
-// message re-confirmed as a keeper is skipped for the rest of that day, but
-// still gets a fresh look daily in case circumstances changed (a deadline
-// lapsed, a payment was made elsewhere, etc.).
-export const READ_TRIAGE_COOLDOWN_HOURS = 24;
+// Marker labels: applied to any message an engine actually reviewed, and
+// excluded by CANDIDATE_QUERY so it is never a candidate again. Single-dot
+// prefix matches the .DelPend convention for utility labels (the double-dot
+// prefix is reserved for the ..VIP/..OK tiers).
+export const READ_TRIAGE_LABELS = {
+  [PROVIDER_QWEN]: ".QWN",
+  [PROVIDER_HAIKU]: ".HKU",
+};
+
+// Applies ONLY to messages no engine could classify (local malformed AND the
+// Claude fallback errored). Everything successfully reviewed is excluded
+// permanently by its marker label instead, so this is not the mechanism that
+// stops keepers being re-billed — it is a short throttle so one chunk that
+// fails deterministically on content (exactly what the lone-surrogate bug
+// did: same chunk, every run) cannot park at the head of the oldest-first
+// queue and block every later run from draining. Deliberately SHORT: most
+// failures are transient API blips, and a long window would delay recovery
+// from a 30-second outage by the length of that window.
+export const READ_TRIAGE_FAILURE_COOLDOWN_HOURS = 1;
 
 function isInCooldown(cooldown, id, now) {
   const ts = cooldown[id];
   if (!ts) return false;
-  return now - new Date(ts).getTime() < READ_TRIAGE_COOLDOWN_HOURS * 3600000;
+  return (
+    now - new Date(ts).getTime() <
+    READ_TRIAGE_FAILURE_COOLDOWN_HOURS * 3600000
+  );
 }
 
 // One call, the app's own working label-query syntax (corrected from the
 // spec's MCP-connector wording — see the design doc's mechanics table).
+// The two marker exclusions are what make a reviewed message permanently
+// ineligible — Gmail's index drops it before it ever reaches this process,
+// so there is no local state to consult and no expiry to leak through.
 const CANDIDATE_QUERY =
-  "in:inbox is:unread {label:..OK label:..VIP} -in:sent -in:trash";
+  "in:inbox is:unread {label:..OK label:..VIP} -in:sent -in:trash -label:.QWN -label:.HKU";
 
 export async function fetchCandidateIds(gmail) {
   const ids = [];
@@ -98,7 +122,7 @@ export async function triageReadState(
     getSettings = loadSettings,
     recordClear = setLastReadTriage,
     recordCooldown = setReadTriageCooldown,
-    classify = classifyReadState,
+    classify = classifyReadStateHybrid,
   } = {},
 ) {
   const settings = getSettings();
@@ -148,19 +172,31 @@ export async function triageReadState(
 
   const clearIds = [];
   const kept = [];
+  const reviewedByProvider = { [PROVIDER_QWEN]: [], [PROVIDER_HAIKU]: [] };
   const nowIso = new Date(now).toISOString();
   for (const m of messages) {
     const d = byId.get(m.id);
+
+    if (d) {
+      // An engine actually answered. Mark it so it is never a candidate
+      // again — whichever way the decision went — and drop any failure
+      // cooldown left over from an earlier attempt.
+      reviewedByProvider[d.provider]?.push(m.id);
+      delete cooldown[m.id];
+    } else {
+      // Nothing could classify it (local malformed AND the Claude fallback
+      // errored). No marker: it was not reviewed, so it must remain
+      // eligible. Short cooldown only, so a deterministically-failing chunk
+      // cannot park at the head of the oldest-first queue forever.
+      cooldown[m.id] = nowIso;
+    }
+
     // Fail-safe: only a confident, non-uncertain "read" clears. Missing,
     // uncertain, or "unread" all stay unread.
     if (d && d.decision === "read" && !d.uncertain) {
       clearIds.push(m.id);
-      delete cooldown[m.id];
       continue;
     }
-    // Examined and still not clearable — cool down so this exact message
-    // isn't re-billed to the classifier again until the window expires.
-    cooldown[m.id] = nowIso;
     kept.push({
       from: m.from,
       subject: m.subject,
@@ -171,6 +207,25 @@ export async function triageReadState(
       dates: d?.dates || [],
       uncertain: d?.uncertain || false,
     });
+  }
+
+  // Marker labels before the UNREAD clear: a crash between the two then
+  // leaves a message labeled-but-still-unread (mere clutter, and the
+  // fail-safe direction) rather than cleared-but-unlabeled.
+  let labeled = 0;
+  for (const [provider, providerIds] of Object.entries(reviewedByProvider)) {
+    if (!providerIds.length) continue;
+    const labelId = await ensureLabel(gmail, READ_TRIAGE_LABELS[provider]);
+    for (let i = 0; i < providerIds.length; i += 1000) {
+      await gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: {
+          ids: providerIds.slice(i, i + 1000),
+          addLabelIds: [labelId],
+        },
+      });
+    }
+    labeled += providerIds.length;
   }
 
   for (let i = 0; i < clearIds.length; i += 1000) {
@@ -195,8 +250,10 @@ export async function triageReadState(
     // Surfaced so a capped run is visible in the report rather than looking
     // like the whole backlog was handled.
     skipped,
-    // Surfaced so a backlog dominated by permanent keepers is visible too —
-    // otherwise it looks identical to "the whole backlog was handled."
+    // Messages still throttled after a failed classification attempt.
     coolingDown,
+    // Messages marked with a provider label this run, and therefore never
+    // eligible again. A drain loop uses this to know it is making progress.
+    labeled,
   };
 }

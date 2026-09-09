@@ -245,7 +245,11 @@ async function sendReadTriageReport(gmail, result) {
 // `triage`/`send` are injectable for tests; production callers just pass gmail.
 export async function runReadTriagePass(
   gmail,
-  { triage = triageReadState, send = sendReadTriageReport } = {},
+  {
+    triage = triageReadState,
+    send = sendReadTriageReport,
+    getSettings = loadSettings,
+  } = {},
 ) {
   try {
     const result = await triage(gmail);
@@ -253,6 +257,10 @@ export async function runReadTriagePass(
     // report every cycle is how a useful report gets filtered into oblivion.
     if (!result.enabled) return;
     if (result.cleared === 0 && result.kept.length === 0) return;
+    // Off by default: at a 30-minute interval this is 48 emails/day, which is
+    // why the feature was disabled originally. The .QWN/.HKU labels are the
+    // durable record instead.
+    if (!getSettings().readTriageReportEnabled) return;
     await send(gmail, result);
   } catch (e) {
     console.error(`[scheduler] read-triage failed: ${e.message}`);
