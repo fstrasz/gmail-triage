@@ -27,15 +27,15 @@ import { loadSettings, setLastReadTriage } from "./settings.js";
 // bounded concurrency on the fetches themselves. The cap alone would still
 // fire 100 simultaneous requests; the concurrency alone would still walk a
 // 2000-message backlog in one run.
-const READ_TRIAGE_MAX_PER_RUN = 100;
-const READ_TRIAGE_FETCH_CONCURRENCY = 5;
+export const READ_TRIAGE_MAX_PER_RUN = 100;
+export const READ_TRIAGE_FETCH_CONCURRENCY = 5;
 
 // One call, the app's own working label-query syntax (corrected from the
 // spec's MCP-connector wording — see the design doc's mechanics table).
 const CANDIDATE_QUERY =
   "in:inbox is:unread {label:..OK label:..VIP} -in:sent -in:trash";
 
-async function fetchCandidateIds(gmail) {
+export async function fetchCandidateIds(gmail) {
   const ids = [];
   let pageToken = null;
   do {
@@ -48,7 +48,7 @@ async function fetchCandidateIds(gmail) {
   return ids;
 }
 
-async function hydrateCandidate(gmail, id) {
+export async function hydrateCandidate(gmail, id) {
   const res = await gmail.users.messages.get({
     userId: "me",
     id,

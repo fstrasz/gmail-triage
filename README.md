@@ -235,6 +235,8 @@ gmail-triage/
 │       ├── eventSearch.js # Claude web search + full-body inbox scan with token-budget batching, image vision date enrichment, canonical-link extraction, 24h web-search gate
 │       ├── foundEvents.js # Found events persistence
 │       ├── claude.js      # Anthropic Claude API integration
+│       ├── readTriage.js  # Read/unread triage pass (clears UNREAD on tiered mail Claude confidently classifies as safe to mark read)
+│       ├── localLlm.js    # EXPERIMENTAL — local Ollama adapter for read-triage classification; not called by any production path (see Caution below)
 │       ├── calendar.js    # Google Calendar API integration
 │       └── review.js      # Review queue persistence
 ├── config/                # NOT in git — created by setup script
@@ -256,7 +258,8 @@ gmail-triage/
 │   └── blocklist.backups.json   # Named numbered backups
 ├── scripts/
 │   ├── setup-config.ps1         # First-time config setup
-│   └── cleanup-worktrees.ps1
+│   ├── cleanup-worktrees.ps1
+│   └── compare-read-triage-models.mjs  # EXPERIMENTAL — dry-run comparison of Claude vs. local Ollama models on real inbox data; never mutates Gmail
 ├── Dockerfile
 ├── compose.yaml
 └── deploy.ps1             # Sync to NAS via robocopy; auto-bumps version
@@ -310,3 +313,16 @@ All settings persist to `config/settings.json` and are managed at `/settings`:
 ```
 
 The checks cover: config readability, Gmail token presence, whether the scheduler is enabled, and how long since the last successful scheduled scan (`staleness` goes `stale` → 503 after roughly two missed scan intervals). The Docker Compose `healthcheck:` probes this endpoint via Node's built-in `fetch`, so `docker ps` reports container health. To catch a fully-down container (which an in-process endpoint can't report), poll `/health` from an external monitor and alert on any non-200 or unreachable response.
+
+---
+
+## Caution: Experimental Local-Model Read-Triage Adapter
+
+`app/lib/localLlm.js` and `scripts/compare-read-triage-models.mjs` are **not wired into any production path** — nothing in `triage.js` or `scheduler.js` calls them, so their presence in the repo has no effect on the running app. They exist to evaluate replacing Claude Haiku with a self-hosted Ollama model for the read-triage classification pass (`app/lib/readTriage.js`), for cost reasons.
+
+Testing against two local models on real inbox data surfaced multiple unresolved reliability gaps, each confirmed by direct inspection of the raw model response (not assumed):
+
+- One candidate model consistently invented incorrect argument field names for the tool schema's nested properties, regardless of prompt forcing or temperature.
+- The other candidate was reliable on straightforward batches but failed differently on harder ones — truncating mid-response before completing its tool call in one case, and returning a JSON-encoded string instead of a native array in another.
+
+Both failure modes are safely contained by `readTriage.js`'s existing fail-safe (a message with no valid decision always stays unread — nothing is ever mis-cleared), but neither model is currently reliable enough to fully replace Claude for this task. Do not enable this adapter in production without first building the hybrid design under discussion (local-model first pass, explicit throw-on-malformed-response, Claude fallback for whatever the local pass couldn't resolve).
