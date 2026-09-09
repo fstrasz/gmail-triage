@@ -16,6 +16,30 @@ const { getGmailClient } = await import(
 const { triageReadState, fetchCandidateIds } = await import(
   `file:///F:/AI/fstrasz/gmail-triage/app/lib/readTriage.js?t=${Date.now()}`
 );
+const { classifyReadStateHybrid } = await import(
+  `file:///F:/AI/fstrasz/gmail-triage/app/lib/localLlm.js?t=${Date.now()}`
+);
+const { loadSettings } = await import(
+  `file:///F:/AI/fstrasz/gmail-triage/app/lib/settings.js?t=${Date.now()}`
+);
+
+if (!process.env.OLLAMA_HOST) {
+  console.error("[drain] OLLAMA_HOST is not set — every chunk would fall back to Claude.");
+  console.error("[drain] Set it, e.g.  OLLAMA_HOST=100.112.97.92 node scripts/drain-read-triage.mjs");
+  process.exit(1);
+}
+
+// The drain forces its own flags rather than flipping them in the shared
+// settings.json: that file is also read by the live NAS container every 30
+// minutes, and enabling it there would have the container racing this drain
+// over the same candidate pool and double-billing the classifier.
+const drainSettings = () => ({
+  ...loadSettings(),
+  readTriageEnabled: true,
+  readTriageLocalModelEnabled: true,
+});
+const classify = (messages, client) =>
+  classifyReadStateHybrid(messages, client, { getSettings: drainSettings });
 
 let stopping = false;
 process.on("SIGINT", () => {
@@ -32,10 +56,13 @@ const totals = { cleared: 0, kept: 0, labeled: 0, failed: 0, batches: 0 };
 const t0 = Date.now();
 
 while (!stopping) {
-  const result = await triageReadState(gmail);
+  const result = await triageReadState(gmail, {
+    getSettings: drainSettings,
+    classify,
+  });
 
   if (!result.enabled) {
-    console.error("[drain] readTriageEnabled is false — nothing to do. Enable it first.");
+    console.error("[drain] readTriageEnabled is false — nothing to do.");
     break;
   }
 
