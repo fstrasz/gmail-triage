@@ -13,7 +13,11 @@
 import { getEmailBodyText } from "./eventSearch.js";
 import { classifyReadState } from "./claude.js";
 import { mapWithConcurrency } from "./claudeUtils.js";
-import { loadSettings, setLastReadTriage } from "./settings.js";
+import {
+  loadSettings,
+  setLastReadTriage,
+  setReadTriageCooldown,
+} from "./settings.js";
 
 // Gmail enforces a per-minute per-user quota. Hydrating every candidate at once
 // with Promise.all blew it on the first production run ("Quota exceeded for
@@ -29,6 +33,23 @@ import { loadSettings, setLastReadTriage } from "./settings.js";
 // 2000-message backlog in one run.
 export const READ_TRIAGE_MAX_PER_RUN = 100;
 export const READ_TRIAGE_FETCH_CONCURRENCY = 5;
+
+// A message that's genuinely a permanent keeper (e.g. an @strasz.com
+// deadline) never clears, so without a cooldown it sits at the oldest end
+// of the unread pool forever and is re-selected by the oldest-first slice
+// below on every run — re-billed to the classifier for an identical answer
+// indefinitely, while the classifier never reaches anything newer once the
+// backlog of permanent keepers exceeds READ_TRIAGE_MAX_PER_RUN. 24h means a
+// message re-confirmed as a keeper is skipped for the rest of that day, but
+// still gets a fresh look daily in case circumstances changed (a deadline
+// lapsed, a payment was made elsewhere, etc.).
+export const READ_TRIAGE_COOLDOWN_HOURS = 24;
+
+function isInCooldown(cooldown, id, now) {
+  const ts = cooldown[id];
+  if (!ts) return false;
+  return now - new Date(ts).getTime() < READ_TRIAGE_COOLDOWN_HOURS * 3600000;
+}
 
 // One call, the app's own working label-query syntax (corrected from the
 // spec's MCP-connector wording — see the design doc's mechanics table).
@@ -76,22 +97,45 @@ export async function triageReadState(
     anthropicClient,
     getSettings = loadSettings,
     recordClear = setLastReadTriage,
+    recordCooldown = setReadTriageCooldown,
     classify = classifyReadState,
   } = {},
 ) {
-  if (!getSettings().readTriageEnabled) {
+  const settings = getSettings();
+  if (!settings.readTriageEnabled) {
     return { enabled: false, cleared: 0, kept: [] };
   }
 
   const allIds = await fetchCandidateIds(gmail);
   if (!allIds.length) {
-    return { enabled: true, cleared: 0, kept: [], skipped: 0 };
+    return { enabled: true, cleared: 0, kept: [], skipped: 0, coolingDown: 0 };
   }
+
+  const now = Date.now();
+  const allIdsSet = new Set(allIds);
+  // Prune entries for messages no longer in the candidate pool (cleared by
+  // this app, or read/archived by the operator directly) so the map doesn't
+  // grow forever with ids that will never be selected again anyway.
+  const cooldown = {};
+  for (const [id, ts] of Object.entries(settings.readTriageCooldown || {})) {
+    if (allIdsSet.has(id)) cooldown[id] = ts;
+  }
+
+  const eligibleIds = allIds.filter((id) => !isInCooldown(cooldown, id, now));
+  const coolingDown = allIds.length - eligibleIds.length;
 
   // Oldest first: a backlog should drain from the far end, and the newest mail
   // is the most likely to still be sitting in front of the operator anyway.
-  const ids = allIds.slice(-READ_TRIAGE_MAX_PER_RUN);
-  const skipped = allIds.length - ids.length;
+  const ids = eligibleIds.slice(-READ_TRIAGE_MAX_PER_RUN);
+  const skipped = eligibleIds.length - ids.length;
+
+  if (!ids.length) {
+    // Nothing eligible this run (everything is cooling down) — still persist
+    // the pruned map so stale entries don't linger, but there's nothing to
+    // classify or report.
+    recordCooldown(cooldown);
+    return { enabled: true, cleared: 0, kept: [], skipped, coolingDown };
+  }
 
   const messages = await mapWithConcurrency(
     ids,
@@ -104,14 +148,19 @@ export async function triageReadState(
 
   const clearIds = [];
   const kept = [];
+  const nowIso = new Date(now).toISOString();
   for (const m of messages) {
     const d = byId.get(m.id);
     // Fail-safe: only a confident, non-uncertain "read" clears. Missing,
     // uncertain, or "unread" all stay unread.
     if (d && d.decision === "read" && !d.uncertain) {
       clearIds.push(m.id);
+      delete cooldown[m.id];
       continue;
     }
+    // Examined and still not clearable — cool down so this exact message
+    // isn't re-billed to the classifier again until the window expires.
+    cooldown[m.id] = nowIso;
     kept.push({
       from: m.from,
       subject: m.subject,
@@ -136,6 +185,7 @@ export async function triageReadState(
   // Only record when something actually cleared — an empty run must not
   // clobber a previous run's undo record.
   if (clearIds.length) recordClear(clearIds);
+  recordCooldown(cooldown);
 
   return {
     enabled: true,
@@ -145,5 +195,8 @@ export async function triageReadState(
     // Surfaced so a capped run is visible in the report rather than looking
     // like the whole backlog was handled.
     skipped,
+    // Surfaced so a backlog dominated by permanent keepers is visible too —
+    // otherwise it looks identical to "the whole backlog was handled."
+    coolingDown,
   };
 }

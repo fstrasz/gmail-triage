@@ -45,6 +45,15 @@ const DEFAULTS = {
   // a redeploy.
   readTriageEnabled: true,
   lastReadTriage: null,
+  // { [messageId]: isoTimestamp } — when a candidate was last examined and
+  // NOT cleared (kept unread, uncertain, or a classifier failure). Without
+  // this, a message that's genuinely a permanent keeper (e.g. an @strasz.com
+  // deadline) sits at the oldest end of the unread pool forever, gets
+  // re-selected by fetchCandidateIds' oldest-first slice on every run, and
+  // is re-billed to the classifier for an identical answer indefinitely —
+  // while the classifier never reaches anything newer once the backlog of
+  // permanent keepers exceeds READ_TRIAGE_MAX_PER_RUN.
+  readTriageCooldown: {},
 };
 
 export function loadSettings() {
@@ -186,6 +195,14 @@ export function setLastReadTriage(ids) {
 export function clearLastReadTriage() {
   const s = loadSettings();
   s.lastReadTriage = null;
+  saveSettings(s);
+}
+// Persists the pruned cooldown map after every run (see DEFAULTS comment
+// above) — replaces wholesale rather than merging, since the caller already
+// computed the correct pruned+updated map.
+export function setReadTriageCooldown(map) {
+  const s = loadSettings();
+  s.readTriageCooldown = map;
   saveSettings(s);
 }
 export function setWebSearchLastRunAt() {

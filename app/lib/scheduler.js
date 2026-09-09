@@ -173,6 +173,13 @@ function buildReadTriageReportHtml(result) {
   const skippedHtml = result.skipped
     ? `<p style="color:#b45309;font-size:13px;font-weight:600">${result.skipped} more unread ..OK/..VIP message(s) were left for the next run (this run is capped to protect the Gmail per-minute quota).</p>`
     : "";
+  // A backlog dominated by permanent keepers (deadlines, @strasz.com mail)
+  // looks identical to "the whole backlog was handled" without this — those
+  // messages are excluded from re-classification while their cooldown is
+  // active, not skipped for capacity reasons.
+  const coolingDownHtml = result.coolingDown
+    ? `<p style="color:#6b7280;font-size:13px">${result.coolingDown} previously-examined message(s) were skipped this run (still within their re-check window).</p>`
+    : "";
   const failureHtml = result.failedCount
     ? `<p style="color:#b91c1c;font-size:13px;font-weight:600">${result.failedCount} message(s) could not be classified this run due to a classifier error and were left unread.</p>`
     : "";
@@ -183,6 +190,7 @@ function buildReadTriageReportHtml(result) {
       <p style="color:#6b7280;font-size:13px;margin-top:0">${result.cleared} email(s) marked read</p>
       ${failureHtml}
       ${skippedHtml}
+      ${coolingDownHtml}
       <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
         <thead><tr style="background:#f8fafc">
           <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600">Sender</th>
