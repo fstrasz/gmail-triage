@@ -3743,6 +3743,7 @@ test("triageReadState: a confidently-read message clears UNREAD with the exact b
     anthropicClient,
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: (ids) => (recorded = ids),
+    recordCooldown: () => {},
   });
   assert.equal(gmail._batchCalls.length, 1);
   assert.deepEqual(gmail._batchCalls[0], { ids: ["m1"], removeLabelIds: ["UNREAD"] });
@@ -3767,6 +3768,7 @@ test("triageReadState: a message the classifier marks unread is never sent to ba
     anthropicClient,
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: () => {},
+    recordCooldown: () => {},
   });
   assert.equal(gmail._batchCalls.length, 1);
   assert.deepEqual(gmail._batchCalls[0].ids, ["m1"]);
@@ -3807,6 +3809,7 @@ test("triageReadState: hydration never exceeds the fetch-concurrency cap", async
     anthropicClient: readTriageMockClient({ decisions: [] }),
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: () => {},
+    recordCooldown: () => {},
   });
   assert.ok(
     peak <= 5,
@@ -3828,6 +3831,7 @@ test("triageReadState: caps candidates per run and reports the remainder as skip
     anthropicClient: readTriageMockClient({ decisions: [] }),
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: () => {},
+    recordCooldown: () => {},
   });
   const gets = gmail._calls.filter((c) => c.startsWith("get:")).length;
   assert.equal(gets, 100, "should hydrate at most READ_TRIAGE_MAX_PER_RUN");
@@ -3845,7 +3849,13 @@ test("triageReadState: zero candidates makes zero classifier calls and zero batc
       throw new Error("recordClear must not be called on a zero-candidate run");
     },
   });
-  assert.deepEqual(result, { enabled: true, cleared: 0, kept: [], skipped: 0 });
+  assert.deepEqual(result, {
+    enabled: true,
+    cleared: 0,
+    kept: [],
+    skipped: 0,
+    coolingDown: 0,
+  });
   assert.deepEqual(gmail._calls, ["list"]);
   assert.equal(anthropicClient._calls.length, 0);
 });
@@ -3862,6 +3872,7 @@ test("triageReadState: a message omitted from the classifier result stays unread
     recordClear: () => {
       throw new Error("recordClear must not be called when nothing clears");
     },
+    recordCooldown: () => {},
   });
   assert.equal(gmail._batchCalls.length, 0);
   assert.equal(result.cleared, 0);
@@ -3886,6 +3897,7 @@ test("triageReadState: a 'read' decision marked uncertain stays unread", async (
     recordClear: () => {
       throw new Error("recordClear must not be called when the only decision is uncertain");
     },
+    recordCooldown: () => {},
   });
   assert.equal(gmail._batchCalls.length, 0);
   assert.equal(result.cleared, 0);
@@ -3928,6 +3940,7 @@ test("triageReadState: an unrecognised decision value stays unread (fail-safe, r
     recordClear: () => {
       throw new Error("recordClear must not be called");
     },
+    recordCooldown: () => {},
     classify,
   });
   assert.equal(gmail._batchCalls.length, 0);
@@ -3952,6 +3965,7 @@ test("triageReadState: a failing classifier chunk leaves only its own messages u
     anthropicClient,
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: () => {},
+    recordCooldown: () => {},
   });
   assert.equal(result.failedCount, 25);
   const clearedIds = gmail._batchCalls.flatMap((b) => b.ids);
@@ -3959,6 +3973,118 @@ test("triageReadState: a failing classifier chunk leaves only its own messages u
   for (let i = 25; i < 50; i++) {
     assert.ok(!clearedIds.includes(`m${i}`), `m${i} from the failed chunk must not clear`);
   }
+});
+
+// ─── triageReadState: cooldown (regression — permanent keepers never re-drain) ──
+// Without a cooldown, a message that's genuinely a permanent keeper (e.g. an
+// @strasz.com deadline) sits at the oldest end of the unread pool forever and
+// is re-selected by the oldest-first slice on every run — re-billed to the
+// classifier for an identical answer indefinitely, while newer candidates
+// beyond the ever-growing wall of keepers are never reached.
+test("triageReadState: a message still within its cooldown window is excluded from candidate selection", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "nur@strasz.com", subject: "Deadline reminder", date: "d", bodyText: "keep forever" },
+    m2: { from: "news@example.com", subject: "Newsletter", date: "d", bodyText: "roundup" },
+  });
+  const result = await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({
+      decisions: [{ id: "m2", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
+    }),
+    getSettings: () => ({
+      readTriageEnabled: true,
+      readTriageCooldown: { m1: new Date().toISOString() },
+    }),
+    recordClear: () => {},
+    recordCooldown: () => {},
+  });
+  const gets = gmail._calls.filter((c) => c.startsWith("get:"));
+  assert.deepEqual(gets, ["get:m2"], "m1 is in cooldown and must not be re-hydrated/re-classified");
+  assert.equal(result.coolingDown, 1);
+});
+
+test("triageReadState: an expired cooldown entry no longer excludes the candidate", async () => {
+  const { triageReadState, READ_TRIAGE_COOLDOWN_HOURS } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
+  });
+  const expiredTimestamp = new Date(
+    Date.now() - (READ_TRIAGE_COOLDOWN_HOURS + 1) * 3600000,
+  ).toISOString();
+  await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({ decisions: [] }),
+    getSettings: () => ({
+      readTriageEnabled: true,
+      readTriageCooldown: { m1: expiredTimestamp },
+    }),
+    recordClear: () => {},
+    recordCooldown: () => {},
+  });
+  const gets = gmail._calls.filter((c) => c.startsWith("get:"));
+  assert.deepEqual(gets, ["get:m1"], "an expired cooldown entry must not suppress re-examination");
+});
+
+test("triageReadState: a message that stays unread this run is recorded into the cooldown map", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
+  });
+  let savedCooldown = null;
+  await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({
+      decisions: [{ id: "m1", decision: "unread", reason: "invoice due", amounts: ["$450"], dates: [], uncertain: false }],
+    }),
+    getSettings: () => ({ readTriageEnabled: true, readTriageCooldown: {} }),
+    recordClear: () => {},
+    recordCooldown: (map) => (savedCooldown = map),
+  });
+  assert.ok(savedCooldown.m1, "m1 must be recorded so it isn't re-examined next run");
+  assert.ok(!Number.isNaN(new Date(savedCooldown.m1).getTime()));
+});
+
+test("triageReadState: a message that clears this run is removed from the cooldown map", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "news@example.com", subject: "Digest", date: "d", bodyText: "roundup" },
+  });
+  let savedCooldown = null;
+  await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({
+      decisions: [{ id: "m1", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
+    }),
+    getSettings: () => ({
+      // m1 was previously recorded (e.g. from an uncertain run) but clears
+      // this run, so its cooldown entry is now stale and must be dropped.
+      readTriageEnabled: true,
+      readTriageCooldown: { m1: new Date(Date.now() - 999 * 3600000).toISOString() },
+    }),
+    recordClear: () => {},
+    recordCooldown: (map) => (savedCooldown = map),
+  });
+  assert.equal(savedCooldown.m1, undefined);
+});
+
+test("triageReadState: a cooldown entry for a message no longer in the candidate pool is pruned", async () => {
+  const { triageReadState } = await import(readTriageModulePath);
+  const gmail = readTriageMockGmail({
+    m1: { from: "news@example.com", subject: "Digest", date: "d", bodyText: "roundup" },
+  });
+  let savedCooldown = null;
+  await triageReadState(gmail, {
+    anthropicClient: readTriageMockClient({
+      decisions: [{ id: "m1", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
+    }),
+    getSettings: () => ({
+      readTriageEnabled: true,
+      // "ghost" is no longer unread/tiered (read manually, archived, etc.)
+      // and so is absent from fetchCandidateIds' result — its stale entry
+      // must not persist forever.
+      readTriageCooldown: { ghost: new Date().toISOString() },
+    }),
+    recordClear: () => {},
+    recordCooldown: (map) => (savedCooldown = map),
+  });
+  assert.equal(savedCooldown.ghost, undefined);
 });
 
 // ─── runReadTriagePass: scheduler integration (triage → conditional report) ─
