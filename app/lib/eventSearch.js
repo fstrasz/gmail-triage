@@ -770,9 +770,14 @@ function renderEventItem(e) {
   const titleLink = displayUrl
     ? `<a href="${displayUrl}" style="color:#1d4ed8">${sourceIcon}${e.title}</a>`
     : `${sourceIcon}${e.title}`;
+  // Already on the calendar — say so, so the email is scannable for "what do I
+  // still need to act on". Matches the marker the events page already shows.
+  const calendarBadge = e.calendarEventUrl
+    ? ` <span style="color:#16a34a;font-size:12px;font-weight:600">&#10003; Added to Calendar</span>`
+    : "";
 
   return `<li style="margin-bottom:14px">
-    <strong>${titleLink}</strong>
+    <strong>${titleLink}</strong>${calendarBadge}
     <span style="color:#6b7280;font-size:12px"> &mdash; ${e.interest || ""}</span><br>
     ${priceRating ? `<span style="font-size:13px">${priceRating}</span><br>` : ""}
     <span style="color:#374151;font-size:13px">&#128197; ${e.date || "TBD"}${e.time ? " at " + e.time : ""} &nbsp;|&nbsp; ${e.location || "TBD"}</span><br>

@@ -20,7 +20,12 @@ services:
       # to pick up this mount (the F24 lesson).
       - ./web/dist:/app/web/dist
       - ./config/activity-log.json:/app/activity-log.json
-      - ./config/found-events.json:/app/found-events.json
+      # Events of Interest live in SQLite now. Mounted as a DIRECTORY, not a
+      # single file: WAL mode writes events.db-wal / events.db-shm beside the
+      # database, and under a single-file mount those sidecars would be created
+      # in the container's ephemeral layer — leaving a host-side reader (the
+      # EventViewer) on a stale database and losing WAL state on recreate.
+      - ./config/eventsdb:/app/eventsdb
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json

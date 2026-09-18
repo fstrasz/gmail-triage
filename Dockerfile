@@ -1,4 +1,10 @@
-FROM node:20-alpine
+# Node 24, not 20: `node:sqlite` is a built-in from Node 22 onward, and the
+# Events of Interest store uses it. On 20 it throws ERR_UNKNOWN_BUILTIN_MODULE.
+# Bumping the base is what avoids adding better-sqlite3, which on Alpine/musl
+# would mean compiling a native module (python3 + make + g++ in the image).
+# NOTE: `docker compose up -d --force-recreate` does NOT pick up a change to
+# this file — the image must be rebuilt (`up -d --build`).
+FROM node:24-alpine
 WORKDIR /app
 
 # Install dependencies
