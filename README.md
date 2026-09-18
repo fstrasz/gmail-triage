@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/node-%E2%89%A522-brightgreen?logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/express-4.x-lightgrey?logo=express&logoColor=white" alt="Express">
   <img src="https://img.shields.io/badge/Gmail_API-OAuth2-red?logo=gmail&logoColor=white" alt="Gmail API">
   <img src="https://img.shields.io/badge/Claude_API-Anthropic-blueviolet" alt="Anthropic">
@@ -132,7 +132,7 @@
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js 20+, ES Modules |
+| Runtime | Node.js 22+, ES Modules (22 is the floor — `node:sqlite` is a built-in only from 22) |
 | Web framework | Express 4.x |
 | Email | Gmail API (OAuth2) |
 | AI | Anthropic Claude API (`claude-sonnet-4-6`) |
