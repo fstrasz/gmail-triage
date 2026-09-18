@@ -840,7 +840,10 @@ test("pruneInvalidEmailEvents: TRASH, 404, and self-subject all flip ignored=tru
         ignored: true,
       },
     ];
-    fs.writeFileSync("found-events.json", JSON.stringify(initial, null, 2));
+    const { saveFoundEvents, loadFoundEvents, closeEventsDb } = await import(
+      foundEventsModulePath
+    );
+    saveFoundEvents(initial);
 
     const mockGmail = {
       users: {
@@ -899,7 +902,7 @@ test("pruneInvalidEmailEvents: TRASH, 404, and self-subject all flip ignored=tru
     const { pruneInvalidEmailEvents } = await import(foundEventsModulePath);
     await pruneInvalidEmailEvents(mockGmail);
 
-    const after = JSON.parse(fs.readFileSync("found-events.json"));
+    const after = loadFoundEvents();
     const by = (id) => after.find((e) => e.id === id);
     assert.equal(by("1").ignored, false, "active stays");
     assert.equal(by("2").ignored, true, "TRASH-labeled flipped");
@@ -907,8 +910,11 @@ test("pruneInvalidEmailEvents: TRASH, 404, and self-subject all flip ignored=tru
     assert.equal(by("4").ignored, true, "self-referential subject flipped");
     assert.equal(by("5").ignored, false, "non-Gmail URL skipped");
     assert.equal(by("6").ignored, true, "already-ignored unchanged");
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
+    // The SQLite handle must be closed before the temp dir can be removed on
+    // Windows — an open file handle blocks rmSync.
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
@@ -926,7 +932,13 @@ test("pruneInvalidEmailEvents: transient API error leaves event untouched", asyn
         ignored: false,
       },
     ];
-    fs.writeFileSync("found-events.json", JSON.stringify(initial, null, 2));
+    const {
+      saveFoundEvents,
+      loadFoundEvents,
+      pruneInvalidEmailEvents,
+      closeEventsDb,
+    } = await import(foundEventsModulePath);
+    saveFoundEvents(initial);
 
     const mockGmail = {
       users: {
@@ -940,11 +952,11 @@ test("pruneInvalidEmailEvents: transient API error leaves event untouched", asyn
       },
     };
 
-    const { pruneInvalidEmailEvents } = await import(foundEventsModulePath);
     await pruneInvalidEmailEvents(mockGmail);
 
-    const after = JSON.parse(fs.readFileSync("found-events.json"));
+    const after = loadFoundEvents();
     assert.equal(after[0].ignored, false, "503 must not flip ignored");
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -994,7 +1006,7 @@ test("upsertFoundEvents: 16 events from same Gmail URL all preserved (newsletter
   process.chdir(tmpDir);
   try {
     fs.writeFileSync("found-events.json", "[]");
-    const { upsertFoundEvents, loadFoundEvents } = await import(
+    const { upsertFoundEvents, loadFoundEvents, closeEventsDb } = await import(
       foundEventsModulePath + "?t=" + Date.now()
     );
     const sharedUrl = "https://mail.google.com/mail/u/0/#all/19abc123def456";
@@ -1007,6 +1019,7 @@ test("upsertFoundEvents: 16 events from same Gmail URL all preserved (newsletter
     const added = upsertFoundEvents(events);
     assert.equal(added, 16, "all 16 events from same Gmail URL must be added");
     assert.equal(loadFoundEvents().length, 16);
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1021,7 +1034,7 @@ test("upsertFoundEvents: re-running the same newsletter does not duplicate", asy
   process.chdir(tmpDir);
   try {
     fs.writeFileSync("found-events.json", "[]");
-    const { upsertFoundEvents, loadFoundEvents } = await import(
+    const { upsertFoundEvents, loadFoundEvents, closeEventsDb } = await import(
       foundEventsModulePath + "?t=" + Date.now()
     );
     const sharedUrl = "https://mail.google.com/mail/u/0/#all/19abc123def456";
@@ -1036,6 +1049,7 @@ test("upsertFoundEvents: re-running the same newsletter does not duplicate", asy
       "second run: 0 added (dedup by url|title|date)",
     );
     assert.equal(loadFoundEvents().length, 2);
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1050,7 +1064,7 @@ test("upsertFoundEvents: web events dedup by url alone", async () => {
   process.chdir(tmpDir);
   try {
     fs.writeFileSync("found-events.json", "[]");
-    const { upsertFoundEvents, loadFoundEvents } = await import(
+    const { upsertFoundEvents, loadFoundEvents, closeEventsDb } = await import(
       foundEventsModulePath + "?t=" + Date.now()
     );
     // Two web events with the same url but different titles → second is dedup'd
@@ -1072,6 +1086,7 @@ test("upsertFoundEvents: web events dedup by url alone", async () => {
       "web events with same url collapse to 1",
     );
     assert.equal(loadFoundEvents().length, 1);
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1086,22 +1101,18 @@ test("upsertFoundEvents: ignored event blocks re-add of same key", async () => {
   process.chdir(tmpDir);
   try {
     const url = "https://mail.google.com/mail/u/0/#all/19abc123def456";
-    fs.writeFileSync(
-      "found-events.json",
-      JSON.stringify([
-        {
-          id: "1",
-          url,
-          title: "Event 1",
-          date: "2026-06-01",
-          ignored: true,
-          source: "email",
-        },
-      ]),
-    );
-    const { upsertFoundEvents, loadFoundEvents } = await import(
-      foundEventsModulePath + "?t=" + Date.now()
-    );
+    const { upsertFoundEvents, loadFoundEvents, saveFoundEvents, closeEventsDb } =
+      await import(foundEventsModulePath + "?t=" + Date.now());
+    saveFoundEvents([
+      {
+        id: "1",
+        url,
+        title: "Event 1",
+        date: "2026-06-01",
+        ignored: true,
+        source: "email",
+      },
+    ]);
     const added = upsertFoundEvents([
       { url, title: "Event 1", date: "2026-06-01", source: "email" },
     ]);
@@ -1109,6 +1120,7 @@ test("upsertFoundEvents: ignored event blocks re-add of same key", async () => {
     const all = loadFoundEvents();
     assert.equal(all.length, 1);
     assert.equal(all[0].ignored, true, "still ignored");
+    closeEventsDb();
   } finally {
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
