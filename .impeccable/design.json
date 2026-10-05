@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T17:30:00Z",
+  "title": "Design System: Gmail Triage",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "primary", "displayName": "Notebook Ink", "canonical": "oklch(20.4% 0.033 260.3)", "tonalRamp": ["oklch(15% 0.033 260.3)", "oklch(25% 0.033 260.3)", "oklch(35% 0.033 260.3)", "oklch(45% 0.033 260.3)", "oklch(55% 0.033 260.3)", "oklch(70% 0.033 260.3)", "oklch(85% 0.033 260.3)", "oklch(95% 0.033 260.3)"] },
+      "vip": { "role": "secondary", "displayName": "VIP Amber", "canonical": "oklch(66.6% 0.157 58.3)", "tonalRamp": ["oklch(15% 0.157 58.3)", "oklch(25% 0.157 58.3)", "oklch(35% 0.157 58.3)", "oklch(45% 0.157 58.3)", "oklch(55% 0.157 58.3)", "oklch(70% 0.157 58.3)", "oklch(85% 0.157 58.3)", "oklch(95% 0.157 58.3)"] },
+      "ok": { "role": "secondary", "displayName": "OK Teal", "canonical": "oklch(51.1% 0.086 186.4)", "tonalRamp": ["oklch(15% 0.086 186.4)", "oklch(25% 0.086 186.4)", "oklch(35% 0.086 186.4)", "oklch(45% 0.086 186.4)", "oklch(55% 0.086 186.4)", "oklch(70% 0.086 186.4)", "oklch(85% 0.086 186.4)", "oklch(95% 0.086 186.4)"] },
+      "junk": { "role": "secondary", "displayName": "Junk Red", "canonical": "oklch(57.7% 0.215 27.3)", "tonalRamp": ["oklch(15% 0.2 27.3)", "oklch(25% 0.2 27.3)", "oklch(35% 0.2 27.3)", "oklch(45% 0.2 27.3)", "oklch(55% 0.2 27.3)", "oklch(70% 0.2 27.3)", "oklch(85% 0.2 27.3)", "oklch(95% 0.2 27.3)"] },
+      "review": { "role": "secondary", "displayName": "Review Violet", "canonical": "oklch(54.1% 0.247 293)", "tonalRamp": ["oklch(15% 0.2 293)", "oklch(25% 0.2 293)", "oklch(35% 0.2 293)", "oklch(45% 0.2 293)", "oklch(55% 0.2 293)", "oklch(70% 0.2 293)", "oklch(85% 0.2 293)", "oklch(95% 0.2 293)"] },
+      "fragmented-amber": { "role": "tertiary", "displayName": "Fragmented Amber", "canonical": "#b45309" },
+      "muted": { "role": "neutral", "displayName": "Pencil Grey", "canonical": "oklch(55.4% 0.041 257.4)", "tonalRamp": ["oklch(15% 0.041 257.4)", "oklch(25% 0.041 257.4)", "oklch(35% 0.041 257.4)", "oklch(45% 0.041 257.4)", "oklch(55% 0.041 257.4)", "oklch(70% 0.041 257.4)", "oklch(85% 0.041 257.4)", "oklch(95% 0.041 257.4)"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(93.6% 0.01 261.8)", "tonalRamp": ["oklch(15% 0.01 261.8)", "oklch(25% 0.01 261.8)", "oklch(35% 0.01 261.8)", "oklch(45% 0.01 261.8)", "oklch(55% 0.01 261.8)", "oklch(70% 0.01 261.8)", "oklch(85% 0.01 261.8)", "oklch(95% 0.01 261.8)"] },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff" }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "Page titles only; the largest size in the app." },
+      "body": { "displayName": "Body", "purpose": "Rows, controls, buttons and form labels; 600 weight for emphasis." },
+      "label": { "displayName": "Label", "purpose": "Uppercase card headers, list badges, nav tab labels, metadata." },
+      "mono": { "displayName": "Mono", "purpose": "Technical values only." }
+    },
+    "shadows": [
+      { "name": "floating-toast", "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)", "purpose": "Toast floating above the bottom nav." },
+      { "name": "floating-dialog", "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "purpose": "Dialogs and the bottom sheet." },
+      { "name": "card-faint", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "A few cards and the desktop queue panel; under review." }
+    ],
+    "motion": [],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Default commit button (Add, Save).",
+      "html": "<button class=\"ds-btn-primary\">Add</button>",
+      "css": ".ds-btn-primary { background: var(--color-ink, #0e1726); color: #fff; padding: 6px 12px; border: none; border-radius: 8px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-primary:hover { background: #1e293b; } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; }"
+    },
+    {
+      "name": "Triage Action Button",
+      "kind": "button",
+      "refersTo": "button-action",
+      "description": "One triage decision; text carries the action colour.",
+      "html": "<button class=\"ds-btn-action ds-vip\">VIP</button> <button class=\"ds-btn-action ds-ok\">OK</button> <button class=\"ds-btn-action ds-junk\">Junk</button> <button class=\"ds-btn-action ds-review\">Review</button>",
+      "css": ".ds-btn-action { background: #fff; border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 12px; padding: 8px 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-action:hover { background: rgb(230 234 241 / 0.4); } .ds-btn-action:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; } .ds-vip { color: var(--color-vip, #d97706); } .ds-ok { color: var(--color-ok, #0f766e); } .ds-junk { color: var(--color-junk, #dc2626); } .ds-review { color: var(--color-review, #7c3aed); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-action",
+      "description": "Non-committing action (Create Backup, Run Auto-Clean Now).",
+      "html": "<button class=\"ds-btn-secondary\">Create Backup</button>",
+      "css": ".ds-btn-secondary { background: #fff; color: var(--color-ink, #0e1726); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 8px; padding: 6px 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-secondary:hover { border-color: var(--color-ink, #0e1726); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Hairline field; border turns ink on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Add a location\" />",
+      "css": ".ds-input { background: #fff; color: var(--color-ink, #0e1726); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 8px; padding: 8px 12px; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; outline: none; } .ds-input::placeholder { color: var(--color-muted, #64748b); } .ds-input:focus { border-color: var(--color-ink, #0e1726); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-filter",
+      "description": "Lists filter pill with a count; selected is filled ink.",
+      "html": "<button class=\"ds-chip ds-chip-on\">All 7</button> <button class=\"ds-chip\">VIP 3</button>",
+      "css": ".ds-chip { background: #fff; color: var(--color-muted, #64748b); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 9999px; padding: 4px 12px; font: 500 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-chip:hover { color: var(--color-ink, #0e1726); } .ds-chip-on { background: var(--color-ink, #0e1726); color: #fff; border-color: var(--color-ink, #0e1726); } .ds-chip:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; }"
+    },
+    {
+      "name": "List Badge + Fragmented Marker",
+      "kind": "chip",
+      "refersTo": "chip-list-badge",
+      "description": "Tier-coloured list membership tags and the report-only fragmentation pill.",
+      "html": "<span class=\"ds-badge ds-badge-vip\">VIP · Dana CEO ×</span> <span class=\"ds-badge ds-badge-ok\">OK · D. Chief ×</span> <span class=\"ds-frag\">Fragmented</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; color: #fff; border-radius: 4px; padding: 2px 6px; font: 600 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; } .ds-badge-vip { background: var(--color-vip, #d97706); } .ds-badge-ok { background: var(--color-ok, #0f766e); } .ds-frag { display: inline-flex; align-items: center; border-radius: 9999px; padding: 2px 6px; background: rgb(245 158 11 / 0.2); color: #b45309; font: 700 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Settings Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Hairline-bordered 16px-rounded container with an uppercase label header.",
+      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-h\">Locations</h2><p class=\"ds-card-b\">Las Vegas · Temecula</p></section>",
+      "css": ".ds-card { background: #fff; border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 16px; padding: 16px; max-width: 22rem; } .ds-card-h { margin: 0 0 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.025em; text-transform: uppercase; color: var(--color-muted, #64748b); } .ds-card-b { margin: 0; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; color: var(--color-ink, #0e1726); }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Word-only tabs; weight alone marks the active tab.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-tab ds-tab-on\">Triage</a><a class=\"ds-tab\">Lists</a><a class=\"ds-tab\">Events</a><a class=\"ds-tab\">Review</a><a class=\"ds-tab\">Settings</a></nav>",
+      "css": ".ds-nav { display: flex; border-top: 1px solid var(--color-hairline, #e6eaf1); } .ds-tab { flex: 1; text-align: center; padding: 8px 0; font: 400 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; color: var(--color-muted, #64748b); cursor: pointer; text-decoration: none; } .ds-tab:hover { color: var(--color-ink, #0e1726); } .ds-tab-on { color: var(--color-ink, #0e1726); font-weight: 600; } .ds-tab:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: -2px; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Result of the last action, with Undo only when honestly reversible.",
+      "html": "<div class=\"ds-toast\"><span>Junked ShoeBarn Deals</span><button class=\"ds-toast-undo\">Undo</button></div>",
+      "css": ".ds-toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 28rem; background: var(--color-ink, #0e1726); color: #fff; border-radius: 12px; padding: 12px 16px; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); } .ds-toast-undo { background: none; border: none; color: #fff; font-weight: 600; text-decoration: underline; cursor: pointer; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Notebook",
+    "overview": "Gmail Triage is one person's own sorting tool, not a product sold to strangers. It should feel the way a well-kept field notebook does: personal and used daily, with an order that reflects its owner. Each page holds plain records, and the marks on them carry meaning. The notebook is quiet so the marks can speak. In this app the marks are the four action colours, VIP, OK, Junk and Review, and everything around them steps back.\n\nDensity is high and calm. The owner triages in short, focused bursts, on the desktop at the keyboard and on an iPhone with one thumb, so screens favour many legible rows over generous whitespace. Type is small, sentence-case and set in the system face. Weight, not size, sets the hierarchy.\n\nThe notebook metaphor is the direction, and the current implementation only partly expresses it. Today's neutrals are cool slate, and the surfaces are plain white with hairline borders. Whether the notebook's warmth and tactility should reach the palette and surfaces is an open question, to be settled by the next critique, not assumed here. Depth is also under review (see Elevation & Depth).",
+    "keyCharacteristics": [
+      "Quiet neutral chrome; colour is reserved for meaning.",
+      "Dense, compact rows and controls; small sentence-case type in the system face.",
+      "Weight (600) carries hierarchy, not large sizes.",
+      "Rounded but not soft: 8–16px corners on controls and cards, full pills for filters.",
+      "Every action has a labelled control; gestures and keys are accelerators."
+    ],
+    "rules": [
+      { "name": "The One Meaning Rule", "body": "Each action colour means one decision and nothing else. VIP amber never decorates, and junk red appears only where something is removed. A colour that means two things means nothing.", "section": "colors" },
+      { "name": "The Quiet Chrome Rule", "body": "Navigation, cards, inputs and secondary buttons stay in ink, pencil grey, hairline and paper. If chrome needs colour to be found, the layout is wrong.", "section": "colors" },
+      { "name": "The Weight-Not-Size Rule", "body": "Emphasis is 600 weight at body size. No size above 1.125rem appears in the app. A bigger heading is a sign the screen is doing too much.", "section": "typography" }
+    ],
+    "dos": [
+      "Do keep each action colour tied to its single meaning (The One Meaning Rule).",
+      "Do use 600 weight at 0.875rem for emphasis rather than a larger size.",
+      "Do separate surfaces with 1px hairline borders and 8–16px radii, scaled to the element.",
+      "Do give every action a labelled control; swipes and arrow keys are accelerators only.",
+      "Do keep mobile primary actions at the bottom within thumb reach, respecting the safe-area inset."
+    ],
+    "donts": [
+      "Don't use the Strasz Assessment Systems brand palette in this app (owner's decision, 2026-10-05).",
+      "Don't introduce a display font or headings larger than 1.125rem.",
+      "Don't use junk red for anything that does not remove something.",
+      "Don't add colour to chrome (nav, cards, inputs) to make it stand out.",
+      "Don't reference colour utilities that have no token. The desktop queue's `bg-tint` currently renders nothing, because no `tint` token is defined."
+    ]
+  }
+}
