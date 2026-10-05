@@ -203,6 +203,7 @@ describe("ListsPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /remove .* from VIP/i }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(removeMutate).toHaveBeenCalledWith({
       list: "vip",
       email: "a@x.com",

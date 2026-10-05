@@ -16,6 +16,25 @@ export function MoreSheet({
   onOpenChange: (open: boolean) => void;
   onPick: (action: TriageAction) => void;
 }) {
+  const isSenderWide = (a: TriageAction) =>
+    a === "delete-all" || a === "archive-all";
+  const general = actions.filter((a) => !isSenderWide(a));
+  const senderWide = actions.filter(isSenderWide);
+  const item = (a: TriageAction) => (
+    <button
+      key={a}
+      type="button"
+      role="menuitem"
+      aria-label={ACTION_LABEL[a]}
+      className={`flex items-center justify-between rounded-lg px-3 py-3 text-left text-base font-medium ${ACTION_COLOR[a]} hover:bg-hairline`}
+      onClick={() => {
+        onPick(a);
+        onOpenChange(false);
+      }}
+    >
+      {ACTION_LABEL[a]}
+    </button>
+  );
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -34,21 +53,16 @@ export function MoreSheet({
             All remaining triage actions for the top card.
           </Dialog.Description>
           <div role="menu" className="flex flex-col">
-            {actions.map((a) => (
-              <button
-                key={a}
-                type="button"
-                role="menuitem"
-                aria-label={ACTION_LABEL[a]}
-                className={`flex items-center justify-between rounded-lg px-3 py-3 text-left text-base font-medium ${ACTION_COLOR[a]} hover:bg-hairline`}
-                onClick={() => {
-                  onPick(a);
-                  onOpenChange(false);
-                }}
-              >
-                {ACTION_LABEL[a]}
-              </button>
-            ))}
+            {general.map(item)}
+            {senderWide.length > 0 && (
+              <>
+                <hr className="my-2 border-hairline" />
+                <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  All from this sender
+                </p>
+                {senderWide.map(item)}
+              </>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

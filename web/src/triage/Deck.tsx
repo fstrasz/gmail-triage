@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
 import { ACTION_COLOR, ACTION_LABEL } from "./actionMeta.ts";
@@ -29,12 +29,18 @@ export function Deck({
   onAction,
   moreOpen,
   onMoreOpenChange,
+  feedback,
+  footer,
 }: {
   cards: TriageEmail[];
   mode: Mode;
   onAction: (action: TriageAction) => void;
   moreOpen: boolean;
   onMoreOpenChange: (open: boolean) => void;
+  /** Touch layout only: action feedback + Undo, rendered above the action row. */
+  feedback?: ReactNode;
+  /** Touch layout only: rendered under the action row (Hide VIP/OK toggle). */
+  footer?: ReactNode;
 }) {
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -144,32 +150,35 @@ export function Deck({
         </div>
       ) : (
         <>
-          {/* Primary actions for this mode + the More trigger. */}
-          <div
-            className="mt-4 flex items-center justify-center gap-2"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          >
-            {BUTTONS[mode].map((a) => (
+          {/* Thumb zone: feedback + Undo directly above the action row, the
+              mode toggle below it. */}
+          {feedback && <div className="mt-3 flex justify-center">{feedback}</div>}
+          <div style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            {/* Primary actions for this mode + the More trigger. */}
+            <div className="mt-4 flex items-center justify-center gap-2">
+              {BUTTONS[mode].map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  aria-label={ACTION_LABEL[a]}
+                  disabled={!top}
+                  className={`flex-1 rounded-xl border border-hairline px-3 py-3 text-sm font-semibold ${ACTION_COLOR[a]} disabled:opacity-40`}
+                  onClick={() => onAction(a)}
+                >
+                  {ACTION_LABEL[a]}
+                </button>
+              ))}
               <button
-                key={a}
                 type="button"
-                aria-label={ACTION_LABEL[a]}
+                aria-label="More actions"
                 disabled={!top}
-                className={`flex-1 rounded-xl border border-hairline px-3 py-3 text-sm font-semibold ${ACTION_COLOR[a]} disabled:opacity-40`}
-                onClick={() => onAction(a)}
+                className="rounded-xl border border-hairline px-4 py-3 text-lg font-semibold text-ink disabled:opacity-40"
+                onClick={() => onMoreOpenChange(true)}
               >
-                {ACTION_LABEL[a]}
+                ⋯
               </button>
-            ))}
-            <button
-              type="button"
-              aria-label="More actions"
-              disabled={!top}
-              className="rounded-xl border border-hairline px-4 py-3 text-lg font-semibold text-ink disabled:opacity-40"
-              onClick={() => onMoreOpenChange(true)}
-            >
-              ⋯
-            </button>
+            </div>
+            {footer && <div className="mt-3 flex justify-center">{footer}</div>}
           </div>
 
           <MoreSheet

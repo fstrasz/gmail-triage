@@ -2725,6 +2725,43 @@ test("normalizeGuard: carries the scope string through when present", async () =
   assert.equal(guarded.guard.scope, "entire mailbox · any display name");
 });
 
+test("normalizeGuard: passes action and fromName through when present", async () => {
+  const { normalizeGuard } = await import(triageApiModulePath);
+  const guarded = normalizeGuard({
+    ok: false,
+    guard: true,
+    count: 3,
+    email: "x@y.com",
+    message: "m",
+    action: "delete-all",
+    fromName: "REI",
+  });
+  assert.equal(guarded.guard.action, "delete-all");
+  assert.equal(guarded.guard.fromName, "REI");
+  assert.equal(guarded.guard.count, 3);
+});
+
+test("delete-all / archive-all: unconfirmed always returns the guard, confirmed proceeds", () => {
+  const src = fs.readFileSync(
+    path.join(projectDir, "app", "triage.js"),
+    "utf8",
+  );
+  const start = src.indexOf('if (action === "delete-all"');
+  assert.ok(start >= 0, "delete-all block not found");
+  const block = src.slice(start, src.indexOf("const moved = isDelete", start));
+  // (a) the guard is unconditional on count: no threshold comparison.
+  assert.ok(
+    !/count\s*>/.test(block),
+    "unconfirmed delete-all must not gate the guard on a count threshold",
+  );
+  assert.match(block, /if \(!confirmed\)/);
+  assert.match(block, /return res\.json\(\s*normalizeGuard\(/);
+  assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
+  // (b) confirmed falls through to the delete.
+  const after = src.slice(start, start + 2000);
+  assert.match(after, /deleteAllFromSender\(gmail, fromEmail\)/);
+});
+
 test("guardScope: Clean names the display name it is restricted to", async () => {
   const { guardScope } = await import(triageApiModulePath);
   assert.equal(

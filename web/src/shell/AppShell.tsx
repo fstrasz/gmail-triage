@@ -17,7 +17,7 @@ export function AppShell() {
      *   >768px  — row flex: narrow nav rail on the left, content fills right
      */
     <div className="flex flex-col h-dvh md:flex-row">
-      <main className="flex-1 overflow-y-auto md:order-2">
+      <main className="flex-1 overflow-y-auto pt-[env(safe-area-inset-top)] md:pt-0 md:order-2">
         <Outlet />
       </main>
 
@@ -28,7 +28,7 @@ export function AppShell() {
        */}
       <nav
         aria-label="Main navigation"
-        className="flex border-t border-hairline md:border-t-0 md:border-r md:flex-col md:w-16 md:py-4 md:gap-1 md:order-1"
+        className="flex border-t border-hairline pb-[env(safe-area-inset-bottom)] md:pb-0 md:border-t-0 md:border-r md:flex-col md:w-16 md:py-4 md:gap-1 md:order-1"
       >
         {TABS.map(({ to, label, end }) => (
           <NavLink
@@ -37,8 +37,8 @@ export function AppShell() {
             end={end}
             className={({ isActive }) =>
               [
-                "flex-1 flex flex-col items-center justify-center py-2 text-xs",
-                "md:flex-none md:py-3 md:px-2 md:rounded-lg md:mx-1",
+                "flex-1 flex flex-col items-center justify-center min-h-11 py-2 text-xs",
+                "md:flex-none md:min-h-0 md:py-3 md:px-2 md:rounded-lg md:mx-1",
                 isActive
                   ? "text-ink font-semibold"
                   : "text-muted hover:text-ink",
@@ -57,9 +57,11 @@ export function AppShell() {
          */}
         <a
           href="/legacy"
-          className="flex items-center justify-center py-2 text-xs text-muted hover:text-ink md:py-3"
+          aria-label="Legacy UI"
+          title="Legacy UI"
+          className="flex-1 flex items-center justify-center min-h-11 py-2 text-xs text-muted hover:text-ink md:flex-none md:min-h-0 md:py-3"
         >
-          Legacy UI
+          Legacy
         </a>
       </nav>
     </div>
