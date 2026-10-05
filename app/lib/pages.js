@@ -7,7 +7,7 @@ import { loadRules } from "./rules.js";
 import { loadStats } from "./stats.js";
 import { loadViplist } from "./viplist.js";
 
-export const APP_VERSION = "v1.2.26";
+export const APP_VERSION = "v1.2.27";
 
 // ─── Shared: List-overlap conflict card ────────────────────────────────────────
 function buildConflictSection(conflicts) {
