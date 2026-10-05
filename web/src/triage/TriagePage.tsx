@@ -21,6 +21,7 @@ import { Deck } from "./Deck.tsx";
 import { deckReducer } from "./deckReducer.ts";
 import type { GuardInfo } from "./GuardDialog.tsx";
 import { GuardDialog } from "./GuardDialog.tsx";
+import { ACTION_KEY, ShortcutsDialog } from "./ShortcutsDialog.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction } from "./swipeMap.ts";
 import type { ToastInfo } from "./Toast.tsx";
@@ -30,7 +31,7 @@ const QUEUE_LIMIT = 25;
 
 // Desktop action column order. 'gap' renders a small visual divider between
 // groups; 'spacer' pushes Junk/Delete to the bottom.
-type ColItem = TriageAction | "gap" | "spacer";
+type ColItem = TriageAction | "gap" | "spacer" | "group-sender";
 const DESKTOP_COL: ColItem[] = [
   "vip",
   "ok",
@@ -44,9 +45,18 @@ const DESKTOP_COL: ColItem[] = [
   "gap",
   "junk",
   "delete",
+  "group-sender",
   "delete-all",
   "archive-all",
 ];
+
+// Letter shortcut → action (keys come from ACTION_KEY, shared with the dialog).
+const KEY_ACTION = new Map<string, TriageAction>(
+  (Object.entries(ACTION_KEY) as [TriageAction, string][]).map(([a, k]) => [
+    k,
+    a,
+  ]),
+);
 
 // A pending action: the payload we'd re-send on guard-confirm, kept so the
 // confirm path re-calls the mutation with confirmed:true for the same card.
@@ -91,6 +101,10 @@ export function TriagePage() {
   const [announce, setAnnounce] = useState("");
   // Lifted from Deck so the keyboard handler can read whether More sheet is open.
   const [moreOpen, setMoreOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Focus target after a queue click, so arrow keys work without a button
+  // holding focus.
+  const previewRef = useRef<HTMLDivElement>(null);
   const pending = useRef<PendingAction | null>(null);
   // DECK-2: action committed but not yet announced. The new-top card is read
   // from post-dispatch deck state (an effect), never a stale pre-dispatch
@@ -238,6 +252,7 @@ export function TriagePage() {
   // the queue closes up (handled by the reducer's `act`).
   function selectCard(id: string) {
     dispatch({ type: "select", id });
+    previewRef.current?.focus();
   }
 
   // Memoized so the keyboard effect below (which calls this on 'u') doesn't
@@ -287,6 +302,28 @@ export function TriagePage() {
       if (action.isPending) return;
       if (guard !== null) return;
       if (moreOpen) return;
+      if (shortcutsOpen) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (desktop) {
+        if (e.key === "?") {
+          e.preventDefault();
+          setShortcutsOpen(true);
+          return;
+        }
+        if (e.key === "j" || e.key === "k") {
+          const i = deck.cards.findIndex((c) => c.id === active?.id);
+          const next = deck.cards[i + (e.key === "j" ? 1 : -1)];
+          if (next) dispatch({ type: "select", id: next.id });
+          return;
+        }
+        const keyAction = KEY_ACTION.get(e.key.toLowerCase());
+        if (keyAction) {
+          e.preventDefault();
+          commit(keyAction);
+          return;
+        }
+      }
 
       const dir = KEY_DIR[e.key];
       if (dir) {
@@ -324,7 +361,19 @@ export function TriagePage() {
     // calls, and each rebuilds when ITS real dependencies change (including
     // the active/selected card for `commit` — see its useCallback above). So
     // this effect now correctly re-runs on a selection change, fixing O1.
-  }, [mode, action.isPending, guard, moreOpen, toast, commit, onUndo]);
+  }, [
+    mode,
+    action.isPending,
+    guard,
+    moreOpen,
+    shortcutsOpen,
+    desktop,
+    deck.cards,
+    active,
+    toast,
+    commit,
+    onUndo,
+  ]);
 
   // ---- States --------------------------------------------------------------
 
@@ -332,6 +381,46 @@ export function TriagePage() {
   if (queue.isError) {
     return <ReconnectGmail />;
   }
+
+  // Touch layout with a deck: feedback/Undo and the Hide toggle live in the
+  // deck's thumb zone instead of the header.
+  const inDeck = !desktop && !queue.isPending && deck.cards.length > 0;
+
+  const toastNode = toast ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-2 text-sm"
+    >
+      <span className="text-muted">{toastMessage(toast)}</span>
+      {isUndoable(toast.undo.action) && (
+        <button
+          type="button"
+          aria-label="Undo last action"
+          className="font-semibold text-ink underline underline-offset-2"
+          onClick={() => onUndo(toast.undo)}
+        >
+          Undo
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  const hideToggle = (
+    <button
+      type="button"
+      aria-label="Hide VIP/OK listed senders"
+      aria-pressed={hideListed}
+      onClick={() => setMode(hideListed ? "shown" : "hidden")}
+      className={`shrink-0 rounded-full border px-3 py-1 text-sm font-medium ${
+        hideListed
+          ? "border-ink bg-ink text-white"
+          : "border-hairline text-muted"
+      }`}
+    >
+      Hide VIP/OK
+    </button>
+  );
 
   return (
     <div className="flex h-full flex-col p-4">
@@ -354,39 +443,9 @@ export function TriagePage() {
         </h1>
         {/* Inline feedback — centered between title and chip */}
         <div className="flex flex-1 justify-center">
-          {toast && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex items-center gap-2 text-sm"
-            >
-              <span className="text-muted">{toastMessage(toast)}</span>
-              {isUndoable(toast.undo.action) && (
-                <button
-                  type="button"
-                  aria-label="Undo last action"
-                  className="font-semibold text-ink underline underline-offset-2"
-                  onClick={() => onUndo(toast.undo)}
-                >
-                  Undo
-                </button>
-              )}
-            </div>
-          )}
+          {!inDeck && toastNode}
         </div>
-        <button
-          type="button"
-          aria-label="Hide VIP/OK listed senders"
-          aria-pressed={hideListed}
-          onClick={() => setMode(hideListed ? "shown" : "hidden")}
-          className={`shrink-0 rounded-full border px-3 py-1 text-sm font-medium ${
-            hideListed
-              ? "border-ink bg-ink text-white"
-              : "border-hairline text-muted"
-          }`}
-        >
-          Hide VIP/OK
-        </button>
+        {!inDeck && hideToggle}
       </header>
 
       {queue.isPending ? (
@@ -434,7 +493,19 @@ export function TriagePage() {
                 return <div key={`gap-${i}`} className="h-1.5" />;
               if (item === "spacer")
                 return <div key="spacer" className="flex-1" />;
+              if (item === "group-sender")
+                return (
+                  <div
+                    key="group-sender"
+                    className="mt-1 border-t border-hairline pt-1.5"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      All from this sender
+                    </p>
+                  </div>
+                );
               const a = item;
+              const key = a in ACTION_KEY ? ACTION_KEY[a as keyof typeof ACTION_KEY] : null;
               return (
                 <button
                   key={a}
@@ -445,13 +516,33 @@ export function TriagePage() {
                   className={`w-full rounded-lg py-2 text-center text-xs font-semibold leading-tight text-white disabled:opacity-40 ${ACTION_BG[a]}`}
                 >
                   {ACTION_LABEL[a]}
+                  {key && (
+                    <kbd
+                      aria-hidden="true"
+                      className="ml-1 font-mono text-[10px] font-normal opacity-80"
+                    >
+                      {key.toUpperCase()}
+                    </kbd>
+                  )}
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setShortcutsOpen(true)}
+              className="mt-1 text-center text-[11px] text-muted underline underline-offset-2"
+            >
+              Shortcuts (?)
+            </button>
           </div>
 
           {/* Pane 3 — preview: card header (sender/subject/badge) + iframe body */}
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div
+            ref={previewRef}
+            tabIndex={-1}
+            aria-label="Selected email preview"
+            className="flex flex-1 flex-col overflow-hidden outline-none"
+          >
             {active && (
               <>
                 <div className="flex-shrink-0 border-b border-hairline bg-white px-4 py-3">
@@ -522,11 +613,18 @@ export function TriagePage() {
               onAction={(a) => commit(a)}
               moreOpen={moreOpen}
               onMoreOpenChange={setMoreOpen}
+              feedback={toastNode}
+              footer={hideToggle}
             />
           </div>
         </div>
       )}
 
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        mode={mode}
+      />
       <GuardDialog
         guard={guard}
         onConfirm={confirmGuard}
