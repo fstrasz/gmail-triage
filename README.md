@@ -40,6 +40,25 @@
 
 - **Bulk safety guard** — Any action that would label or archive more than 100 emails (VIP, OK, VIP & Clean, OK & Clean, Junk, list Reapply) triggers a confirmation dialog showing the exact count before proceeding. Cancel cleanly reverts the card to its pre-click state. The guard applies to UI-triggered actions only; scheduler auto-scans run without prompts.
 
+- **Delete All / Archive All always confirm** — These act on every message from the sender, under any display name, so they ask first whatever the count. The dialog names the sender and gives the count. For Delete All it states that the mail goes to Gmail Trash and can be recovered for 30 days; for Archive All, that mail stays in All Mail and unread stays unread. Both sit apart from the per-email actions, under "All from this sender".
+
+- **Keyboard shortcuts (desktop)** — Each key acts on the selected email. Clicking a sender in the queue selects it, and the keys then act on it straight away.
+
+  | Key | Action |
+  |---|---|
+  | `j` / `k` | Next / previous email (selects only) |
+  | `e` | Archive |
+  | `#` | Delete |
+  | `!` | Junk |
+  | `v` | VIP |
+  | `o` | OK |
+  | `r` | Review |
+  | `u` | Undo the last action |
+  | `?` | Show all shortcuts |
+  | Arrow keys | Same as the swipe directions shown on the card |
+
+  Each action button shows its key. Delete All, Archive All, the Clean actions and Unsubscribe deliberately have no key; use the buttons. On iPhone, the result of the last action and its **Undo** appear just above the action buttons, within thumb reach.
+
 - **Auto-unsubscribe** — Reads `List-Unsubscribe` / `List-Unsubscribe-Post` headers and attempts removal in order: RFC 8058 one-click POST, HTTP GET, unsubscribe email via Gmail API, open URL in browser tab. Falls back to a pre-filled Gmail compose window if no header is present.
 
 ---
@@ -105,6 +124,8 @@
 - **Blocklist backup & restore** — "Create Backup" on the Lists page saves a numbered snapshot to `blocklist.backups.json`. Resetting the blocklist auto-saves a pre-reset backup to `blocklist.backup.json`. A backup is also saved automatically at the start of every scheduled scan. Both are managed in Settings with options to replace or merge into the current list.
 
 - **Danger zone reset** — Resetting the blocklist requires typing `RESET` in a confirmation modal. A backup is always saved before the wipe.
+
+- **Removals confirm first** — Each list entry has a small × to remove it. The × asks first, naming the entry, the list and the address ("Remove Dana CEO from VIP?"), and says that mail already labeled keeps its label. Deleting a rule asks the same way, naming the rule.
 
 ---
 
