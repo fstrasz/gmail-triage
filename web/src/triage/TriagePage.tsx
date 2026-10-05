@@ -487,7 +487,7 @@ export function TriagePage() {
           </aside>
 
           {/* Pane 2 — action column */}
-          <div className="flex w-[72px] flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-hairline bg-tint p-1.5">
+          <div className="flex w-24 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-hairline bg-tint p-1.5">
             {DESKTOP_COL.map((item, i) => {
               if (item === "gap")
                 return <div key={`gap-${i}`} className="h-1.5" />;
