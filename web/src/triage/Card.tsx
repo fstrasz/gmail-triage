@@ -65,7 +65,7 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
         <button
           type="button"
           aria-label={expanded ? "Hide email body" : "Show email body"}
-          className="font-medium text-ink underline underline-offset-2"
+          className="inline-flex items-center min-h-11 font-medium text-ink underline underline-offset-2"
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? "Hide body" : "Show body"}
@@ -73,7 +73,7 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
         <a
           href={senderHref(email)}
           aria-label={`View all from this sender (${email.fromEmail ?? email.fromName ?? ""})`}
-          className="text-muted underline underline-offset-2"
+          className="inline-flex items-center min-h-11 text-muted underline underline-offset-2"
         >
           View all from this sender
         </a>
