@@ -60,7 +60,16 @@ export type ActionResult =
       openTabUrl?: string | null;
       analysis?: unknown;
     }
-  | { ok: false; guard: { count: number; message: string; scope?: string } }
+  | {
+      ok: false;
+      guard: {
+        count: number;
+        message: string;
+        scope?: string;
+        action?: string;
+        fromName?: string | null;
+      };
+    }
   | { ok: false; error: "gmail_auth" };
 
 // ---------------------------------------------------------------------------
