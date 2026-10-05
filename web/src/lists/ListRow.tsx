@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ConfirmDialog } from "../settings/ConfirmDialog.tsx";
 import type { ListName, MergedRow } from "./listsApi.ts";
 
 const BADGE: Record<ListName, { label: string; cls: string }> = {
@@ -15,6 +17,7 @@ export function ListRow({
   onRemove: (list: ListName, email: string, name?: string) => void;
   removing: boolean;
 }) {
+  const [pending, setPending] = useState<MergedRow["memberships"][number] | null>(null);
   const reason = row.memberships.find((m) => m.reason)?.reason;
 
   return (
@@ -39,14 +42,34 @@ export function ListRow({
               type="button"
               aria-label={`Remove ${m.name || row.email} from ${BADGE[m.list].label}`}
               disabled={removing}
-              onClick={() => onRemove(m.list, row.email, m.name || undefined)}
-              className="leading-none hover:opacity-80 disabled:opacity-40"
+              onClick={() => setPending(m)}
+              className="inline-flex min-h-6 min-w-6 items-center justify-center leading-none hover:opacity-80 disabled:opacity-40"
             >
               ×
             </button>
           </span>
         ))}
       </div>
+      <ConfirmDialog
+        open={pending !== null}
+        title={
+          pending
+            ? `Remove ${pending.name || "any name"} from ${BADGE[pending.list].label}?`
+            : ""
+        }
+        message={
+          pending
+            ? `${row.email} will no longer be auto-labeled ${BADGE[pending.list].label}. Mail already labeled keeps its label.`
+            : ""
+        }
+        confirmLabel="Remove"
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          if (pending)
+            onRemove(pending.list, row.email, pending.name || undefined);
+          setPending(null);
+        }}
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-ink">
           {row.email}

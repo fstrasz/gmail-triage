@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { ConfirmDialog } from "../settings/ConfirmDialog.tsx";
 import type { Rule } from "./listsApi.ts";
 import {
   useAddRule,
@@ -22,6 +23,7 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
   const toggleRule = useToggleRule();
   const deleteRule = useDeleteRule();
 
+  const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [senders, setSenders] = useState("");
@@ -122,7 +124,7 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
                 type="button"
                 aria-label={`Delete ${r.name || r.label}`}
                 disabled={deleteRule.isPending}
-                onClick={() => deleteRule.mutate({ id: r.id })}
+                onClick={() => setPendingDelete(r)}
                 className="text-xs font-medium text-junk underline disabled:opacity-40"
               >
                 Delete
@@ -131,6 +133,18 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete rule “${pendingDelete?.name || pendingDelete?.label}”?`}
+        message="The rule stops labeling new mail. Mail it already labeled keeps its label. The rule itself cannot be restored."
+        confirmLabel="Delete rule"
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) deleteRule.mutate({ id: pendingDelete.id });
+          setPendingDelete(null);
+        }}
+      />
 
       <form
         onSubmit={submit}
