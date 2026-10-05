@@ -34,7 +34,7 @@ export function toastMessage(info: ToastInfo): string {
       return "Unsubscribed — sender blocklisted (not reversible here)";
     if (action === "delete-all" || action === "archive-all") {
       const n = info.labeled ?? 0;
-      return `${ACTION_VERB[action]} — ${n} messages, not reversible here`;
+      return `${ACTION_VERB[action]} — ${n} ${n === 1 ? "message" : "messages"}, not reversible here`;
     }
     return "Queued for review";
   }

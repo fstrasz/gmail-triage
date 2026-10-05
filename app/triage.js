@@ -1929,17 +1929,18 @@ app.post("/api/triage/action", async (req, res) => {
       if (!confirmed) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
-        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
-          return res.json(
-            normalizeGuard({
-              ok: false,
-              guard: true,
-              count,
-              email: fromEmail,
-              scope: guardScope(action, name),
-              message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
-            }),
-          );
+        return res.json(
+          normalizeGuard({
+            ok: false,
+            guard: true,
+            count,
+            email: fromEmail,
+            action,
+            fromName: name ?? null,
+            scope: guardScope(action, name),
+            message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+          }),
+        );
       }
       const moved = isDelete
         ? await deleteAllFromSender(gmail, fromEmail)

@@ -78,6 +78,8 @@ export function normalizeGuard(result) {
       count: result.count,
       message: result.message,
       scope: result.scope,
+      ...(result.action !== undefined && { action: result.action }),
+      ...(result.fromName !== undefined && { fromName: result.fromName }),
     },
   };
 }
