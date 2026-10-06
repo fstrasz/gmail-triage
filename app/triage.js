@@ -1153,7 +1153,7 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
       "</div><div><strong>Subject:</strong> " +
       g("Subject").replace(/</g, "&lt;") +
       "</div><div><strong>Date:</strong> " +
-      g("Date") +
+      g("Date").replace(/</g, "&lt;") +
       "</div></div>";
   return (
     "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body>" +
@@ -1163,8 +1163,19 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
   );
 }
 
+// Headers for any route that serves raw email HTML. The sandbox CSP gives the
+// document an opaque origin with scripts disabled (popups allowed so links open).
+function setEmailBodyHeaders(res) {
+  res.set("Content-Security-Policy", "sandbox allow-popups");
+  res.set("Referrer-Policy", "no-referrer");
+}
+
 // ─── API: Preview ──────────────────────────────────────────────────────────────
 app.get("/api/preview/:id", async (req, res) => {
+  // Same isolation as /api/triage/body: the message HTML is attacker-controlled, so
+  // render it in a unique opaque origin with no script execution even if opened
+  // top-level or framed without a sandbox attribute.
+  setEmailBodyHeaders(res);
   try {
     const gmail = await getGmailClient();
     res.send(await buildPreviewDocument(gmail, req.params.id));
@@ -1738,7 +1749,7 @@ app.get("/api/triage/body", async (req, res) => {
   const { id } = req.query;
   // Defense-in-depth (item 40): sandbox the response so a direct top-level open of the
   // body URL is isolated (unique origin, no scripts), mirroring the allow-popups iframe.
-  res.set("Content-Security-Policy", "sandbox allow-popups");
+  setEmailBodyHeaders(res);
   if (!id) return res.status(400).send("<pre>Missing id</pre>");
   try {
     const gmail = await getGmailClient();
@@ -2561,9 +2572,15 @@ if (process.env.WEB_APP_ENABLED !== "0") {
   );
 }
 
-app.listen(PORT, () => {
-  console.log("Gmail triage server on http://localhost:" + PORT);
-  startScheduler(getGmailClient);
-  startDailySummaryScheduler(getGmailClient);
-  startEventsSearchScheduler(getGmailClient);
-});
+// Exported so the test suite can mount the real middleware + routes on an
+// ephemeral port. GMAIL_TRIAGE_NO_LISTEN=1 (tests only) skips the listener and the
+// schedulers; production never sets it.
+export { app };
+
+if (process.env.GMAIL_TRIAGE_NO_LISTEN !== "1")
+  app.listen(PORT, () => {
+    console.log("Gmail triage server on http://localhost:" + PORT);
+    startScheduler(getGmailClient);
+    startDailySummaryScheduler(getGmailClient);
+    startEventsSearchScheduler(getGmailClient);
+  });

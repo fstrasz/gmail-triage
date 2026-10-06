@@ -4550,3 +4550,53 @@ test("H1 senderPage: a hostile email cannot break out of the inline script", asy
   const m = script.match(/var pageFromEmail=(.*?);\n/);
   assert.equal(JSON.parse(m[1]), evil);
 });
+
+// Mount the real Express app (middleware + routes) on an ephemeral port. Routes
+// exercised here must fail or short-circuit before any Gmail call: no credentials
+// exist in the test cwd, so getGmailClient() throws.
+const triageModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "triage.js"),
+).href;
+async function withApp(fn) {
+  process.env.GMAIL_TRIAGE_NO_LISTEN = "1";
+  const { app } = await import(triageModulePath);
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const origErr = console.error;
+  console.error = () => {}; // routes log expected Gmail-auth failures
+  try {
+    return await fn(base);
+  } finally {
+    console.error = origErr;
+    await new Promise((r) => server.close(r));
+  }
+}
+
+test("H2 /api/preview: served with a sandbox CSP and no-referrer", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/preview/abc123`);
+    await r.text();
+    assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups");
+    assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+  });
+});
+
+test("H2 old-UI iframes are all sandboxed without allow-same-origin", async () => {
+  const { reviewPage } = await import(pagesModulePath);
+  const { body } = reviewPage([
+    { id: "m1", status: "pending", subject: "s", from: "a@b.com", analysis: {} },
+  ]);
+  const iframes = body.match(/<iframe\b[^>]*>/g) || [];
+  assert.ok(iframes.length >= 1);
+  for (const f of iframes) {
+    assert.match(f, /sandbox="allow-popups"/);
+  }
+  const src = fs.readFileSync(path.join(projectDir, "app", "lib", "pages.js"), "utf8");
+  const all = src.match(/<iframe\b[^>]*>/g) || [];
+  assert.ok(all.length >= 4);
+  for (const f of all) {
+    assert.match(f, /sandbox="allow-popups"/, f);
+  }
+});

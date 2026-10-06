@@ -228,7 +228,7 @@ export function triagePage(
           <span>Preview</span>
           <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
         </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups"></iframe>
       </div>
     </div>
   `;
@@ -803,7 +803,7 @@ export function senderPage(emails, fromEmail, fromName) {
               <span>Preview</span>
               <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
             </div>
-            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
+            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups"></iframe>
           </div>
         </div>
       </div>
@@ -976,7 +976,7 @@ export function labeledPage(labelName, emails) {
           <span>Preview</span>
           <button class="preview-close" onclick="closePreview()" aria-label="Close preview" title="Close preview">✕</button>
         </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups allow-same-origin"></iframe>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-popups"></iframe>
       </div>
     </div>`;
 
@@ -1699,7 +1699,7 @@ export function reviewPage(items) {
       </div>`
           : `<div style="font-size:.82rem;color:#15803d;margin-bottom:12px">✅ Action executed</div>`
       }
-      <iframe src="/api/preview/${item.id}" style="width:100%;height:300px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0"></iframe>
+      <iframe src="/api/preview/${encodeURIComponent(item.id)}" sandbox="allow-popups" referrerpolicy="no-referrer" style="width:100%;height:300px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0"></iframe>
       ${calendarForm(item)}
       ${draftReplyBox(item)}
     </div>`;
