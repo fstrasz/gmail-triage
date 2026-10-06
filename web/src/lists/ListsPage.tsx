@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { btnPrimary, input, pill } from "../shell/ui.ts";
 import { AddSenderForm } from "./AddSenderForm.tsx";
 import { DangerZone } from "./DangerZone.tsx";
 import { ListRow } from "./ListRow.tsx";
@@ -11,7 +12,7 @@ import { RulesSection } from "./RulesSection.tsx";
 const FILTERS: Filter[] = ["all", "blocklist", "vip", "ok"];
 const FILTER_LABEL: Record<Filter, string> = {
   all: "All",
-  blocklist: "Blocked",
+  blocklist: "Blocklist",
   vip: "VIP",
   ok: "OK",
 };
@@ -37,8 +38,8 @@ export function ListsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
-      <h1 className="text-lg font-semibold text-ink">Lists</h1>
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-6 overflow-y-auto p-3 sm:p-4 lg:p-5">
+      <h1 className="text-xl font-semibold text-ink">Lists</h1>
 
       <AddSenderForm />
 
@@ -50,13 +51,10 @@ export function ListsPage() {
               type="button"
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
-              className={`rounded-full border px-3 py-1 text-sm font-medium ${
-                filter === f
-                  ? "border-ink bg-ink text-white"
-                  : "border-hairline text-muted"
-              }`}
+              className={pill(filter === f)}
             >
-              {FILTER_LABEL[f]} <span className="font-mono">{counts[f]}</span>
+              {FILTER_LABEL[f]}{" "}
+              <span className="tabular opacity-75">{counts[f]}</span>
             </button>
           ))}
           <input
@@ -65,21 +63,21 @@ export function ListsPage() {
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="ml-auto rounded-lg border border-hairline px-3 py-1 text-sm text-ink"
+            className={`${input} w-full sm:ml-auto sm:w-56`}
           />
         </div>
 
         {visible.length === 0 ? (
           <p
             data-testid="lists-empty"
-            className="rounded-xl border border-hairline p-6 text-center text-sm text-muted"
+            className="rounded-xl border border-dashed border-rule-strong p-6 text-center text-sm text-muted"
           >
             {rows.length === 0
               ? "No senders on any list yet."
               : "No senders match this filter."}
           </p>
         ) : (
-          <ul className="divide-y divide-hairline rounded-xl border border-hairline">
+          <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-paper">
             {visible.map((row) => (
               <ListRow
                 key={row.email}
@@ -103,10 +101,13 @@ export function ListsPage() {
 
 function ListsSkeleton() {
   return (
-    <div data-testid="lists-skeleton" className="flex flex-col gap-4 p-4">
-      <div className="h-8 w-32 animate-pulse rounded bg-hairline/60" />
-      <div className="h-24 animate-pulse rounded-xl bg-hairline/40" />
-      <div className="h-48 animate-pulse rounded-xl bg-hairline/40" />
+    <div
+      data-testid="lists-skeleton"
+      className="flex flex-col gap-4 p-4 motion-safe:animate-pulse"
+    >
+      <div className="h-8 w-32 rounded bg-sunk" />
+      <div className="h-24 rounded-xl border border-rule bg-paper" />
+      <div className="h-48 rounded-xl border border-rule bg-paper" />
     </div>
   );
 }
@@ -118,10 +119,7 @@ function ReconnectGmail() {
       <p className="text-sm text-muted">
         The Gmail connection expired. Re-authorize to load your lists.
       </p>
-      <a
-        href="/auth"
-        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
-      >
+      <a href="/auth" className={btnPrimary}>
         Reconnect
       </a>
     </div>

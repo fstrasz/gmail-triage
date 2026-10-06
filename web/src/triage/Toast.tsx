@@ -32,7 +32,7 @@ export function Toast({
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 bottom-20 z-40 mx-auto flex w-[min(28rem,92vw)] items-center justify-between gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-white shadow-lg"
+      className="fixed inset-x-0 bottom-20 z-40 mx-auto flex w-[min(28rem,92vw)] items-center justify-between gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-on-fill shadow-lg"
       style={{ marginBottom: "env(safe-area-inset-bottom)" }}
     >
       <span>{toastMessage(info)}</span>

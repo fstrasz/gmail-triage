@@ -1,3 +1,4 @@
+import { btnPrimary } from "../shell/ui.ts";
 import { ActivityLogSection } from "./sections/ActivityLogSection.tsx";
 import { BackupsSection } from "./sections/BackupsSection.tsx";
 import { BulkGuardSection } from "./sections/BulkGuardSection.tsx";
@@ -34,9 +35,11 @@ export function SettingsPage() {
   } = settings.data;
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <h1 className="mb-4 text-lg font-semibold text-ink">Settings</h1>
-      <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 lg:grid-cols-2">
+    <div className="h-full overflow-y-auto p-3 sm:p-4 lg:p-5">
+      <h1 className="mx-auto mb-4 max-w-4xl text-xl font-semibold text-ink">
+        Settings
+      </h1>
+      <div className="mx-auto grid max-w-4xl grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <LocationsSection locations={s.locations} />
         <InterestsSection interests={s.eventInterests} />
         <EventSearchSection settings={s} />
@@ -65,7 +68,7 @@ function SettingsSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="h-40 animate-pulse rounded-2xl border border-hairline bg-hairline/40"
+          className="h-40 rounded-2xl border border-rule bg-paper motion-safe:animate-pulse"
         />
       ))}
     </div>
@@ -80,10 +83,7 @@ function ErrorState() {
         The server didn’t respond. If the Gmail connection expired, re-authorize
         to continue.
       </p>
-      <a
-        href="/auth"
-        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
-      >
+      <a href="/auth" className={btnPrimary}>
         Reconnect
       </a>
     </div>

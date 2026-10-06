@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { btnSecondary } from "../shell/ui.ts";
 import type { GuardInfo } from "../triage/GuardDialog.tsx";
 import { GuardDialog } from "../triage/GuardDialog.tsx";
 import type { ReapplyList } from "./listsApi.ts";
@@ -67,7 +68,7 @@ export function ReapplyBar() {
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-xl border border-hairline p-3">
+    <section className="flex flex-col gap-2 rounded-xl border border-rule bg-paper p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-ink">Reapply labels</span>
         {LISTS.map(({ list, label }) => (
@@ -76,7 +77,7 @@ export function ReapplyBar() {
             type="button"
             disabled={running !== null}
             onClick={() => void start(list)}
-            className="rounded-lg border border-hairline px-3 py-1 text-sm font-medium text-ink disabled:opacity-40"
+            className={btnSecondary}
           >
             {running === list ? progress || "Working…" : label}
           </button>

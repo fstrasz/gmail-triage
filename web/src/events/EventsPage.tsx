@@ -1,5 +1,8 @@
+import { MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { dateTime } from "../lib/format.ts";
+import { btnDangerOutline, btnPrimary, btnSecondary } from "../shell/ui.ts";
 import { EventCard } from "./EventCard.tsx";
 import type { CalendarEventInput } from "./eventsApi.ts";
 import {
@@ -31,7 +34,7 @@ export function EventsPage() {
 
   const data = events.data;
   const lastRunLabel = data?.lastRunAt
-    ? `Last searched: ${new Date(data.lastRunAt).toLocaleString()}`
+    ? `Last searched ${dateTime(data.lastRunAt)}`
     : "Never searched";
 
   async function handleAddToCalendar(
@@ -49,8 +52,10 @@ export function EventsPage() {
     } catch (e) {
       // A non-auth calendar failure (e.g. Google 400 on a bad/blank date) rejects
       // mutateAsync; surface it instead of leaving an unhandled rejection + stuck dialog.
+      // Logged for the operator; the screen shows a plain-language reason.
+      console.error("Add to calendar failed", e);
       setCalError(
-        e instanceof Error ? e.message : "Failed to add to calendar.",
+        "Google Calendar rejected the event. Check the date and time, then try again.",
       );
       return false;
     }
@@ -87,16 +92,16 @@ export function EventsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col p-4">
+    <div className="flex h-full flex-col p-3 sm:p-4 lg:p-5">
       {authError && <ReconnectGmail banner />}
       {calError && (
         <div className="mb-3 rounded-xl border border-junk/40 bg-junk/5 px-4 py-3 text-sm text-ink">
-          Couldn't add to calendar: {calError}
+          {calError}
         </div>
       )}
 
       <header className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="shrink-0 text-lg font-semibold text-ink">Events</h1>
+        <h1 className="shrink-0 text-xl font-semibold text-ink">Events</h1>
         <span className="text-xs text-muted">{lastRunLabel}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
@@ -104,7 +109,7 @@ export function EventsPage() {
             onClick={runSearch}
             disabled={search.isPending}
             aria-busy={search.isPending}
-            className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+            className={btnPrimary}
           >
             {search.isPending ? "Searching…" : "Search Now"}
           </button>
@@ -113,7 +118,7 @@ export function EventsPage() {
             onClick={runSendEmail}
             disabled={sendEmail.isPending}
             aria-busy={sendEmail.isPending}
-            className="rounded-lg border border-hairline px-3 py-1.5 text-sm font-medium text-ink disabled:opacity-40"
+            className={btnSecondary}
           >
             {sendEmail.isPending ? "Sending…" : "Send Email"}
           </button>
@@ -124,7 +129,7 @@ export function EventsPage() {
                 type="button"
                 onClick={runResetRebuild}
                 disabled={resetRebuild.isPending}
-                className="rounded bg-junk px-2 py-1 font-semibold text-white disabled:opacity-40"
+                className="rounded bg-junk px-2 py-1 font-semibold text-on-fill disabled:opacity-40"
               >
                 {resetRebuild.isPending ? "Rebuilding…" : "Confirm"}
               </button>
@@ -142,7 +147,7 @@ export function EventsPage() {
               onClick={() => setConfirmReset(true)}
               disabled={resetRebuild.isPending}
               aria-busy={resetRebuild.isPending}
-              className="rounded-lg border border-junk px-3 py-1.5 text-sm font-medium text-junk disabled:opacity-40"
+              className={btnDangerOutline}
             >
               {resetRebuild.isPending ? "Rebuilding…" : "Reset & Rebuild"}
             </button>
@@ -151,7 +156,7 @@ export function EventsPage() {
       </header>
 
       {data && !data.hasInterests && (
-        <div className="mb-4 rounded-xl border border-hairline border-l-4 border-l-vip bg-vip/5 px-4 py-3 text-sm text-ink">
+        <div className="mb-4 rounded-xl border border-rule-strong bg-paper px-4 py-3 text-sm text-ink">
           No event interests configured.{" "}
           <Link
             to="/settings"
@@ -172,8 +177,9 @@ export function EventsPage() {
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
             {data.groups.map((group) => (
               <section key={group.location}>
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-                  📍 {group.location}
+                <h2 className="mb-2 flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted">
+                  <MapPin aria-hidden size={13} />
+                  {group.location}
                 </h2>
                 <ul className="flex flex-col gap-3">
                   {group.events.map((event) => (
@@ -203,9 +209,9 @@ function EventsSkeleton() {
       data-testid="events-skeleton"
       className="mx-auto flex w-full max-w-3xl animate-pulse flex-col gap-3"
     >
-      <div className="h-24 rounded-xl border border-hairline bg-hairline/40" />
-      <div className="h-24 rounded-xl border border-hairline bg-hairline/40" />
-      <div className="h-24 rounded-xl border border-hairline bg-hairline/40" />
+      <div className="h-24 rounded-xl border border-rule bg-paper" />
+      <div className="h-24 rounded-xl border border-rule bg-paper" />
+      <div className="h-24 rounded-xl border border-rule bg-paper" />
     </div>
   );
 }
@@ -226,10 +232,7 @@ function ReconnectGmail({ banner = false }: { banner?: boolean }) {
     return (
       <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-junk/40 bg-junk/5 px-4 py-3 text-sm">
         <span className="font-semibold text-ink">Reconnect Gmail</span>
-        <a
-          href="/auth"
-          className="rounded-lg bg-ink px-3 py-1.5 font-semibold text-white"
-        >
+        <a href="/auth" className={btnPrimary}>
           Reconnect
         </a>
       </div>
@@ -241,10 +244,7 @@ function ReconnectGmail({ banner = false }: { banner?: boolean }) {
       <p className="text-sm text-muted">
         The Gmail connection expired. Re-authorize to continue.
       </p>
-      <a
-        href="/auth"
-        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
-      >
+      <a href="/auth" className={btnPrimary}>
         Reconnect
       </a>
     </div>

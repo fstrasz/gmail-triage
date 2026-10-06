@@ -10,7 +10,8 @@
   "scripts": {
     "test": "node scripts/test-events.mjs",
     "check": "biome check .",
-    "fix": "biome check --write ."
+    "fix": "biome check --write .",
+    "mock-ui": "node scripts/mock-ui-server.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9"

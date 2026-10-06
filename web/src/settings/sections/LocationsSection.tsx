@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { btnPrimary } from "../../shell/ui.ts";
 import { Card, inputClass } from "../Card.tsx";
 import { useAddLocation, useRemoveLocation } from "../settingsQueries.ts";
 
@@ -47,10 +48,7 @@ export function LocationsSection({ locations }: { locations: string[] }) {
           onChange={(e) => setValue(e.target.value)}
           aria-label="New location"
         />
-        <button
-          type="submit"
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white"
-        >
+        <button type="submit" className={btnPrimary}>
           Add
         </button>
       </form>

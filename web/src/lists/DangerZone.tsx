@@ -1,5 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
+import {
+  btnDanger,
+  btnSecondary,
+  dialogOverlay,
+  dialogTitle,
+} from "../shell/ui.ts";
 import type { Backups } from "./listsApi.ts";
 import { useCreateBackup, useResetBlocklist } from "./listsQueries.ts";
 
@@ -19,30 +25,27 @@ export function DangerZone({ backups }: { backups: Backups }) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-junk/40 p-3">
+    <section className="flex flex-col gap-3 rounded-xl border border-junk/40 bg-paper p-3">
       <span className="text-sm font-semibold text-junk">Danger Zone</span>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => createBackup.mutate()}
           disabled={createBackup.isPending}
-          className="rounded-lg border border-hairline px-3 py-1 text-sm font-medium text-ink disabled:opacity-40"
+          className={btnSecondary}
         >
           Create Backup
         </button>
         <Dialog.Root open={open} onOpenChange={setOpen}>
           <Dialog.Trigger asChild>
-            <button
-              type="button"
-              className="rounded-lg bg-junk px-3 py-1 text-sm font-semibold text-white"
-            >
+            <button type="button" className={btnDanger}>
               Reset Blocklist
             </button>
           </Dialog.Trigger>
           <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-              <Dialog.Title className="text-base font-semibold text-ink">
+            <Dialog.Overlay className={dialogOverlay} />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-rule bg-paper p-5 text-ink shadow-float">
+              <Dialog.Title className={dialogTitle}>
                 Reset the blocklist?
               </Dialog.Title>
               <Dialog.Description className="mt-2 text-sm text-muted">
@@ -57,10 +60,7 @@ export function DangerZone({ backups }: { backups: Backups }) {
               />
               <div className="mt-5 flex justify-end gap-2">
                 <Dialog.Close asChild>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-hairline px-4 py-2 text-sm font-medium text-ink"
-                  >
+                  <button type="button" className={btnSecondary}>
                     Cancel
                   </button>
                 </Dialog.Close>
@@ -68,7 +68,7 @@ export function DangerZone({ backups }: { backups: Backups }) {
                   type="button"
                   disabled={confirm !== "RESET" || reset.isPending}
                   onClick={doReset}
-                  className="rounded-lg bg-junk px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  className={btnDanger}
                 >
                   Reset
                 </button>

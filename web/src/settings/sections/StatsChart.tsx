@@ -60,7 +60,7 @@ export function StatsChart({ daily }: { daily?: StatsDay[] }) {
               data-date={d.date}
               data-total={total}
               title={`${d.date}: ${total}`}
-              className="flex-1 rounded-t bg-ink/70"
+              className="flex-1 rounded-t-sm bg-ok/70 hover:bg-ok"
               style={{ height: `${pct}%` }}
             />
           );

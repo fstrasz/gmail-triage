@@ -1,3 +1,4 @@
+import { Keyboard } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,10 +14,27 @@ import type {
   UndoDescriptor,
 } from "../lib/api.ts";
 import { getBodyUrl } from "../lib/api.ts";
+import { shortDate } from "../lib/format.ts";
 import { loadMode, saveMode } from "../lib/persistMode.ts";
 import { useAction, useQueue, useUndo } from "../lib/queries.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
-import { ACTION_BG, ACTION_LABEL, isUndoable } from "./actionMeta.ts";
+import { Stamp } from "../shell/Stamp.tsx";
+import {
+  btnPrimary,
+  btnQuiet,
+  kbd,
+  label,
+  linkAction,
+  pill,
+  sheet,
+} from "../shell/ui.ts";
+import {
+  ACTION_COLOR,
+  ACTION_LABEL,
+  ACTION_TONE,
+  isUndoable,
+} from "./actionMeta.ts";
+import { TierStamp } from "./Card.tsx";
 import { Deck } from "./Deck.tsx";
 import { deckReducer } from "./deckReducer.ts";
 import type { GuardInfo } from "./GuardDialog.tsx";
@@ -29,25 +47,14 @@ import { toastMessage } from "./toastMessage.ts";
 
 const QUEUE_LIMIT = 25;
 
-// Desktop action column order. 'gap' renders a small visual divider between
-// groups; 'spacer' pushes Junk/Delete to the bottom.
-type ColItem = TriageAction | "gap" | "spacer" | "group-sender";
-const DESKTOP_COL: ColItem[] = [
-  "vip",
-  "ok",
-  "gap",
-  "vip-clean",
-  "ok-clean",
-  "gap",
-  "archive",
-  "review",
-  "unsub",
-  "gap",
-  "junk",
-  "delete",
-  "group-sender",
-  "delete-all",
-  "archive-all",
+// Workbench action column, in groups. Delete All sits directly after Delete
+// so the sender-wide pair reads as an extension of it.
+const DESKTOP_GROUPS: { title: string; actions: TriageAction[] }[] = [
+  { title: "Keep", actions: ["vip", "ok"] },
+  { title: "Keep & clean", actions: ["vip-clean", "ok-clean"] },
+  { title: "File", actions: ["archive", "review", "unsub"] },
+  { title: "Remove", actions: ["junk", "delete"] },
+  { title: "All from this sender", actions: ["delete-all", "archive-all"] },
 ];
 
 // Letter shortcut → action (keys come from ACTION_KEY, shared with the dialog).
@@ -88,7 +95,14 @@ export function TriagePage() {
   const action = useAction();
   const undo = useUndo(queueParams);
 
-  const desktop = useMediaQuery("(hover: hover) and (pointer: fine)");
+  // Layout by capability AND room: a mouse, or a screen wide enough for four
+  // panes (iPad landscape, desktop), gets the workbench. Touch below that gets
+  // the swipe deck — with a tappable queue beside it from tablet width up.
+  const finePointer = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const tablet = useMediaQuery("(min-width: 768px)");
+  const desktop = (finePointer && tablet) || wide;
+  const keyboardShortcuts = desktop || tablet;
   const [deck, dispatch] = useReducer(deckReducer, {
     cards: [],
     removed: [],
@@ -305,7 +319,7 @@ export function TriagePage() {
       if (shortcutsOpen) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (desktop) {
+      if (keyboardShortcuts) {
         if (e.key === "?") {
           e.preventDefault();
           setShortcutsOpen(true);
@@ -367,7 +381,7 @@ export function TriagePage() {
     guard,
     moreOpen,
     shortcutsOpen,
-    desktop,
+    keyboardShortcuts,
     deck.cards,
     active,
     toast,
@@ -386,18 +400,31 @@ export function TriagePage() {
   // deck's thumb zone instead of the header.
   const inDeck = !desktop && !queue.isPending && deck.cards.length > 0;
 
+  // The deck always shows the active card on top, so a queue tap on a tablet
+  // brings that card forward without reordering the queue itself.
+  const deckCards = active
+    ? [active, ...deck.cards.filter((c) => c.id !== active.id)]
+    : deck.cards;
+
   const toastNode = toast ? (
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center gap-2 text-sm"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm"
     >
-      <span className="text-muted">{toastMessage(toast)}</span>
+      <Stamp
+        key={`${toast.undo.id}-${toast.undo.action}`}
+        tone={ACTION_TONE[toast.undo.action]}
+        animate
+      >
+        {ACTION_LABEL[toast.undo.action]}
+      </Stamp>
+      <span className="text-graphite">{toastMessage(toast)}</span>
       {isUndoable(toast.undo.action) && (
         <button
           type="button"
           aria-label="Undo last action"
-          className="font-semibold text-ink underline underline-offset-2"
+          className={linkAction}
           onClick={() => onUndo(toast.undo)}
         >
           Undo
@@ -412,18 +439,46 @@ export function TriagePage() {
       aria-label="Hide VIP/OK listed senders"
       aria-pressed={hideListed}
       onClick={() => setMode(hideListed ? "shown" : "hidden")}
-      className={`shrink-0 rounded-full border px-3 py-1 text-sm font-medium ${
-        hideListed
-          ? "border-ink bg-ink text-white"
-          : "border-hairline text-muted"
-      }`}
+      className={`shrink-0 ${pill(hideListed)}`}
     >
       Hide VIP/OK
     </button>
   );
 
+  const queueRows = (rowClass: string) =>
+    deck.cards.map((card) => {
+      const selected = card.id === active?.id;
+      return (
+        <li key={card.id}>
+          <button
+            type="button"
+            aria-current={selected ? "true" : undefined}
+            onClick={() => selectCard(card.id)}
+            className={`w-full rounded-lg px-2.5 text-left transition-colors duration-150 ${rowClass} ${
+              selected
+                ? "bg-paper text-ink ring-1 ring-rule-strong"
+                : "text-graphite hover:bg-paper/60"
+            }`}
+          >
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-sm font-semibold">
+                {card.fromName ?? card.fromEmail ?? "Unknown"}
+              </span>
+              <span className="tabular shrink-0 text-[0.6875rem] text-muted">
+                {shortDate(card.date)}
+              </span>
+            </span>
+            <span className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs">{card.subject}</span>
+              <TierStamp tier={card.tier} />
+            </span>
+          </button>
+        </li>
+      );
+    });
+
   return (
-    <div className="flex h-full flex-col p-4">
+    <div className="flex h-full flex-col p-3 sm:p-4 lg:p-5">
       {/* Visually-hidden live region (DECK-2). */}
       <div aria-live="polite" className="sr-only">
         {announce}
@@ -434,15 +489,17 @@ export function TriagePage() {
           handleResult's `undo`) stays visible and is not lost. */}
       {authError && <ReconnectGmail banner />}
 
-      <header className="mb-4 flex items-center gap-3">
-        <h1 className="shrink-0 text-lg font-semibold text-ink">
+      <header className="mb-3 flex min-h-11 items-center gap-3">
+        <h1 className="shrink-0 text-xl font-semibold text-ink">
           Triage{" "}
-          <span className="font-mono text-muted">
-            {queue.data?.counts.left ?? 0}
-          </span>
+          {queue.data && (
+            <span className="tabular font-medium text-muted">
+              {queue.data.counts.left}
+            </span>
+          )}
         </h1>
         {/* Inline feedback — centered between title and chip */}
-        <div className="flex flex-1 justify-center">
+        <div className="flex min-w-0 flex-1 justify-center">
           {!inDeck && toastNode}
         </div>
         {!inDeck && hideToggle}
@@ -453,86 +510,65 @@ export function TriagePage() {
       ) : deck.cards.length === 0 ? (
         <EmptyState mode={mode} onShowAll={() => setMode("shown")} />
       ) : desktop ? (
-        /* ── Desktop 4-pane: queue | action column | preview ── */
-        <div className="flex flex-1 overflow-hidden rounded-2xl border border-hairline">
+        /* ── Workbench: queue | action column | preview ── */
+        <div className={`${sheet} flex min-h-0 flex-1 overflow-hidden`}>
           {/* Pane 1 — clickable queue */}
-          <aside className="flex w-48 flex-shrink-0 flex-col overflow-y-auto border-r border-hairline bg-tint">
-            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              Queue
-            </p>
-            <ul className="flex flex-col divide-y divide-hairline">
-              {deck.cards.map((card) => {
-                const selected = card.id === active?.id;
-                return (
-                  <li key={card.id}>
-                    <button
-                      type="button"
-                      aria-current={selected ? "true" : undefined}
-                      onClick={() => selectCard(card.id)}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                        selected
-                          ? "bg-ink/5 font-semibold text-ink shadow-[inset_3px_0_0] shadow-ink"
-                          : "text-muted hover:bg-hairline/30"
-                      }`}
-                    >
-                      <p className="truncate">
-                        {card.fromName ?? card.fromEmail ?? "Unknown"}
-                      </p>
-                      <p className="truncate text-xs">{card.subject}</p>
-                    </button>
-                  </li>
-                );
-              })}
+          <aside className="flex w-52 shrink-0 flex-col border-r border-rule bg-sunk lg:w-60 xl:w-72">
+            <p className={`px-4 pb-1.5 pt-3 ${label}`}>Queue</p>
+            <ul className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+              {queueRows("py-2 pointer-coarse:py-3")}
             </ul>
           </aside>
 
           {/* Pane 2 — action column */}
-          <div className="flex w-24 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-hairline bg-tint p-1.5">
-            {DESKTOP_COL.map((item, i) => {
-              if (item === "gap")
-                return <div key={`gap-${i}`} className="h-1.5" />;
-              if (item === "spacer")
-                return <div key="spacer" className="flex-1" />;
-              if (item === "group-sender")
-                return (
-                  <div
-                    key="group-sender"
-                    className="mt-1 border-t border-hairline pt-1.5"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      All from this sender
-                    </p>
-                  </div>
-                );
-              const a = item;
-              const key = a in ACTION_KEY ? ACTION_KEY[a as keyof typeof ACTION_KEY] : null;
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  aria-label={ACTION_LABEL[a]}
-                  disabled={action.isPending || !active}
-                  onClick={() => commit(a)}
-                  className={`w-full rounded-lg py-2 text-center text-xs font-semibold leading-tight text-white disabled:opacity-40 ${ACTION_BG[a]}`}
-                >
-                  {ACTION_LABEL[a]}
-                  {key && (
-                    <kbd
-                      aria-hidden="true"
-                      className="ml-1 font-mono text-[10px] font-normal opacity-80"
+          <div className="flex w-40 shrink-0 flex-col gap-3 overflow-y-auto border-r border-rule bg-sunk p-2.5">
+            {DESKTOP_GROUPS.map((group) => (
+              <div
+                key={group.title}
+                className={`flex flex-col gap-1 ${
+                  group.title === "All from this sender"
+                    ? "mt-auto border-t border-dashed border-rule-strong pt-3"
+                    : ""
+                }`}
+              >
+                <p className={`px-1 ${label}`}>{group.title}</p>
+                {group.actions.map((a) => {
+                  const key =
+                    a in ACTION_KEY
+                      ? ACTION_KEY[a as keyof typeof ACTION_KEY]
+                      : null;
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      aria-label={ACTION_LABEL[a]}
+                      disabled={action.isPending || !active}
+                      onClick={() => commit(a)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg border border-rule-strong bg-paper px-2.5 py-1.5 text-left text-[0.8125rem] font-bold transition-colors duration-150 hover:border-current hover:bg-current/[0.07] disabled:opacity-40 pointer-coarse:min-h-11 ${ACTION_COLOR[a]}`}
                     >
-                      {key.toUpperCase()}
-                    </kbd>
-                  )}
-                </button>
-              );
-            })}
+                      {ACTION_LABEL[a]}
+                      {key && (
+                        <kbd aria-hidden="true" className={kbd}>
+                          {key.toUpperCase()}
+                        </kbd>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
             <button
               type="button"
               onClick={() => setShortcutsOpen(true)}
-              className="mt-1 text-center text-[11px] text-muted underline underline-offset-2"
+              className={`${btnQuiet} justify-between px-1 text-xs`}
             >
-              Shortcuts (?)
+              <span className="inline-flex items-center gap-1.5">
+                <Keyboard aria-hidden size={14} />
+                Shortcuts
+              </span>
+              <kbd aria-hidden="true" className={kbd}>
+                ?
+              </kbd>
             </button>
           </div>
 
@@ -541,74 +577,55 @@ export function TriagePage() {
             ref={previewRef}
             tabIndex={-1}
             aria-label="Selected email preview"
-            className="flex flex-1 flex-col overflow-hidden outline-none"
+            className="flex min-w-0 flex-1 flex-col overflow-hidden bg-paper outline-none"
           >
             {active && (
               <>
-                <div className="flex-shrink-0 border-b border-hairline bg-white px-4 py-3">
+                <div className="shrink-0 border-b border-rule px-5 py-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-ink">
+                    <span className="truncate text-base font-semibold text-ink">
                       {active.fromName ?? active.fromEmail ?? "Unknown sender"}
                     </span>
-                    {active.tier === "..VIP" && (
-                      <span className="rounded bg-vip px-1.5 py-0.5 text-xs font-bold text-white">
-                        VIP
-                      </span>
-                    )}
-                    {active.tier === "..OK" && (
-                      <span className="rounded bg-ok px-1.5 py-0.5 text-xs font-bold text-white">
-                        OK
-                      </span>
-                    )}
+                    <TierStamp tier={active.tier} />
+                    <span className="tabular ml-auto shrink-0 text-xs text-muted">
+                      {shortDate(active.date)}
+                    </span>
                   </div>
-                  <p className="mt-1 font-semibold text-ink">
-                    {active.subject}
-                  </p>
                   {active.fromEmail && (
-                    <p className="mt-0.5 text-xs text-muted">
+                    <p className="mt-0.5 truncate text-xs text-muted">
                       {active.fromEmail}
                     </p>
                   )}
+                  <p className="title-hand mt-2 text-lg font-semibold leading-snug text-ink">
+                    {active.subject || "(no subject)"}
+                  </p>
                 </div>
                 <iframe
                   title="Email body"
                   sandbox="allow-popups"
                   src={getBodyUrl(active.id)}
-                  className="min-h-0 flex-1 w-full border-0"
+                  className="min-h-0 w-full flex-1 border-0 bg-white"
                 />
               </>
             )}
           </div>
         </div>
       ) : (
-        /* ── Mobile: existing card-stack + Deck ── */
-        <div className="flex flex-1 gap-4 overflow-hidden">
-          <aside
-            aria-hidden="true"
-            className="hidden md:flex md:w-56 md:flex-col md:overflow-y-auto md:rounded-2xl md:border md:border-hairline md:bg-white md:shadow-sm"
-          >
-            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              Up next
-            </p>
-            <ul className="flex flex-col divide-y divide-hairline">
-              {deck.cards.map((card, i) => (
-                <li
-                  key={card.id}
-                  className={`px-3 py-2 text-sm ${i === 0 ? "bg-hairline/30 font-semibold text-ink" : "text-muted"}`}
-                >
-                  <p className="truncate">
-                    {card.fromName ?? card.fromEmail ?? "Unknown"}
-                  </p>
-                  {card.fromEmail && i > 0 && (
-                    <p className="truncate text-xs">{card.fromEmail}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </aside>
-          <div className="flex flex-1 flex-col overflow-hidden">
+        /* ── Touch: swipe deck (+ a tappable queue from tablet width) ── */
+        <div className="flex min-h-0 flex-1 gap-4">
+          {tablet && (
+            <aside
+              className={`${sheet} flex w-60 shrink-0 flex-col overflow-hidden bg-sunk`}
+            >
+              <p className={`px-4 pb-1.5 pt-3 ${label}`}>Queue</p>
+              <ul className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+                {queueRows("min-h-12 py-2.5")}
+              </ul>
+            </aside>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
             <Deck
-              cards={deck.cards}
+              cards={deckCards}
               mode={mode}
               onAction={(a) => commit(a)}
               moreOpen={moreOpen}
@@ -640,9 +657,16 @@ function DeckSkeleton() {
   return (
     <div
       data-testid="deck-skeleton"
-      className="mx-auto w-full max-w-md flex-1 animate-pulse"
+      aria-label="Loading the queue"
+      className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3"
     >
-      <div className="h-80 rounded-2xl border border-hairline bg-hairline/40" />
+      <div className="h-80 rounded-2xl border border-rule bg-paper p-5">
+        <div className="h-4 w-1/3 rounded bg-sunk motion-safe:animate-pulse" />
+        <div className="mt-2 h-3 w-1/2 rounded bg-sunk motion-safe:animate-pulse" />
+        <div className="mt-6 h-4 w-4/5 rounded bg-sunk motion-safe:animate-pulse" />
+        <div className="mt-2 h-3 w-full rounded bg-sunk motion-safe:animate-pulse" />
+        <div className="mt-2 h-3 w-11/12 rounded bg-sunk motion-safe:animate-pulse" />
+      </div>
     </div>
   );
 }
@@ -658,22 +682,30 @@ function EmptyState({
   // FIX H — no real hidden-count is computed, so the copy makes no numeric claim.
   if (mode === "hidden") {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted">
-        <p>Senders already on a list are hidden.</p>
-        <button
-          type="button"
-          className="rounded-xl border border-ink px-4 py-2 font-semibold text-ink"
-          onClick={onShowAll}
-        >
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+        <p className="title-hand text-lg font-semibold text-ink">
+          Nothing new from unlisted senders
+        </p>
+        <p className="max-w-xs text-sm text-graphite">
+          Senders already on a list are hidden.
+        </p>
+        <button type="button" className={btnPrimary} onClick={onShowAll}>
           Show all
         </button>
       </div>
     );
   }
   return (
-    <div className="flex flex-1 flex-col items-center justify-center text-center text-muted">
-      <p className="text-lg font-semibold text-ink">Inbox triaged</p>
-      <p className="mt-1 text-sm">Nothing left to triage.</p>
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+      <Stamp tone="ok" className="-rotate-3 px-3 py-1 text-sm">
+        Done
+      </Stamp>
+      <p className="title-hand mt-2 text-lg font-semibold text-ink">
+        Inbox triaged
+      </p>
+      <p className="max-w-xs text-sm text-graphite">
+        Nothing left to triage. New mail shows up here after the next scan.
+      </p>
     </div>
   );
 }
@@ -682,12 +714,11 @@ function ReconnectGmail({ banner = false }: { banner?: boolean }) {
   if (banner) {
     // Compact variant: sits above the deck so the restored card stays visible.
     return (
-      <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-junk/40 bg-junk/5 px-4 py-3 text-sm">
-        <span className="font-semibold text-ink">Reconnect Gmail</span>
-        <a
-          href="/auth"
-          className="rounded-lg bg-ink px-3 py-1.5 font-semibold text-white"
-        >
+      <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-junk/40 bg-junk/[0.06] px-4 py-2.5 text-sm">
+        <span className="font-semibold text-ink">
+          Reconnect Gmail — the last action was not applied.
+        </span>
+        <a href="/auth" className={btnPrimary}>
           Reconnect
         </a>
       </div>
@@ -695,14 +726,13 @@ function ReconnectGmail({ banner = false }: { banner?: boolean }) {
   }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-      <p className="text-lg font-semibold text-ink">Reconnect Gmail</p>
-      <p className="text-sm text-muted">
+      <p className="title-hand text-lg font-semibold text-ink">
+        Reconnect Gmail
+      </p>
+      <p className="max-w-sm text-sm text-graphite">
         The Gmail connection expired. Re-authorize to continue triaging.
       </p>
-      <a
-        href="/auth"
-        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
-      >
+      <a href="/auth" className={btnPrimary}>
         Reconnect
       </a>
     </div>

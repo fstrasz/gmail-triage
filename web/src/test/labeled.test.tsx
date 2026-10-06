@@ -61,7 +61,7 @@ describe("LabeledPage", () => {
     expect(screen.getByText("hi there")).toBeInTheDocument();
   });
 
-  test("switching to Blocked refetches with the new label in the query string", async () => {
+  test("switching to Blocklist refetches with the new label in the query string", async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       const label = new URL(url, "http://localhost").searchParams.get("label");
       return Promise.resolve(
@@ -86,7 +86,7 @@ describe("LabeledPage", () => {
     renderWithClient(<LabeledPage />);
     await screen.findByText("Subject for ..VIP");
 
-    fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
+    fireEvent.click(screen.getByRole("button", { name: "Blocklist" }));
 
     await screen.findByText("Subject for .DelPend");
 

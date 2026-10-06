@@ -1,4 +1,7 @@
+import { CalendarDays, Check, ExternalLink, MapPin, Star } from "lucide-react";
 import { useState } from "react";
+import { eventDate } from "../lib/format.ts";
+import { btnPrimary, btnSecondary } from "../shell/ui.ts";
 import { AddToCalendarDialog } from "./AddToCalendarDialog.tsx";
 import type { CalendarEventInput, EventItem } from "./eventsApi.ts";
 
@@ -23,10 +26,10 @@ export function EventCard({
   }
 
   return (
-    <li className="rounded-xl border border-hairline bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+    <li className="rounded-xl border border-rule bg-paper p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-ink">
+          <p className="text-[0.9375rem] font-semibold text-ink">
             {displayUrl ? (
               <a
                 href={displayUrl}
@@ -34,7 +37,12 @@ export function EventCard({
                 rel="noopener"
                 className="text-ink underline decoration-hairline underline-offset-2 hover:decoration-ink"
               >
-                {event.title} ↗
+                {event.title}
+                <ExternalLink
+                  aria-hidden
+                  size={13}
+                  className="ml-1 inline-block align-[-1px] text-muted"
+                />
               </a>
             ) : (
               event.title
@@ -54,15 +62,24 @@ export function EventCard({
                 </span>
               )}
               {event.rating != null && (
-                <span className="text-muted">⭐ {event.rating}</span>
+                <span className="inline-flex items-center gap-1 text-muted">
+                  <Star aria-hidden size={12} />
+                  <span className="sr-only">Rating</span> {event.rating}
+                </span>
               )}
             </p>
           )}
 
-          <p className="mt-1 text-xs text-ink/80">
-            📅 {event.date || "TBD"}
-            {event.time ? ` at ${event.time}` : ""} &nbsp;|&nbsp; 📍{" "}
-            {event.location || "TBD"}
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-graphite">
+            <span className="inline-flex items-center gap-1">
+              <CalendarDays aria-hidden size={13} />
+              {eventDate(event.date) || "Date TBD"}
+              {event.time ? ` at ${event.time}` : ""}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <MapPin aria-hidden size={13} />
+              {event.location || "Location TBD"}
+            </span>
           </p>
 
           {event.description && (
@@ -77,18 +94,23 @@ export function EventCard({
                 rel="noopener"
                 className="text-xs font-medium text-ok underline underline-offset-2"
               >
-                ✓ Added to Calendar
+                <Check
+                  aria-hidden
+                  size={13}
+                  className="mr-1 inline-block align-[-2px]"
+                />
+                Added to Calendar
               </a>
             </p>
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col gap-2">
+        <div className="flex shrink-0 gap-2 sm:flex-col">
           {!event.calendarEventUrl && (
             <button
               type="button"
               onClick={() => setDialogOpen(true)}
-              className="rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white"
+              className={btnPrimary}
             >
               Add to Calendar
             </button>
@@ -96,7 +118,7 @@ export function EventCard({
           <button
             type="button"
             onClick={() => onIgnore(event.id)}
-            className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-muted"
+            className={btnSecondary}
           >
             Ignore
           </button>

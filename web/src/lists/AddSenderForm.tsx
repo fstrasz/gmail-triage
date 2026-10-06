@@ -1,8 +1,10 @@
 import { type FormEvent, useState } from "react";
+import { Stamp } from "../shell/Stamp.tsx";
+import { btnPrimary, input } from "../shell/ui.ts";
 import type { ListName } from "./listsApi.ts";
 import { useAddSender } from "./listsQueries.ts";
 
-const INPUT = "rounded-lg border border-hairline px-2 py-1 text-sm text-ink";
+const INPUT = input;
 
 export function AddSenderForm() {
   const addSender = useAddSender();
@@ -45,66 +47,70 @@ export function AddSenderForm() {
     <div className="flex flex-col gap-2">
       <form
         onSubmit={submit}
-        className="flex flex-wrap items-end gap-2 rounded-xl border border-hairline p-3"
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-rule bg-paper p-3"
       >
-      <label className="flex flex-col text-xs text-muted">
-        List
-        <select
-          aria-label="List"
-          value={list}
-          onChange={(e) => setList(e.target.value as ListName)}
-          className={INPUT}
-        >
-          <option value="vip">VIP</option>
-          <option value="ok">OK</option>
-          <option value="blocklist">Blocklist</option>
-        </select>
-      </label>
-      <label className="flex flex-1 flex-col text-xs text-muted">
-        Email
-        {/* type="text" (not "email"): domain-wildcard entries like "@mail.anthropic.com"
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          List
+          <select
+            aria-label="List"
+            value={list}
+            onChange={(e) => setList(e.target.value as ListName)}
+            className={INPUT}
+          >
+            <option value="vip">VIP</option>
+            <option value="ok">OK</option>
+            <option value="blocklist">Blocklist</option>
+          </select>
+        </label>
+        <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs font-semibold text-muted">
+          Email
+          {/* type="text" (not "email"): domain-wildcard entries like "@mail.anthropic.com"
             are a first-class feature (backend matches a whole domain), but the native
             type="email" validation rejects a leading-"@" value with no local part. */}
-        <input
-          aria-label="Email"
-          type="text"
-          inputMode="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={INPUT}
-        />
-      </label>
-      <label className="flex flex-1 flex-col text-xs text-muted">
-        Name
-        <input
-          aria-label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className={INPUT}
-        />
-      </label>
-      {list === "blocklist" && (
-        <label className="flex flex-1 flex-col text-xs text-muted">
-          Reason
           <input
-            aria-label="Reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            aria-label="Email"
+            type="text"
+            inputMode="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className={INPUT}
           />
         </label>
-      )}
-      <button
-        type="submit"
-        disabled={addSender.isPending}
-        className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
-      >
-        Add
-      </button>
+        <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs font-semibold text-muted">
+          Name
+          <input
+            aria-label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={INPUT}
+          />
+        </label>
+        {list === "blocklist" && (
+          <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs font-semibold text-muted">
+            Reason
+            <input
+              aria-label="Reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className={INPUT}
+            />
+          </label>
+        )}
+        <button
+          type="submit"
+          disabled={addSender.isPending}
+          className={btnPrimary}
+        >
+          Add
+        </button>
       </form>
       {fragmentedNotice && (
-        <p role="status" className="text-xs font-medium text-amber-700">
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs font-medium text-graphite"
+        >
+          <Stamp tone="note">Fragmented</Stamp>
           {fragmentedNotice}
         </p>
       )}
