@@ -2754,7 +2754,7 @@ test("delete-all / archive-all: unconfirmed always returns the guard, confirmed 
     !/count\s*>/.test(block),
     "unconfirmed delete-all must not gate the guard on a count threshold",
   );
-  assert.match(block, /if \(!confirmed\)/);
+  assert.match(block, /if \(!isConfirmed\(confirmed\)\)/);
   assert.match(block, /return res\.json\(\s*normalizeGuard\(/);
   assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
   // (b) confirmed falls through to the delete.
@@ -4599,4 +4599,146 @@ test("H2 old-UI iframes are all sandboxed without allow-same-origin", async () =
   for (const f of all) {
     assert.match(f, /sandbox="allow-popups"/, f);
   }
+});
+
+const originGuardModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "originGuard.js"),
+).href;
+
+test("H3 parseAllowedHosts: opt-in, comma-separated, lowercased", async () => {
+  const { parseAllowedHosts } = await import(originGuardModulePath);
+  assert.equal(parseAllowedHosts(undefined), null);
+  assert.equal(parseAllowedHosts("  "), null);
+  assert.deepEqual(parseAllowedHosts("LocalHost:3000, vegasnas:3000,,"), [
+    "localhost:3000",
+    "vegasnas:3000",
+  ]);
+});
+
+test("H3 checkRequest: cross-site POSTs are rejected, same-origin and header-less pass", async () => {
+  const { checkRequest } = await import(originGuardModulePath);
+  const H = "vegasnas:3000";
+  const post = (headers) => checkRequest({ method: "POST", headers: { host: H, ...headers } });
+  // Cross-site auto-submitted form (the CSRF case)
+  assert.equal(post({ "sec-fetch-site": "cross-site" })?.status, 403);
+  assert.equal(post({ "sec-fetch-site": "same-site" })?.status, 403);
+  assert.deepEqual(post({ origin: "https://evil.example" })?.body, {
+    ok: false,
+    error: "cross-origin",
+  });
+  assert.equal(post({ origin: "null" })?.status, 403); // sandboxed/opaque origin
+  assert.equal(post({ origin: "http://vegasnas:3001" })?.status, 403); // port differs
+  // Legit
+  assert.equal(post({ origin: "http://VEGASNAS:3000", "sec-fetch-site": "same-origin" }), null);
+  assert.equal(post({ "sec-fetch-site": "none" }), null);
+  assert.equal(post({}), null); // curl / healthcheck
+  // Safe methods are not origin-checked
+  assert.equal(
+    checkRequest({ method: "GET", headers: { host: H, "sec-fetch-site": "cross-site" } }),
+    null,
+  );
+});
+
+test("H3 checkRequest: ALLOWED_HOSTS rejects unknown Host with 421 and admits listed Origins", async () => {
+  const { checkRequest } = await import(originGuardModulePath);
+  const allow = ["localhost:3000", "vegasnas:3000"];
+  // DNS rebinding: attacker's name in Host, even on a GET
+  assert.equal(
+    checkRequest({ method: "GET", headers: { host: "rebind.evil.example:3000" } }, allow)?.status,
+    421,
+  );
+  assert.equal(checkRequest({ method: "GET", headers: { host: "LOCALHOST:3000" } }, allow), null);
+  // Origin listed in the allowlist passes even when it differs from Host
+  assert.equal(
+    checkRequest(
+      { method: "POST", headers: { host: "localhost:3000", origin: "http://vegasnas:3000" } },
+      allow,
+    ),
+    null,
+  );
+  // Unset allowlist: any Host passes
+  assert.equal(checkRequest({ method: "GET", headers: { host: "anything:1" } }, null), null);
+});
+
+test("H3 originGuard logs once when the Host allowlist is off", async () => {
+  const { originGuard } = await import(originGuardModulePath);
+  const lines = [];
+  originGuard({ allowedHosts: null, log: (m) => lines.push(m) });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /ALLOWED_HOSTS/);
+  originGuard({ allowedHosts: ["a:1"], log: (m) => lines.push(m) });
+  assert.equal(lines.length, 1);
+});
+
+test("H3 app: cross-site form POST to /api/triage/action is rejected before any Gmail call", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/triage/action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://evil.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+      body: "action=delete-all&fromEmail=boss%40example.com&confirmed=1",
+    });
+    assert.equal(r.status, 403);
+    assert.deepEqual(await r.json(), { ok: false, error: "cross-origin" });
+  });
+});
+
+test("H3 isConfirmed: only JSON boolean true skips the bulk guard", async () => {
+  const { isConfirmed } = await import(triageApiModulePath);
+  assert.equal(isConfirmed(true), true);
+  for (const v of ["1", "true", 1, "on", "false", [], {}, undefined, null]) {
+    assert.equal(isConfirmed(v), false, `confirmed=${JSON.stringify(v)}`);
+  }
+  // Every guard site in triage.js goes through isConfirmed (no bare truthiness test).
+  const src = fs.readFileSync(path.join(projectDir, "app", "triage.js"), "utf8");
+  assert.equal(/!\s*confirmed\b/.test(src), false);
+});
+
+test("H3 isSafeQueryEmail / fromQuery: a sender value cannot widen a Gmail search", async () => {
+  const { isSafeQueryEmail, fromQuery } = await import(gmailModulePath);
+  for (const ok of ["a@b.com", "@mail.example.com", "first.last+tag@x.co"]) {
+    assert.equal(isSafeQueryEmail(ok), true, ok);
+  }
+  for (const bad of [
+    'x@y.com" OR in:anywhere "',
+    "a@b.com OR in:all",
+    "a@b.com\tx",
+    "(a@b.com)",
+    "{a b}",
+    "",
+    null,
+    undefined,
+    42,
+  ]) {
+    assert.equal(isSafeQueryEmail(bad), false, String(bad));
+  }
+  assert.equal(fromQuery("a@b.com"), 'from:"a@b.com" -in:sent -in:trash');
+  assert.throws(() => fromQuery('a" OR "b'));
+});
+
+test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no longer mutates", async () => {
+  await withApp(async (base) => {
+    const post = (p, body) =>
+      fetch(`${base}${p}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const evil = 'x@y.com" OR in:anywhere "';
+    let r = await post("/api/triage/action", { action: "delete-all", fromEmail: evil });
+    assert.equal(r.status, 400);
+    r = await post("/api/junk", { fromEmail: evil });
+    assert.equal(r.status, 400);
+    r = await post("/api/tier", { fromEmail: evil, tier: "..OK" });
+    assert.equal(r.status, 400);
+    r = await fetch(`${base}/sender?email=${encodeURIComponent(evil)}`);
+    assert.equal(r.status, 400);
+    r = await post("/api/lists/add", { list: "blocklist", email: "a@b.com OR in:all" });
+    assert.equal(r.status, 400);
+    r = await fetch(`${base}/reset`);
+    assert.equal(r.status, 404);
+  });
 });

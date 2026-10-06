@@ -49,6 +49,7 @@ import {
   getDelPendSummary,
   getGmailClient,
   getLabelId,
+  isSafeQueryEmail,
   labelSender,
   reapplyBlocklist,
   reapplyRules,
@@ -68,6 +69,7 @@ import {
 } from "./lib/health.js";
 import { esc, shell, triageEmailRow } from "./lib/html.js";
 import { keepAndClean } from "./lib/keepClean.js";
+import { originGuard } from "./lib/originGuard.js";
 import { isListedSender } from "./lib/listedSender.js";
 import { NAME_FRAGMENTATION_THRESHOLD } from "./lib/senderList.js";
 import {
@@ -145,7 +147,9 @@ import {
   ACTION_DISPATCH,
   filterHidden,
   guardScope,
+  isConfirmed,
   normalizeGuard,
+  SENDER_QUERY_ACTIONS,
   shapeTriageEmail,
 } from "./lib/triageApi.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
@@ -170,8 +174,20 @@ function findPart(part, mimeType) {
   }
   return null;
 }
+// Cross-origin / DNS-rebinding guard — before the body parsers, so a rejected
+// request's body is never parsed. See app/lib/originGuard.js and ALLOWED_HOSTS.
+app.use(originGuard());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Reject a sender value that would widen a Gmail search (see isSafeQueryEmail).
+// Returns true when it has already sent the 400.
+function rejectUnsafeSender(res, fromEmail, { html = false } = {}) {
+  if (isSafeQueryEmail(fromEmail)) return false;
+  if (html) res.status(400).send("Invalid sender");
+  else res.status(400).json({ ok: false, error: "Invalid fromEmail" });
+  return true;
+}
 
 // ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
 function getListConflicts(viplist, oklist, blocklist) {
@@ -322,7 +338,7 @@ app.get("/blocklist", (req, res) => {
 });
 app.post("/blocklist/add", (req, res) => {
   const { email, name, reason } = req.body;
-  if (email)
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
     addToBlocklist(
       email.trim().toLowerCase(),
       reason || "manual",
@@ -333,8 +349,8 @@ app.post("/blocklist/add", (req, res) => {
 app.post("/blocklist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) =>
       addToBlocklist(l.toLowerCase(), req.body.reason || "manual"),
     );
@@ -356,14 +372,15 @@ app.get("/viplist", (req, res) => {
 });
 app.post("/viplist/add", (req, res) => {
   const { email, name } = req.body;
-  if (email) addToViplist(email.trim().toLowerCase(), name?.trim() || null);
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
+    addToViplist(email.trim().toLowerCase(), name?.trim() || null);
   res.redirect("/viplist");
 });
 app.post("/viplist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) => addToViplist(l.toLowerCase()));
   res.redirect("/viplist");
 });
@@ -383,14 +400,15 @@ app.get("/oklist", (req, res) => {
 });
 app.post("/oklist/add", (req, res) => {
   const { email, name } = req.body;
-  if (email) addToOklist(email.trim().toLowerCase(), name?.trim() || null);
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
+    addToOklist(email.trim().toLowerCase(), name?.trim() || null);
   res.redirect("/oklist");
 });
 app.post("/oklist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) => addToOklist(l.toLowerCase()));
   res.redirect("/oklist");
 });
@@ -463,7 +481,7 @@ app.post("/api/reapply", async (req, res) => {
       return res.json({ ok: true, list, totalLabeled: 0, results: [] });
 
     // Bulk guard: count per-entry emails
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       let totalCount = 0;
       const breakdown = [];
       for (const entry of entries) {
@@ -774,6 +792,7 @@ app.post("/api/tier", async (req, res) => {
   const { id, fromEmail, fromName, tier, confirmed } = req.body;
   if (!["..VIP", "..OK"].includes(tier))
     return res.status(400).json({ ok: false, error: "Invalid tier" });
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     const isVip = tier === "..VIP";
@@ -782,7 +801,7 @@ app.post("/api/tier", async (req, res) => {
       : isOklisted(fromEmail, fromName || null);
     let labeled = 0;
     if (!alreadyListed) {
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -831,10 +850,11 @@ app.post("/api/tier", async (req, res) => {
 // ─── API: OK & Clean ───────────────────────────────────────────────────────────
 app.post("/api/ok-clean", async (req, res) => {
   const { id, fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     // Guard checks the bulk .DelPend operation on other emails from sender
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -874,9 +894,10 @@ app.post("/api/ok-clean", async (req, res) => {
 // the future-state list is VIP.
 app.post("/api/vip-clean", async (req, res) => {
   const { id, fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -913,9 +934,10 @@ app.post("/api/vip-clean", async (req, res) => {
 // ─── API: Junk ─────────────────────────────────────────────────────────────────
 app.post("/api/junk", async (req, res) => {
   const { fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -947,6 +969,7 @@ app.post("/api/junk", async (req, res) => {
 // ─── API: Unsub ────────────────────────────────────────────────────────────────
 app.post("/api/unsub", async (req, res) => {
   const { fromEmail, fromName, unsubUrl, unsubPost } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     const { result, openTab, openTabUrl } = await tryUnsubscribe(
@@ -1013,6 +1036,7 @@ app.post("/api/archive", async (req, res) => {
 app.get("/sender", async (req, res) => {
   const { email, name } = req.query;
   if (!email) return res.redirect("/legacy");
+  if (rejectUnsafeSender(res, email, { html: true })) return;
   try {
     const gmail = await getGmailClient();
     const emails = await fetchSenderEmails(gmail, email);
@@ -1099,6 +1123,7 @@ app.post("/api/delpend/trash-all", async (req, res) => {
 });
 app.post("/api/delpend/trash-sender", async (req, res) => {
   const { email } = req.body;
+  if (rejectUnsafeSender(res, email, { html: true })) return;
   try {
     const gmail = await getGmailClient();
     await trashDelPend(gmail, email);
@@ -1552,7 +1577,8 @@ app.post("/settings/delete-named-backup", (req, res) => {
   } catch (_e) {}
   res.redirect("/settings");
 });
-app.get("/reset", (req, res) => {
+// POST, not GET: it mutates state, and a GET can be triggered by any <img> tag.
+app.post("/reset", (req, res) => {
   resetStats();
   res.redirect("/legacy");
 });
@@ -1781,6 +1807,8 @@ app.post("/api/triage/action", async (req, res) => {
   } = req.body;
   if (!ACTION_DISPATCH[action])
     return res.status(400).json({ ok: false, error: "Invalid action" });
+  if (SENDER_QUERY_ACTIONS.has(action) && rejectUnsafeSender(res, fromEmail))
+    return;
   const name = fromName || null;
   const undoBase = {
     action,
@@ -1799,7 +1827,7 @@ app.post("/api/triage/action", async (req, res) => {
         : isOklisted(fromEmail, name);
       let labeled = 0;
       if (!alreadyListed) {
-        if (!confirmed) {
+        if (!isConfirmed(confirmed)) {
           const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
           const count = await countMatchingEmails(gmail, q);
           if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1857,7 +1885,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "ok-clean" || action === "vip-clean") {
       const isVip = action === "vip-clean";
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1898,7 +1926,7 @@ app.post("/api/triage/action", async (req, res) => {
     }
 
     if (action === "junk") {
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1937,7 +1965,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "delete-all" || action === "archive-all") {
       const isDelete = action === "delete-all";
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         return res.json(
@@ -2082,7 +2110,7 @@ app.post("/api/triage/undo", async (req, res) => {
       });
     } else if (spec.undo === "removeListEntry" || spec.undo === "listOnly") {
       // Idempotent-add guard (H2): only undo the list entry if THIS action added it.
-      if (d.addedToList) {
+      if (d.addedToList === true) {
         const ln = d.listName;
         if (ln === "vip") removeFromViplist(d.fromEmail, d.fromName || null);
         else if (ln === "ok") removeFromOklist(d.fromEmail, d.fromName || null);
@@ -2140,8 +2168,10 @@ app.get("/api/lists", (req, res) => {
 app.post("/api/lists/add", (req, res) => {
   const { list, email, name, reason } = req.body || {};
   if (!email) return res.status(400).json({ error: "Missing email" });
+  const addr = String(email).trim().toLowerCase();
+  if (!isSafeQueryEmail(addr))
+    return res.status(400).json({ error: "Invalid email" });
   try {
-    const addr = String(email).trim().toLowerCase();
     const nm = name != null ? String(name).trim() || null : null;
     // addToViplist/addToOklist return whether this add just crossed the
     // name-fragmentation threshold (fires on the transition only) — carried in the

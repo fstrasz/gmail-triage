@@ -35,7 +35,17 @@ export function extractName(from) {
   const m = from.match(/^(.+?)\s*</);
   return m ? m[1].replace(/"/g, "").trim() : from;
 }
+// A sender value interpolated into a Gmail search must be a single token: an
+// address or an @domain wildcard. Whitespace, quotes, parentheses or braces would
+// let a value close the quoted `from:"…"` term and add operators (e.g. `OR in:all`)
+// that widen a bulk label/archive/trash to unrelated mail.
+const SAFE_QUERY_EMAIL_RE = /^@?[^\s"(){}]+$/;
+export function isSafeQueryEmail(v) {
+  return typeof v === "string" && SAFE_QUERY_EMAIL_RE.test(v);
+}
 export function fromQuery(fromEmail) {
+  if (!isSafeQueryEmail(fromEmail))
+    throw new Error("Invalid sender for Gmail query");
   return `from:"${fromEmail}" -in:sent -in:trash`;
 }
 

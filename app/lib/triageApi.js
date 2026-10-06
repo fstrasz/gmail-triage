@@ -83,3 +83,23 @@ export function normalizeGuard(result) {
     },
   };
 }
+
+// ─── Bulk-guard confirmation ──────────────────────────────────────────────────
+// Only a JSON boolean `true` skips the bulk guard. express.urlencoded also parses
+// form bodies, where `confirmed=1` / `confirmed=false` arrive as truthy strings —
+// a cross-site auto-submitted form must never be able to skip the confirmation.
+export function isConfirmed(v) {
+  return v === true;
+}
+
+// Actions whose `fromEmail` is interpolated into a Gmail search query.
+export const SENDER_QUERY_ACTIONS = new Set([
+  "ok",
+  "vip",
+  "ok-clean",
+  "vip-clean",
+  "junk",
+  "unsub",
+  "delete-all",
+  "archive-all",
+]);
