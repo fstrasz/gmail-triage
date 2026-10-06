@@ -15,7 +15,7 @@ export function LabeledPage() {
   const labeled = useLabeled(tier);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4 overflow-y-auto p-3 sm:p-4 lg:p-5">
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-3 sm:p-4 lg:p-5 [&>*]:max-w-4xl">
       <h1 className="text-xl font-semibold text-ink">Labeled</h1>
 
       <div className="flex flex-wrap items-center gap-2">

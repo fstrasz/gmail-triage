@@ -99,8 +99,8 @@ export function ReviewDetail({
         {events.length > 0 && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Events ({events.length})
+              <p className="text-sm font-semibold text-ink">
+                {events.length === 1 ? "1 event found" : `${events.length} events found`}
               </p>
               {uncreated.length > 1 && (
                 <button

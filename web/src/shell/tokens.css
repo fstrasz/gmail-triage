@@ -200,7 +200,7 @@
   /* Titles lean casual: the owner's hand, not the printer's. */
   h1,
   .title-hand {
-    font-variation-settings: "CASL" 0.6;
+    font-variation-settings: "CASL" 1;
     letter-spacing: -0.01em;
   }
 }

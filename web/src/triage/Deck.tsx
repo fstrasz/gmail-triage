@@ -106,7 +106,7 @@ export function Deck({
     <div className="flex flex-1 flex-col">
       {/* Card stack */}
       <div
-        className="relative mx-auto w-full max-w-md flex-1"
+        className="relative mx-auto max-h-[30rem] w-full max-w-md flex-1"
         style={{ minHeight: "20rem" }}
       >
         {peek
@@ -161,7 +161,7 @@ export function Deck({
 
       {/* Thumb zone: feedback + Undo directly above the action row, the
           mode toggle below it. */}
-      <div className="mx-auto mt-3 flex min-h-11 w-full max-w-md items-center justify-center">
+      <div className="mx-auto mt-auto flex min-h-11 w-full max-w-md items-center justify-center pt-3">
         {feedback}
       </div>
       <div

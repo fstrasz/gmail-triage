@@ -1,7 +1,7 @@
 import { CalendarDays, Check, ExternalLink, MapPin, Star } from "lucide-react";
 import { useState } from "react";
 import { eventDate } from "../lib/format.ts";
-import { btnPrimary, btnSecondary } from "../shell/ui.ts";
+import { btnSecondary } from "../shell/ui.ts";
 import { AddToCalendarDialog } from "./AddToCalendarDialog.tsx";
 import type { CalendarEventInput, EventItem } from "./eventsApi.ts";
 
@@ -110,7 +110,7 @@ export function EventCard({
             <button
               type="button"
               onClick={() => setDialogOpen(true)}
-              className={btnPrimary}
+              className={btnSecondary}
             >
               Add to Calendar
             </button>

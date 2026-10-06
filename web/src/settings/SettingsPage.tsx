@@ -1,4 +1,4 @@
-import { btnPrimary } from "../shell/ui.ts";
+import { btnPrimary, linkAction } from "../shell/ui.ts";
 import { ActivityLogSection } from "./sections/ActivityLogSection.tsx";
 import { BackupsSection } from "./sections/BackupsSection.tsx";
 import { BulkGuardSection } from "./sections/BulkGuardSection.tsx";
@@ -36,10 +36,14 @@ export function SettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto p-3 sm:p-4 lg:p-5">
-      <h1 className="mx-auto mb-4 max-w-4xl text-xl font-semibold text-ink">
-        Settings
-      </h1>
-      <div className="mx-auto grid max-w-4xl grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <header className="mb-4 flex max-w-4xl items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink">Settings</h1>
+        {/* The phone tab bar has no room for Legacy; it lives here instead. */}
+        <a href="/legacy" className={`${linkAction} text-sm md:hidden`}>
+          Legacy UI
+        </a>
+      </header>
+      <div className="grid max-w-4xl grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <LocationsSection locations={s.locations} />
         <InterestsSection interests={s.eventInterests} />
         <EventSearchSection settings={s} />

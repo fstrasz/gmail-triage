@@ -600,12 +600,16 @@ export function TriagePage() {
                     {active.subject || "(no subject)"}
                   </p>
                 </div>
-                <iframe
-                  title="Email body"
-                  sandbox="allow-popups"
-                  src={getBodyUrl(active.id)}
-                  className="min-h-0 w-full flex-1 border-0 bg-white"
-                />
+                {/* The sender's HTML is laid on the page as a letter: white,
+                    inset and capped in width, so it never floods the pane. */}
+                <div className="flex min-h-0 flex-1 bg-sunk p-3 lg:p-4">
+                  <iframe
+                    title="Email body"
+                    sandbox="allow-popups"
+                    src={getBodyUrl(active.id)}
+                    className="mx-auto min-h-0 w-full max-w-[760px] flex-1 rounded-md border border-rule bg-white shadow-float"
+                  />
+                </div>
               </>
             )}
           </div>

@@ -78,7 +78,7 @@ export function AppShell() {
           href="/legacy"
           aria-label="Legacy UI"
           title="Legacy UI"
-          className={`${TAB} text-board-ink/80 hover:text-on-fill md:mt-auto dark:hover:text-ink`}
+          className={`${TAB.replace(/^flex /, "")} hidden text-board-ink/80 hover:text-on-fill md:mt-auto md:flex dark:hover:text-ink`}
         >
           <History aria-hidden size={20} strokeWidth={1.75} />
           Legacy
