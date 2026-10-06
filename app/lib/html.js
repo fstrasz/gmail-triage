@@ -18,6 +18,37 @@ export function safe(s) {
     .replace(/'/g, "\\'");
 }
 
+// U+2028/U+2029, built from code points so no raw separator lands in this source.
+const LINE_SEPARATORS = new RegExp(
+  `[${String.fromCharCode(0x2028, 0x2029)}]`,
+  "g",
+);
+
+/**
+ * Serialise a value as a JS literal for interpolation into an inline <script>.
+ * JSON.stringify alone is not enough: a string containing "</script>" would close
+ * the element, so every "<" is escaped (plus U+2028/2029, which are line
+ * terminators in pre-ES2019 JS string literals).
+ */
+export function jsStr(v) {
+  return JSON.stringify(v ?? null)
+    .replace(/</g, "\\u003c")
+    .replace(LINE_SEPARATORS, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
+}
+
+/** A JS string argument inside a double-quoted HTML event-handler attribute. */
+export function jsAttr(s) {
+  // JS-escape first, then HTML-escape: the attribute is HTML-decoded before the JS
+  // parser sees it, so a raw &#39; or " in the value must not survive as markup.
+  return esc(safe(s));
+}
+
+/** An href for untrusted URLs: only http(s), HTML-escaped; "" for anything else. */
+export function safeHref(u) {
+  const s = String(u || "").trim();
+  return /^https?:\/\//i.test(s) ? esc(s) : "";
+}
+
 export function triageEmailRow(e) {
   const fromEmail = extractEmail(e.from);
   const fromName = extractName(e.from);
@@ -66,26 +97,26 @@ export function triageEmailRow(e) {
   const unsubTitle = hasUnsub ? "" : ' title="No List-Unsubscribe header"';
 
   return `
-    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${fromEmail}" data-thread-id="${e.threadId || ""}" data-unsub-url="${e.listUnsubscribe || ""}" data-unsub-post="${e.listUnsubscribePost || ""}">
+    <div class="triage-row" id="row-${e.id}" style="${tierBorder}" data-from-email="${esc(fromEmail)}" data-thread-id="${esc(e.threadId)}" data-unsub-url="${esc(e.listUnsubscribe)}" data-unsub-post="${esc(e.listUnsubscribePost)}">
       <div class="triage-header" onclick="openPreview('${e.id}')">
         <div class="triage-meta">
-          <div class="triage-from">${fromName}${tierBadge}${ruleBadges} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
+          <div class="triage-from">${esc(fromName)}${tierBadge}${ruleBadges} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${esc(fromEmail)}&gt;</span></div>
           <div class="triage-subj">${subj}</div>
         </div>
         <div class="triage-date">${dateStr}</div>
         <span class="status-tag" id="tag-${e.id}" style="display:none"></span>
       </div>
       <div class="triage-actions" id="actions-${e.id}">
-        <button class="btn btn-vip"        onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..VIP')">⭐ VIP</button>
-        <button class="btn btn-vip"        onclick="doVipClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">⭐ VIP &amp; Clean</button>
-        <button class="btn btn-ok"         onclick="doTier('${e.id}','${safe(fromEmail)}','${safe(fromName)}','..OK')">✅ OK</button>
-        <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">✅ OK &amp; Clean</button>
-        <button class="btn btn-junk"       onclick="doJunk('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🗑 Junk</button>
-        <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${safe(fromEmail)}','${safe(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
+        <button class="btn btn-vip"        onclick="doTier('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}','..VIP')">⭐ VIP</button>
+        <button class="btn btn-vip"        onclick="doVipClean('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}')">⭐ VIP &amp; Clean</button>
+        <button class="btn btn-ok"         onclick="doTier('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}','..OK')">✅ OK</button>
+        <button class="btn btn-keep-clean" onclick="doOkClean('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}')">✅ OK &amp; Clean</button>
+        <button class="btn btn-junk"       onclick="doJunk('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}')">🗑 Junk</button>
+        <button class="btn btn-unsub"${unsubStyle}${unsubTitle} onclick="doUnsub('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}')">🚫 Unsub${hasUnsub ? "" : " ✉"}</button>
         <a href="/sender?email=${encodeURIComponent(fromEmail)}&name=${encodeURIComponent(fromName)}" class="btn btn-sender">👤 View All</a>
-        <button class="btn btn-archive"    onclick="doArchive('${e.id}','${e.threadId || ""}')">📥 Archive</button>
+        <button class="btn btn-archive"    onclick="doArchive('${jsAttr(e.id)}','${jsAttr(e.threadId)}')">📥 Archive</button>
         <button class="btn btn-danger"     onclick="doDelete('${e.id}')">🗑 Delete</button>
-        <button class="btn btn-review"     onclick="doReview('${e.id}','${safe(fromEmail)}','${safe(fromName)}','${safe(e.subject || "")}')">🤖 Review</button>
+        <button class="btn btn-review"     onclick="doReview('${e.id}','${jsAttr(fromEmail)}','${jsAttr(fromName)}','${jsAttr(e.subject || "")}')">🤖 Review</button>
         <button class="btn btn-expand"     onclick="openPreview('${e.id}')">▼ Preview</button>
       </div>
     </div>`;

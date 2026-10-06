@@ -313,6 +313,21 @@ All settings persist to `config/settings.json` and are managed at `/settings`:
 | `eventsSearchEmail` | `null` | Recipient(s) for events email (comma/semicolon/space separated) |
 | `eventsSearchIntervalDays` | `7` | Days between event search runs |
 
+### Request security (environment, `config/.env`)
+
+The app has no login, so it defends itself against requests a hostile web page could make the operator's browser send:
+
+- **Origin check (always on).** Any `POST`/`PUT`/`DELETE` is rejected with `403 {"ok":false,"error":"cross-origin"}` when the browser marks it cross-site (`Sec-Fetch-Site`) or its `Origin` host differs from the `Host` it was sent to. Requests with neither header (curl, the compose healthcheck, scripts) pass.
+- **`ALLOWED_HOSTS` (opt-in, recommended).** Comma-separated `host[:port]` list. When set, any request whose `Host` header is not listed gets `421` — this blocks DNS-rebinding attacks. When unset the Host check is skipped and a line is logged at startup. Hosts must match exactly as the browser sends them (port included unless it is 80/443). Include **every** name you reach the app by, plus `localhost:3000` for the compose healthcheck and any external `/health` monitor's host:
+
+  ```
+  ALLOWED_HOSTS=localhost:3000,192.168.20.10:3000,vegasnas:3000,100.x.y.z:3000,vegasnas.your-tailnet.ts.net:3000
+  ```
+
+  (LAN IP, LAN hostname, Tailscale IP and Tailscale MagicDNS name — substitute your own.) An `Origin` whose host is in this list is also accepted even if it differs from `Host`.
+- **Bulk-guard confirmation** only accepts a JSON boolean `confirmed: true`; a form-encoded `confirmed=1` is treated as unconfirmed.
+- **`POST /reset`** resets the stats counters (previously `GET`).
+
 ---
 
 ## Deployment (optional)
