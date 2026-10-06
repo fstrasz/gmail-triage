@@ -4742,3 +4742,130 @@ test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no long
     assert.equal(r.status, 404);
   });
 });
+
+test("H4 sanitizeUrl: blocks 0.0.0.0, trailing-dot names, mapped IPv6, ULA, CGNAT", async () => {
+  const { sanitizeUrl } = await import(unsubModulePath);
+  for (const bad of [
+    "http://0.0.0.0/",
+    "http://0.1.2.3/",
+    "http://localhost./admin",
+    "http://LOCALHOST../",
+    "http://foo.localhost/",
+    "http://server.local./",
+    "http://api.internal./",
+    "http://[::ffff:127.0.0.1]/",
+    "http://[::ffff:7f00:1]/",
+    "http://[::ffff:10.0.0.1]/",
+    "http://[::ffff:169.254.169.254]/",
+    "http://[::127.0.0.1]/",
+    "http://[::]/",
+    "http://[fd00::1]/",
+    "http://[fc00::1]/",
+    "http://[fe80::1]/",
+    "http://[ff02::1]/",
+    "http://[64:ff9b::7f00:1]/",
+    "http://[2002:7f00:1::1]/",
+    "http://[2001:db8::1]/",
+    "http://100.64.0.1/",
+    "http://100.112.97.92:11434/", // a Tailscale address
+    "http://100.127.255.255/",
+    "http://0x7f.1/",
+    "http://2130706433/",
+    "http://user:pw@example.com/",
+    "http://224.0.0.1/",
+    "http://255.255.255.255/",
+  ]) {
+    assert.equal(sanitizeUrl(bad), null, bad);
+  }
+  // Still public
+  assert.equal(sanitizeUrl("http://100.63.255.255/"), "http://100.63.255.255/");
+  assert.equal(sanitizeUrl("http://100.128.0.1/"), "http://100.128.0.1/");
+  assert.equal(sanitizeUrl("http://[2606:4700::1111]/"), "http://[2606:4700::1111]/");
+  assert.equal(sanitizeUrl("https://example.com./u"), "https://example.com./u");
+});
+
+test("H4 isBlockedIp: classifies resolved addresses", async () => {
+  const { isBlockedIp } = await import(unsubModulePath);
+  for (const b of ["127.0.0.1", "10.1.1.1", "100.100.100.100", "::1", "::ffff:192.168.1.1", "fd12:3456::1", "fe80::1%eth0", "garbage", ""]) {
+    assert.equal(isBlockedIp(b), true, b);
+  }
+  for (const ok of ["93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "::ffff:8.8.8.8"]) {
+    assert.equal(isBlockedIp(ok), false, ok);
+  }
+});
+
+const fakeLookup = (table) => async (host) => {
+  if (!(host in table)) throw new Error("ENOTFOUND");
+  return table[host].map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
+};
+
+test("H4 assertPublicHost: rejects a name if ANY resolved address is private", async () => {
+  const { assertPublicHost } = await import(unsubModulePath);
+  const lookup = fakeLookup({
+    "public.example": ["93.184.216.34"],
+    "rebind.example": ["93.184.216.34", "127.0.0.1"],
+    "nas.example": ["192.168.20.10"],
+    "tail.example": ["100.112.97.92"],
+    "v6.example": ["fd00::5"],
+  });
+  await assertPublicHost("https://public.example/u", lookup);
+  await assertPublicHost("https://public.example./u", lookup); // trailing dot stripped
+  for (const h of ["rebind.example", "nas.example", "tail.example", "v6.example", "missing.example"]) {
+    await assert.rejects(assertPublicHost(`https://${h}/u`, lookup), /blocked/, h);
+  }
+});
+
+test("H4 fetchWithSsrfGuardedRedirects: DNS-checks the first URL and every redirect hop", async () => {
+  const { fetchWithSsrfGuardedRedirects } = await import(unsubModulePath);
+  const lookup = fakeLookup({
+    "public.example": ["93.184.216.34"],
+    "hop.example": ["93.184.216.34"],
+    "internal.example": ["10.0.0.5"],
+  });
+  const fetched = [];
+  const fetchImpl = async (u) => {
+    fetched.push(u);
+    const loc = {
+      "https://public.example/u": "https://hop.example/x",
+      "https://hop.example/x": "https://internal.example/admin",
+    }[u];
+    return loc
+      ? { status: 302, ok: false, headers: new Headers({ location: loc }) }
+      : { status: 200, ok: true, headers: new Headers() };
+  };
+  await assert.rejects(
+    fetchWithSsrfGuardedRedirects("https://public.example/u", {}, 5, { lookup, fetchImpl }),
+    /blocked-private-address/,
+  );
+  assert.deepEqual(fetched, ["https://public.example/u", "https://hop.example/x"]);
+  // A name resolving privately is never fetched at all.
+  fetched.length = 0;
+  await assert.rejects(
+    fetchWithSsrfGuardedRedirects("https://internal.example/", {}, 5, { lookup, fetchImpl }),
+  );
+  assert.equal(fetched.length, 0);
+});
+
+test("H4 tryUnsubscribe: a hostname resolving to a private IP is not fetched", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  let fetched = 0;
+  const r = await tryUnsubscribe(null, "<https://evil.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "evil.example": ["169.254.169.254"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
+    },
+  });
+  assert.equal(fetched, 0);
+  assert.equal(r.result, "auto-failed→open-tab");
+  // Control: the same plumbing does fetch a name that resolves publicly.
+  const ok = await tryUnsubscribe(null, "<https://good.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "good.example": ["93.184.216.34"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
+    },
+  });
+  assert.equal(fetched, 1);
+  assert.equal(ok.result, "http-get");
+});
