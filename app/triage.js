@@ -69,7 +69,6 @@ import {
 } from "./lib/health.js";
 import { esc, shell, triageEmailRow } from "./lib/html.js";
 import { keepAndClean } from "./lib/keepClean.js";
-import { originGuard } from "./lib/originGuard.js";
 import { isListedSender } from "./lib/listedSender.js";
 import { NAME_FRAGMENTATION_THRESHOLD } from "./lib/senderList.js";
 import {
@@ -78,6 +77,7 @@ import {
   loadOklist,
   removeFromOklist,
 } from "./lib/oklist.js";
+import { originGuard } from "./lib/originGuard.js";
 import {
   APP_VERSION,
   blocklistPage,
@@ -187,6 +187,25 @@ function rejectUnsafeSender(res, fromEmail, { html = false } = {}) {
   if (html) res.status(400).send("Invalid sender");
   else res.status(400).json({ ok: false, error: "Invalid fromEmail" });
   return true;
+}
+
+// ─── Error responses ──────────────────────────────────────────────────────────
+// Clients get a generic message; the real error (which can carry paths, library
+// internals or Gmail detail) goes to the server log only.
+function logServerError(label, e) {
+  console.error(`[${label}] error:`, e?.stack || e?.message || e);
+  return "Internal server error";
+}
+function htmlServerError(res, e, label) {
+  logServerError(label, e);
+  res
+    .status(500)
+    .send(
+      shell(
+        "Error",
+        `<div style="padding:24px"><pre style="color:red">Something went wrong. Details are in the server log.</pre></div>`,
+      ),
+    );
 }
 
 // ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
@@ -303,14 +322,7 @@ app.get("/triage", async (req, res) => {
       console.error("[/triage] post-response error:", e.stack || e.message);
       return;
     }
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/triage");
   }
 });
 
@@ -320,14 +332,7 @@ app.get("/stats", (req, res) => {
     const { body, script } = statsPage(loadStats(), loadBlocklist());
     res.send(shell("Stats", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/stats");
   }
 });
 
@@ -430,14 +435,7 @@ app.get("/lists", (req, res) => {
     );
     res.send(shell("Label Lists", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/lists");
   }
 });
 app.post("/lists/remove", (req, res) => {
@@ -457,7 +455,7 @@ app.post("/lists/backup", (req, res) => {
     const n = createNamedBackup();
     res.json({ ok: true, n });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({ ok: false, error: logServerError("/lists/backup", e) });
   }
 });
 
@@ -569,11 +567,13 @@ app.post("/api/reapply", async (req, res) => {
   } catch (e) {
     if (res.headersSent) {
       res.write(
-        `data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`,
+        `data: ${JSON.stringify({ type: "error", error: logServerError("/api/reapply", e) })}\n\n`,
       );
       res.end();
     } else {
-      res.status(500).json({ ok: false, error: e.message });
+      res
+        .status(500)
+        .json({ ok: false, error: logServerError("/api/reapply", e) });
     }
   }
 });
@@ -641,7 +641,9 @@ app.post("/api/reapply/preview", async (req, res) => {
       breakdown,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/reapply/preview", e) });
   }
 });
 
@@ -843,7 +845,9 @@ app.post("/api/tier", async (req, res) => {
     });
     res.json({ ok: true, labeled, tier });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, labeled: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/tier", e), labeled: 0 });
   }
 });
 
@@ -884,7 +888,11 @@ app.post("/api/ok-clean", async (req, res) => {
     });
     res.json({ ok: true, cleaned });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, cleaned: 0 });
+    res.status(500).json({
+      ok: false,
+      error: logServerError("/api/ok-clean", e),
+      cleaned: 0,
+    });
   }
 });
 
@@ -927,7 +935,11 @@ app.post("/api/vip-clean", async (req, res) => {
     });
     res.json({ ok: true, cleaned });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, cleaned: 0 });
+    res.status(500).json({
+      ok: false,
+      error: logServerError("/api/vip-clean", e),
+      cleaned: 0,
+    });
   }
 });
 
@@ -962,7 +974,9 @@ app.post("/api/junk", async (req, res) => {
     });
     res.json({ ok: true, moved });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, moved: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/junk", e), moved: 0 });
   }
 });
 
@@ -998,7 +1012,9 @@ app.post("/api/unsub", async (req, res) => {
       openTabUrl,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, moved: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/unsub", e), moved: 0 });
   }
 });
 
@@ -1011,7 +1027,9 @@ app.post("/api/delete", async (req, res) => {
     appendLog({ type: "triage", action: "delete", msgId: id });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/delete", e) });
   }
 });
 
@@ -1028,7 +1046,9 @@ app.post("/api/archive", async (req, res) => {
     appendLog({ type: "triage", action: "archive", msgId: id });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/archive", e) });
   }
 });
 
@@ -1043,14 +1063,7 @@ app.get("/sender", async (req, res) => {
     const { body, script } = senderPage(emails, email, name || null);
     res.send(shell(name || email, body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/sender");
   }
 });
 
@@ -1070,14 +1083,7 @@ app.get("/labeled", async (req, res) => {
     };
     res.send(shell(titles[label], body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/labeled");
   }
 });
 
@@ -1100,7 +1106,9 @@ app.post("/api/delete-many", async (req, res) => {
     }
     res.json({ ok: true, trashed: ids.length });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/delete-many", e) });
   }
 });
 
@@ -1111,14 +1119,7 @@ app.post("/api/delpend/trash-all", async (req, res) => {
     await trashDelPend(gmail, null);
     res.redirect("/legacy");
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/api/delpend/trash-all");
   }
 });
 app.post("/api/delpend/trash-sender", async (req, res) => {
@@ -1129,14 +1130,7 @@ app.post("/api/delpend/trash-sender", async (req, res) => {
     await trashDelPend(gmail, email);
     res.redirect("/legacy");
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/api/delpend/trash-sender");
   }
 });
 
@@ -1205,7 +1199,8 @@ app.get("/api/preview/:id", async (req, res) => {
     const gmail = await getGmailClient();
     res.send(await buildPreviewDocument(gmail, req.params.id));
   } catch (e) {
-    res.send("<pre style='color:red'>Error: " + e.message + "</pre>");
+    logServerError("/api/preview", e);
+    res.status(500).send("<pre style='color:red'>Error loading message.</pre>");
   }
 });
 
@@ -1256,7 +1251,9 @@ app.post("/api/review", async (req, res) => {
     res.json({ ok: true, analysis });
   } catch (e) {
     console.error("Review error:", e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review", e) });
   }
 });
 
@@ -1266,14 +1263,7 @@ app.get("/review", (req, res) => {
     const { body, script } = reviewPage(items);
     res.send(shell("Claude Review", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/review");
   }
 });
 
@@ -1316,7 +1306,9 @@ app.post("/api/review/execute", async (req, res) => {
     });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/execute", e) });
   }
 });
 
@@ -1333,7 +1325,9 @@ app.post("/api/review/calendar", async (req, res) => {
     updateReview(id, { calendarLinks });
     res.json({ ok: true, url });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/calendar", e) });
   }
 });
 
@@ -1354,7 +1348,9 @@ app.post("/api/review/dismiss", async (req, res) => {
     removeFromReview(id);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/dismiss", e) });
   }
 });
 
@@ -1369,14 +1365,7 @@ app.get("/settings", (req, res) => {
     );
     res.send(shell("Settings", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/settings");
   }
 });
 
@@ -1433,7 +1422,10 @@ app.post("/settings/daily-summary/test", async (req, res) => {
     const sent = await sendDailySummary(gmail, { force: true });
     res.json({ ok: true, sent });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({
+      ok: false,
+      error: logServerError("/settings/daily-summary/test", e),
+    });
   }
 });
 app.post("/settings/run-scan", async (req, res) => {
@@ -1456,7 +1448,7 @@ app.post("/settings/run-scan", async (req, res) => {
       timeLabel,
     });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({ ok: false, error: logServerError("/settings/run-scan", e) });
   }
 });
 
@@ -1466,14 +1458,7 @@ app.get("/rules", (req, res) => {
     const { body, script } = rulesPage(loadRules());
     res.send(shell("Rules", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/rules");
   }
 });
 app.post("/rules/add", (req, res) => {
@@ -1546,11 +1531,12 @@ app.get("/debug", async (req, res) => {
           "]",
       );
   } catch (e) {
-    out.push("\n❌ " + e.message + "\n" + e.stack);
+    console.error("[/debug] error:", e?.stack || e);
+    out.push("\n❌ " + e.message);
   }
   res.send(
     "<pre style='font-family:monospace;padding:24px;line-height:1.6'>" +
-      out.join("\n") +
+      esc(out.join("\n")) +
       "</pre>",
   );
 });

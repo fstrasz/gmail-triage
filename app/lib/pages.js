@@ -1,7 +1,7 @@
 import { loadBlocklist } from "./blocklist.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 import { extractEmail, extractName } from "./gmail.js";
-import { esc, jsStr, triageEmailRow } from "./html.js";
+import { esc, jsAttr, jsStr, safeHref, triageEmailRow } from "./html.js";
 import { loadOklist } from "./oklist.js";
 import { loadRules } from "./rules.js";
 import { loadStats } from "./stats.js";
@@ -20,12 +20,14 @@ function buildConflictSection(conflicts) {
   };
   const rows = conflicts
     .map((s) => {
-      const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
+      const lbl = s.name
+        ? `${esc(s.name)} &lt;${esc(s.email)}&gt;`
+        : esc(s.email);
       const buttons = s.lists
         .map(
           (list) => `
         <form method="POST" action="/api/conflict/remove-from-list">
-          <input type="hidden" name="email" value="${s.email}"/>
+          <input type="hidden" name="email" value="${esc(s.email)}"/>
           <input type="hidden" name="list" value="${list}"/>
           <button class="btn ${listBtnClass[list]}" type="submit">Remove from ${listLabel[list]}</button>
         </form>`,
@@ -52,13 +54,15 @@ function buildDelPendSection(delPendSummary) {
   const senderRows = delPendSummary.senders.length
     ? delPendSummary.senders
         .map((s) => {
-          const lbl = s.name ? `${s.name} &lt;${s.email}&gt;` : s.email;
+          const lbl = s.name
+            ? `${esc(s.name)} &lt;${esc(s.email)}&gt;`
+            : esc(s.email);
           const countStr = `${s.count.toLocaleString()}${s.capped ? "+" : ""}`;
           return `<div class="bl-row">
           <div><div class="bl-email">${lbl}</div>
           <div class="bl-meta">${countStr} message${s.count !== 1 ? "s" : ""} in DelPend</div></div>
           <form method="POST" action="/api/delpend/trash-sender">
-            <input type="hidden" name="email" value="${s.email}"/>
+            <input type="hidden" name="email" value="${esc(s.email)}"/>
             <button class="btn btn-danger" type="submit">🗑 Trash</button>
           </form></div>`;
         })
@@ -165,7 +169,7 @@ export function triagePage(
   hideListed = false,
 ) {
   const rows = emails.map(triageEmailRow).join("");
-  const dataScript = `<script type="application/json" id="page-data">${JSON.stringify(
+  const dataScript = `<script type="application/json" id="page-data">${jsStr(
     {
       total: emails.length,
       blCount: blocklist.length,
@@ -673,15 +677,17 @@ export function statsPage(stats, blocklist) {
               : e.reason === "unsub"
                 ? "bl-unsub"
                 : "bl-manual";
-          const lbl = e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email;
-          return `<div class="ts-row"><span class="ts-email" title="${lbl}">${lbl}</span><span class="ts-badge ${cls}">${e.reason}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:8px;white-space:nowrap">${new Date(e.date).toLocaleDateString()}</span></div>`;
+          const lbl = e.name
+            ? esc(e.name) + " &lt;" + esc(e.email) + "&gt;"
+            : esc(e.email);
+          return `<div class="ts-row"><span class="ts-email" title="${lbl}">${lbl}</span><span class="ts-badge ${cls}">${esc(e.reason)}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:8px;white-space:nowrap">${new Date(e.date).toLocaleDateString()}</span></div>`;
         })
         .join("")
     : `<div class="empty">No blocked senders yet.</div>`;
 
   const nav = sidebar({ active: "stats" });
   const body = `
-    <script type="application/json" id="stats-data">${JSON.stringify({ last30, topBlocked, inboxSeries })}</script>
+    <script type="application/json" id="stats-data">${jsStr({ last30, topBlocked, inboxSeries })}</script>
     <div class="app-layout">
       ${nav}
       <div class="main-content">
@@ -938,10 +944,10 @@ export function labeledPage(labelName, emails) {
           const dateStr = e.date ? new Date(e.date).toLocaleDateString() : "";
           const subj = (e.subject || "(no subject)").replace(/</g, "&lt;");
           return `
-      <div class="triage-row" id="row-${e.id}" style="border-left:4px solid ${meta.border}" data-from-email="${fromEmail}">
+      <div class="triage-row" id="row-${e.id}" style="border-left:4px solid ${meta.border}" data-from-email="${esc(fromEmail)}">
         <div class="triage-header" onclick="openPreview('${e.id}')">
           <div class="triage-meta">
-            <div class="triage-from">${fromName} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${fromEmail}&gt;</span></div>
+            <div class="triage-from">${esc(fromName)} <span style="color:#94a3b8;font-weight:400;font-size:.78rem">&lt;${esc(fromEmail)}&gt;</span></div>
             <div class="triage-subj" style="${e.isRead ? "color:#94a3b8" : "font-weight:600;color:#1e293b"}">${subj}</div>
           </div>
           <div class="triage-date">${dateStr}</div>
@@ -1017,12 +1023,12 @@ export function blocklistPage(list) {
         .map(
           (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? esc(e.name) + " &lt;" + esc(e.email) + "&gt;" : esc(e.email)}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
-        <span class="bl-reason bl-${e.reason}">${e.reason}</span>
+        <span class="bl-reason bl-${esc(e.reason)}">${esc(e.reason)}</span>
         <form method="POST" action="/blocklist/remove">
-          <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name || ""}"/>
+          <input type="hidden" name="email" value="${esc(e.email)}"/>
+          <input type="hidden" name="name" value="${esc(e.name)}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
@@ -1076,11 +1082,11 @@ export function viplistPage(list) {
         .map(
           (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? esc(e.name) + " &lt;" + esc(e.email) + "&gt;" : esc(e.email)}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
         <form method="POST" action="/viplist/remove">
-          <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name || ""}"/>
+          <input type="hidden" name="email" value="${esc(e.email)}"/>
+          <input type="hidden" name="name" value="${esc(e.name)}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
@@ -1828,11 +1834,11 @@ export function oklistPage(list) {
         .map(
           (e) => `
     <div class="bl-row">
-      <div><div class="bl-email">${e.name ? e.name + " &lt;" + e.email + "&gt;" : e.email}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
+      <div><div class="bl-email">${e.name ? esc(e.name) + " &lt;" + esc(e.email) + "&gt;" : esc(e.email)}</div><div class="bl-meta">Added ${new Date(e.date).toLocaleDateString()}</div></div>
       <div style="display:flex;align-items:center;gap:10px">
         <form method="POST" action="/oklist/remove">
-          <input type="hidden" name="email" value="${e.email}"/>
-          <input type="hidden" name="name" value="${e.name || ""}"/>
+          <input type="hidden" name="email" value="${esc(e.email)}"/>
+          <input type="hidden" name="name" value="${esc(e.name)}"/>
           <button class="btn btn-danger" type="submit">✕ Remove</button>
         </form>
       </div>
@@ -2615,22 +2621,24 @@ export function eventsPage(events, settings) {
         .map(
           ([loc, evs]) => `
         <div style="margin-bottom:24px">
-          <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${loc}</h3>
+          <h3 style="font-size:.9rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📍 ${esc(loc)}</h3>
           <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">
             ${evs
               .map((e) => {
-                const displayUrl = e.canonicalUrl || e.url;
+                // Model/web-derived: only http(s) links render, everything is escaped.
+                const displayUrl = safeHref(e.canonicalUrl || e.url);
+                const calUrl = safeHref(e.calendarEventUrl);
                 const sourceIcon =
                   e.source === "email" && !e.canonicalUrl ? "✉ " : "";
                 const titleLink = displayUrl
-                  ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${e.title} ↗</a>`
-                  : `${sourceIcon}${e.title}`;
+                  ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:none">${sourceIcon}${esc(e.title)} ↗</a>`
+                  : `${sourceIcon}${esc(e.title)}`;
                 const priceRating = [
                   e.pricePerPerson
-                    ? `<strong style="color:#16a34a;font-size:.88rem">${e.pricePerPerson} / person</strong>`
+                    ? `<strong style="color:#16a34a;font-size:.88rem">${esc(e.pricePerPerson)} / person</strong>`
                     : "",
                   e.rating
-                    ? `<span style="font-size:.85rem">⭐ ${e.rating}</span>`
+                    ? `<span style="font-size:.85rem">⭐ ${esc(e.rating)}</span>`
                     : "",
                 ]
                   .filter(Boolean)
@@ -2642,38 +2650,38 @@ export function eventsPage(events, settings) {
                   <div style="flex:1;min-width:0">
                     <div style="font-weight:600;font-size:.9rem;margin-bottom:4px">
                       ${titleLink}
-                      <span style="font-weight:400;font-size:.78rem;color:#94a3b8"> &mdash; ${e.interest || ""}</span>
+                      <span style="font-weight:400;font-size:.78rem;color:#94a3b8"> &mdash; ${esc(e.interest)}</span>
                     </div>
                     ${priceRating ? `<div style="margin-bottom:5px">${priceRating}</div>` : ""}
                     <div style="font-size:.82rem;color:#374151;margin-bottom:4px">
-                      📅 ${e.date || "TBD"}${e.time ? " at " + e.time : ""} &nbsp;|&nbsp; 📍 ${e.location || "TBD"}
+                      📅 ${esc(e.date || "TBD")}${e.time ? " at " + esc(e.time) : ""} &nbsp;|&nbsp; 📍 ${esc(e.location || "TBD")}
                     </div>
-                    ${e.description ? `<div style="font-size:.82rem;color:#6b7280">${e.description}</div>` : ""}
-                    ${e.calendarEventUrl ? `<div style="margin-top:6px"><a href="${e.calendarEventUrl}" target="_blank" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ""}
+                    ${e.description ? `<div style="font-size:.82rem;color:#6b7280">${esc(e.description)}</div>` : ""}
+                    ${calUrl ? `<div style="margin-top:6px"><a href="${calUrl}" target="_blank" rel="noopener" style="font-size:.8rem;color:#16a34a">✓ Added to Calendar</a></div>` : ""}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
                     ${displayUrl ? `<a href="${displayUrl}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:.78rem;padding:5px 10px;text-decoration:none">Open ↗</a>` : ""}
-                    ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${e.id}')">+ Calendar</button>` : ""}
+                    ${!e.calendarEventUrl ? `<button class="btn btn-primary" style="font-size:.78rem;padding:5px 10px" onclick="toggleCalForm('${jsAttr(e.id)}')">+ Calendar</button>` : ""}
                     <form method="POST" action="/events/ignore" style="margin:0">
-                      <input type="hidden" name="id" value="${e.id}">
+                      <input type="hidden" name="id" value="${esc(e.id)}">
                       <button class="btn btn-danger" style="font-size:.78rem;padding:5px 10px;width:100%" type="submit">Ignore</button>
                     </form>
                   </div>
                 </div>
-                <div id="cal-form-${e.id}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9">
+                <div id="cal-form-${esc(e.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9">
                   <form method="POST" action="/events/calendar" style="display:flex;flex-direction:column;gap:8px">
-                    <input type="hidden" name="id" value="${e.id}">
+                    <input type="hidden" name="id" value="${esc(e.id)}">
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                      <input type="text" name="title" value="${(e.title || "").replace(/"/g, "&quot;")}" placeholder="Title" style="flex:2;min-width:160px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                      <input type="date" name="date" value="${e.date || ""}" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                      <input type="time" name="time" value="${e.time || ""}" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="text" name="title" value="${esc(e.title)}" placeholder="Title" style="flex:2;min-width:160px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="date" name="date" value="${esc(e.date)}" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                      <input type="time" name="time" value="${esc(e.time)}" style="flex:1;min-width:100px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
                     </div>
-                    <input type="text" name="location" value="${(e.location || "").replace(/"/g, "&quot;")}" placeholder="Location" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                    <input type="url" name="url" value="${(e.url || "").replace(/"/g, "&quot;")}" placeholder="URL (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
-                    <textarea name="description" rows="2" placeholder="Description (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;resize:vertical">${e.description || ""}</textarea>
+                    <input type="text" name="location" value="${esc(e.location)}" placeholder="Location" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <input type="url" name="url" value="${esc(e.url)}" placeholder="URL (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem">
+                    <textarea name="description" rows="2" placeholder="Description (optional)" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:.83rem;resize:vertical">${esc(e.description)}</textarea>
                     <div style="display:flex;gap:8px">
                       <button class="btn btn-primary" type="submit" style="font-size:.83rem">Add to Calendar</button>
-                      <button class="btn btn-secondary" type="button" onclick="toggleCalForm('${e.id}')" style="font-size:.83rem">Cancel</button>
+                      <button class="btn btn-secondary" type="button" onclick="toggleCalForm('${jsAttr(e.id)}')" style="font-size:.83rem">Cancel</button>
                     </div>
                   </form>
                 </div>

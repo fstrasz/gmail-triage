@@ -4919,3 +4919,110 @@ test("L2 mailto unsubscribe: refuses multiple or malformed recipients", async ()
     assert.match(r.result, /^mailto-error/, hdr);
   }
 });
+
+test("M2 jsAttr / safeHref: attribute-safe JS strings and http(s)-only links", async () => {
+  const { jsAttr, safeHref } = await import(htmlModulePath);
+  // " ends the attribute; &#39; would be decoded to ' before the JS parser runs.
+  const out = jsAttr(`a"b&#39;c'd`);
+  assert.ok(!out.includes('"'), out);
+  assert.ok(!out.includes("&#39;"), out);
+  assert.ok(out.includes("&amp;#39;"), out);
+  assert.equal(safeHref("javascript:alert(1)"), "");
+  assert.equal(safeHref(" data:text/html,x"), "");
+  assert.equal(safeHref(null), "");
+  assert.equal(safeHref('https://x.example/?a=1&b="2"'), "https://x.example/?a=1&amp;b=&quot;2&quot;");
+});
+
+test("M2 triageEmailRow: hostile From/subject/unsubscribe header stay inert", async () => {
+  const { triageEmailRow } = await import(htmlModulePath);
+  const html = triageEmailRow({
+    id: "m1",
+    threadId: "t1",
+    from: `<img src=x onerror=alert(1)> <a"onmouseover="alert(2)@x.com>`,
+    subject: "&#39;);alert(3);//",
+    listUnsubscribe: `<https://x.example/u"><script>alert(4)</script>>`,
+    listUnsubscribePost: `"><b>`,
+  });
+  assert.ok(!/<img|<script|<b>/i.test(html), html);
+  // No attribute is closed early by an injected quote.
+  assert.ok(!/"onmouseover=/i.test(html), html);
+  // The subject's entity cannot decode to a quote inside the onclick handler.
+  assert.ok(!html.includes("'&#39;"), html);
+});
+
+test("M2 eventsPage: event fields are escaped and non-http links are dropped", async () => {
+  const { eventsPage } = await import(pagesModulePath);
+  const { body } = eventsPage(
+    [
+      {
+        id: `e1"><script>alert(0)</script>`,
+        title: "<script>alert(1)</script>",
+        description: "<img src=x onerror=alert(2)>",
+        location: "<b>loc</b>",
+        interest: "<i>wine</i>",
+        configuredLocation: "<u>Vegas</u>",
+        url: "javascript:alert(3)",
+        calendarEventUrl: "javascript:alert(4)",
+        pricePerPerson: "<s>$1</s>",
+        rating: "<em>5</em>",
+        date: "2999-01-01",
+      },
+    ],
+    { eventInterests: [{}], locations: [] },
+  );
+  assert.ok(!/<script|<img|<b>|<i>|<u>|<s>|<em>/i.test(body), body);
+  assert.ok(!/href="javascript:/i.test(body), body);
+});
+
+test("M2 list pages: stored names/emails/reasons are escaped", async () => {
+  const { blocklistPage, viplistPage, oklistPage, statsPage } = await import(pagesModulePath);
+  const entry = {
+    email: `x@y.com"><svg onload=alert(1)>`,
+    name: "<img src=x onerror=alert(2)>",
+    reason: "<b>junk</b>",
+    date: "2026-01-01",
+  };
+  for (const page of [blocklistPage, viplistPage, oklistPage]) {
+    const html = page([entry]);
+    assert.ok(!/<img|<svg|<b>/i.test(html), page.name);
+  }
+  const { body } = statsPage({ daily: [] }, [entry]);
+  assert.ok(!/<img|<svg|<b>junk/i.test(body), "statsPage");
+});
+
+test("M2 app: error responses do not leak internal error detail", async () => {
+  await withApp(async (base) => {
+    // No credentials.json in the test cwd → getGmailClient throws an ENOENT naming the path.
+    let r = await fetch(`${base}/sender?email=a%40b.com`);
+    let t = await r.text();
+    assert.equal(r.status, 500);
+    assert.ok(!/credentials\.json|ENOENT|\bat .+:\d+:\d+/.test(t), t);
+    r = await fetch(`${base}/api/preview/abc`);
+    t = await r.text();
+    assert.ok(!/credentials\.json|ENOENT/.test(t), t);
+    r = await fetch(`${base}/api/junk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromEmail: "a@b.com" }),
+    });
+    assert.equal(r.status, 500);
+    const j = await r.json();
+    assert.equal(j.error, "Internal server error");
+  });
+});
+
+test("M2 triagePage: a From header cannot close the page-data JSON script", async () => {
+  const { triagePage } = await import(pagesModulePath);
+  const out = triagePage(
+    [{ id: "m1", threadId: "t1", from: `x</script><script>alert(1)</script> <a@b.com>`, subject: "s" }],
+    [],
+    {},
+    [],
+  );
+  const html = typeof out === "string" ? out : out.body + out.script;
+  const m = html.match(/<script type="application\/json" id="page-data">([\s\S]*?)<\/script>/);
+  assert.ok(m, "page-data block present");
+  const data = JSON.parse(m[1]);
+  assert.ok(data.seenSenders[0].includes("</script>")); // value preserved
+  assert.ok(!/<script>alert/.test(html), "no injected script element");
+});

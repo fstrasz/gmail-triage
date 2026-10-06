@@ -142,7 +142,9 @@ function v6Groups(ip) {
   if (fill < 0) return null;
   const groups = [...head, ...Array(fill).fill("0"), ...rest];
   if (groups.length !== 8) return null;
-  const out = groups.map((g) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN));
+  const out = groups.map((g) =>
+    /^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN,
+  );
   return out.some(Number.isNaN) ? null : out;
 }
 
