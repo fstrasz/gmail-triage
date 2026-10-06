@@ -2754,7 +2754,7 @@ test("delete-all / archive-all: unconfirmed always returns the guard, confirmed 
     !/count\s*>/.test(block),
     "unconfirmed delete-all must not gate the guard on a count threshold",
   );
-  assert.match(block, /if \(!confirmed\)/);
+  assert.match(block, /if \(!isConfirmed\(confirmed\)\)/);
   assert.match(block, /return res\.json\(\s*normalizeGuard\(/);
   assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
   // (b) confirmed falls through to the delete.
@@ -4509,4 +4509,578 @@ test("runReadTriagePass: a thrown error inside triage does not prevent completio
     }),
   );
   assert.equal(gmail._sendCalls.length, 0);
+});
+
+// ─── Security hardening (2026-10 review) ─────────────────────────────────────
+
+const pagesModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "pages.js"),
+).href;
+
+// Extract every inline <script> body (no src) from an HTML string.
+function inlineScripts(html) {
+  return [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(
+    (m) => m[1],
+  );
+}
+
+test("H1 jsStr: JSON-encodes and neutralises </script> and line separators", async () => {
+  const { jsStr } = await import(htmlModulePath);
+  const LS = String.fromCharCode(0x2028);
+  for (const v of ["a'b", "</script><script>alert(1)</script>", "x" + LS + "y", 'q"\\']) {
+    const out = jsStr(v);
+    assert.ok(!out.includes("<"), out);
+    assert.ok(!out.includes(LS), "raw U+2028 must be escaped");
+    assert.equal(JSON.parse(out), v); // round-trips to the same value
+  }
+  assert.equal(jsStr(null), "null");
+  assert.equal(jsStr(undefined), "null");
+});
+
+test("H1 senderPage: a hostile email cannot break out of the inline script", async () => {
+  const { senderPage } = await import(pagesModulePath);
+  const { shell } = await import(htmlModulePath);
+  const evil = "a@b.com</script><script>alert(1)</script>";
+  const { body, script } = senderPage([], evil, null);
+  assert.ok(!script.toLowerCase().includes("</script"), script.slice(0, 200));
+  // No injected <script> element: the only scripts are the ones the page emits.
+  const html = shell("x", body, script);
+  assert.ok(!inlineScripts(html).some((sc) => sc.trim().startsWith("alert(1)")));
+  // And the value still reaches the page intact.
+  const m = script.match(/var pageFromEmail=(.*?);\n/);
+  assert.equal(JSON.parse(m[1]), evil);
+});
+
+// Mount the real Express app (middleware + routes) on an ephemeral port. Routes
+// exercised here must fail or short-circuit before any Gmail call: no credentials
+// exist in the test cwd, so getGmailClient() throws.
+const triageModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "triage.js"),
+).href;
+async function withApp(fn) {
+  process.env.GMAIL_TRIAGE_NO_LISTEN = "1";
+  const { app } = await import(triageModulePath);
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const origErr = console.error;
+  console.error = () => {}; // routes log expected Gmail-auth failures
+  try {
+    return await fn(base);
+  } finally {
+    console.error = origErr;
+    await new Promise((r) => server.close(r));
+  }
+}
+
+test("H2 /api/preview: served with a sandbox CSP and no-referrer", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/preview/abc123`);
+    await r.text();
+    assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups");
+    assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+  });
+});
+
+test("H2 old-UI iframes are all sandboxed without allow-same-origin", async () => {
+  const { reviewPage } = await import(pagesModulePath);
+  const { body } = reviewPage([
+    { id: "m1", status: "pending", subject: "s", from: "a@b.com", analysis: {} },
+  ]);
+  const iframes = body.match(/<iframe\b[^>]*>/g) || [];
+  assert.ok(iframes.length >= 1);
+  for (const f of iframes) {
+    assert.match(f, /sandbox="allow-popups"/);
+  }
+  const src = fs.readFileSync(path.join(projectDir, "app", "lib", "pages.js"), "utf8");
+  const all = src.match(/<iframe\b[^>]*>/g) || [];
+  assert.ok(all.length >= 4);
+  for (const f of all) {
+    assert.match(f, /sandbox="allow-popups"/, f);
+  }
+});
+
+const originGuardModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "originGuard.js"),
+).href;
+
+test("H3 parseAllowedHosts: opt-in, comma-separated, lowercased", async () => {
+  const { parseAllowedHosts } = await import(originGuardModulePath);
+  assert.equal(parseAllowedHosts(undefined), null);
+  assert.equal(parseAllowedHosts("  "), null);
+  assert.deepEqual(parseAllowedHosts("LocalHost:3000, vegasnas:3000,,"), [
+    "localhost:3000",
+    "vegasnas:3000",
+  ]);
+});
+
+test("H3 checkRequest: cross-site POSTs are rejected, same-origin and header-less pass", async () => {
+  const { checkRequest } = await import(originGuardModulePath);
+  const H = "vegasnas:3000";
+  const post = (headers) => checkRequest({ method: "POST", headers: { host: H, ...headers } });
+  // Cross-site auto-submitted form (the CSRF case)
+  assert.equal(post({ "sec-fetch-site": "cross-site" })?.status, 403);
+  assert.equal(post({ "sec-fetch-site": "same-site" })?.status, 403);
+  assert.deepEqual(post({ origin: "https://evil.example" })?.body, {
+    ok: false,
+    error: "cross-origin",
+  });
+  assert.equal(post({ origin: "null" })?.status, 403); // sandboxed/opaque origin
+  assert.equal(post({ origin: "http://vegasnas:3001" })?.status, 403); // port differs
+  // Legit
+  assert.equal(post({ origin: "http://VEGASNAS:3000", "sec-fetch-site": "same-origin" }), null);
+  assert.equal(post({ "sec-fetch-site": "none" }), null);
+  assert.equal(post({}), null); // curl / healthcheck
+  // Safe methods are not origin-checked
+  assert.equal(
+    checkRequest({ method: "GET", headers: { host: H, "sec-fetch-site": "cross-site" } }),
+    null,
+  );
+});
+
+test("H3 checkRequest: ALLOWED_HOSTS rejects unknown Host with 421 and admits listed Origins", async () => {
+  const { checkRequest } = await import(originGuardModulePath);
+  const allow = ["localhost:3000", "vegasnas:3000"];
+  // DNS rebinding: attacker's name in Host, even on a GET
+  assert.equal(
+    checkRequest({ method: "GET", headers: { host: "rebind.evil.example:3000" } }, allow)?.status,
+    421,
+  );
+  assert.equal(checkRequest({ method: "GET", headers: { host: "LOCALHOST:3000" } }, allow), null);
+  // Origin listed in the allowlist passes even when it differs from Host
+  assert.equal(
+    checkRequest(
+      { method: "POST", headers: { host: "localhost:3000", origin: "http://vegasnas:3000" } },
+      allow,
+    ),
+    null,
+  );
+  // Unset allowlist: any Host passes
+  assert.equal(checkRequest({ method: "GET", headers: { host: "anything:1" } }, null), null);
+});
+
+test("H3 originGuard logs once when the Host allowlist is off", async () => {
+  const { originGuard } = await import(originGuardModulePath);
+  const lines = [];
+  originGuard({ allowedHosts: null, log: (m) => lines.push(m) });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /ALLOWED_HOSTS/);
+  originGuard({ allowedHosts: ["a:1"], log: (m) => lines.push(m) });
+  assert.equal(lines.length, 1);
+});
+
+test("H3 app: cross-site form POST to /api/triage/action is rejected before any Gmail call", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/triage/action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://evil.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+      body: "action=delete-all&fromEmail=boss%40example.com&confirmed=1",
+    });
+    assert.equal(r.status, 403);
+    assert.deepEqual(await r.json(), { ok: false, error: "cross-origin" });
+  });
+});
+
+test("H3 isConfirmed: only JSON boolean true skips the bulk guard", async () => {
+  const { isConfirmed } = await import(triageApiModulePath);
+  assert.equal(isConfirmed(true), true);
+  for (const v of ["1", "true", 1, "on", "false", [], {}, undefined, null]) {
+    assert.equal(isConfirmed(v), false, `confirmed=${JSON.stringify(v)}`);
+  }
+  // Every guard site in triage.js goes through isConfirmed (no bare truthiness test).
+  const src = fs.readFileSync(path.join(projectDir, "app", "triage.js"), "utf8");
+  assert.equal(/!\s*confirmed\b/.test(src), false);
+});
+
+test("H3 isSafeQueryEmail / fromQuery: a sender value cannot widen a Gmail search", async () => {
+  const { isSafeQueryEmail, fromQuery } = await import(gmailModulePath);
+  for (const ok of ["a@b.com", "@mail.example.com", "first.last+tag@x.co"]) {
+    assert.equal(isSafeQueryEmail(ok), true, ok);
+  }
+  for (const bad of [
+    'x@y.com" OR in:anywhere "',
+    "a@b.com OR in:all",
+    "a@b.com\tx",
+    "(a@b.com)",
+    "{a b}",
+    "",
+    null,
+    undefined,
+    42,
+  ]) {
+    assert.equal(isSafeQueryEmail(bad), false, String(bad));
+  }
+  assert.equal(fromQuery("a@b.com"), 'from:"a@b.com" -in:sent -in:trash');
+  assert.throws(() => fromQuery('a" OR "b'));
+});
+
+test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no longer mutates", async () => {
+  await withApp(async (base) => {
+    const post = (p, body) =>
+      fetch(`${base}${p}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const evil = 'x@y.com" OR in:anywhere "';
+    let r = await post("/api/triage/action", { action: "delete-all", fromEmail: evil });
+    assert.equal(r.status, 400);
+    r = await post("/api/junk", { fromEmail: evil });
+    assert.equal(r.status, 400);
+    r = await post("/api/tier", { fromEmail: evil, tier: "..OK" });
+    assert.equal(r.status, 400);
+    r = await fetch(`${base}/sender?email=${encodeURIComponent(evil)}`);
+    assert.equal(r.status, 400);
+    r = await post("/api/lists/add", { list: "blocklist", email: "a@b.com OR in:all" });
+    assert.equal(r.status, 400);
+    r = await fetch(`${base}/reset`);
+    assert.equal(r.status, 404);
+  });
+});
+
+test("H4 sanitizeUrl: blocks 0.0.0.0, trailing-dot names, mapped IPv6, ULA, CGNAT", async () => {
+  const { sanitizeUrl } = await import(unsubModulePath);
+  for (const bad of [
+    "http://0.0.0.0/",
+    "http://0.1.2.3/",
+    "http://localhost./admin",
+    "http://LOCALHOST../",
+    "http://foo.localhost/",
+    "http://server.local./",
+    "http://api.internal./",
+    "http://[::ffff:127.0.0.1]/",
+    "http://[::ffff:7f00:1]/",
+    "http://[::ffff:10.0.0.1]/",
+    "http://[::ffff:169.254.169.254]/",
+    "http://[::127.0.0.1]/",
+    "http://[::]/",
+    "http://[fd00::1]/",
+    "http://[fc00::1]/",
+    "http://[fe80::1]/",
+    "http://[ff02::1]/",
+    "http://[64:ff9b::7f00:1]/",
+    "http://[2002:7f00:1::1]/",
+    "http://[2001:db8::1]/",
+    "http://100.64.0.1/",
+    "http://100.112.97.92:11434/", // a Tailscale address
+    "http://100.127.255.255/",
+    "http://0x7f.1/",
+    "http://2130706433/",
+    "http://user:pw@example.com/",
+    "http://224.0.0.1/",
+    "http://255.255.255.255/",
+  ]) {
+    assert.equal(sanitizeUrl(bad), null, bad);
+  }
+  // Still public
+  assert.equal(sanitizeUrl("http://100.63.255.255/"), "http://100.63.255.255/");
+  assert.equal(sanitizeUrl("http://100.128.0.1/"), "http://100.128.0.1/");
+  assert.equal(sanitizeUrl("http://[2606:4700::1111]/"), "http://[2606:4700::1111]/");
+  assert.equal(sanitizeUrl("https://example.com./u"), "https://example.com./u");
+});
+
+test("H4 isBlockedIp: classifies resolved addresses", async () => {
+  const { isBlockedIp } = await import(unsubModulePath);
+  for (const b of ["127.0.0.1", "10.1.1.1", "100.100.100.100", "::1", "::ffff:192.168.1.1", "fd12:3456::1", "fe80::1%eth0", "garbage", ""]) {
+    assert.equal(isBlockedIp(b), true, b);
+  }
+  for (const ok of ["93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "::ffff:8.8.8.8"]) {
+    assert.equal(isBlockedIp(ok), false, ok);
+  }
+});
+
+const fakeLookup = (table) => async (host) => {
+  if (!(host in table)) throw new Error("ENOTFOUND");
+  return table[host].map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
+};
+
+test("H4 assertPublicHost: rejects a name if ANY resolved address is private", async () => {
+  const { assertPublicHost } = await import(unsubModulePath);
+  const lookup = fakeLookup({
+    "public.example": ["93.184.216.34"],
+    "rebind.example": ["93.184.216.34", "127.0.0.1"],
+    "nas.example": ["192.168.20.10"],
+    "tail.example": ["100.112.97.92"],
+    "v6.example": ["fd00::5"],
+  });
+  await assertPublicHost("https://public.example/u", lookup);
+  await assertPublicHost("https://public.example./u", lookup); // trailing dot stripped
+  for (const h of ["rebind.example", "nas.example", "tail.example", "v6.example", "missing.example"]) {
+    await assert.rejects(assertPublicHost(`https://${h}/u`, lookup), /blocked/, h);
+  }
+});
+
+test("H4 fetchWithSsrfGuardedRedirects: DNS-checks the first URL and every redirect hop", async () => {
+  const { fetchWithSsrfGuardedRedirects } = await import(unsubModulePath);
+  const lookup = fakeLookup({
+    "public.example": ["93.184.216.34"],
+    "hop.example": ["93.184.216.34"],
+    "internal.example": ["10.0.0.5"],
+  });
+  const fetched = [];
+  const fetchImpl = async (u) => {
+    fetched.push(u);
+    const loc = {
+      "https://public.example/u": "https://hop.example/x",
+      "https://hop.example/x": "https://internal.example/admin",
+    }[u];
+    return loc
+      ? { status: 302, ok: false, headers: new Headers({ location: loc }) }
+      : { status: 200, ok: true, headers: new Headers() };
+  };
+  await assert.rejects(
+    fetchWithSsrfGuardedRedirects("https://public.example/u", {}, 5, { lookup, fetchImpl }),
+    /blocked-private-address/,
+  );
+  assert.deepEqual(fetched, ["https://public.example/u", "https://hop.example/x"]);
+  // A name resolving privately is never fetched at all.
+  fetched.length = 0;
+  await assert.rejects(
+    fetchWithSsrfGuardedRedirects("https://internal.example/", {}, 5, { lookup, fetchImpl }),
+  );
+  assert.equal(fetched.length, 0);
+});
+
+test("H4 tryUnsubscribe: a hostname resolving to a private IP is not fetched", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  let fetched = 0;
+  const r = await tryUnsubscribe(null, "<https://evil.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "evil.example": ["169.254.169.254"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
+    },
+  });
+  assert.equal(fetched, 0);
+  assert.equal(r.result, "auto-failed→open-tab");
+  // Control: the same plumbing does fetch a name that resolves publicly.
+  const ok = await tryUnsubscribe(null, "<https://good.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "good.example": ["93.184.216.34"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
+    },
+  });
+  assert.equal(fetched, 1);
+  assert.equal(ok.result, "http-get");
+});
+
+// Mock Gmail capturing the decoded MIME of every send.
+function mailtoMockGmail() {
+  const sent = [];
+  return {
+    sent,
+    users: {
+      messages: {
+        send: async ({ requestBody }) => {
+          sent.push(Buffer.from(requestBody.raw, "base64url").toString("utf8"));
+          return {};
+        },
+      },
+    },
+  };
+}
+
+test("L2 mailto unsubscribe: CR/LF in subject/body cannot inject headers", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  const gmail = mailtoMockGmail();
+  const r = await tryUnsubscribe(
+    gmail,
+    "<mailto:unsub@list.example?subject=hi%0D%0ABcc:%20victim@x.com&body=a%0D%0A%0D%0Ab>",
+    "",
+    "a@b.com",
+  );
+  assert.equal(r.result, "mailto-sent");
+  assert.equal(gmail.sent.length, 1);
+  const [head] = gmail.sent[0].split("\r\n\r\n");
+  const headerLines = head.split("\r\n");
+  assert.ok(!headerLines.some((l) => /^bcc:/i.test(l)), head);
+  assert.ok(headerLines.includes("To: unsub@list.example"), head);
+  assert.ok(headerLines.some((l) => l.startsWith("Subject: hi")));
+});
+
+test("L2 mailto unsubscribe: refuses multiple or malformed recipients", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  for (const hdr of [
+    "<mailto:a@x.com,b@y.com>",
+    "<mailto:a@x.com%2Cb@y.com>",
+    "<mailto:a@x.com;b@y.com>",
+    "<mailto:a@x.com%0D%0ABcc:c@z.com>",
+    "<mailto:not-an-address>",
+  ]) {
+    const gmail = mailtoMockGmail();
+    const r = await tryUnsubscribe(gmail, hdr, "", "a@b.com");
+    assert.equal(gmail.sent.length, 0, hdr);
+    assert.match(r.result, /^mailto-error/, hdr);
+  }
+});
+
+test("M2 jsAttr / safeHref: attribute-safe JS strings and http(s)-only links", async () => {
+  const { jsAttr, safeHref } = await import(htmlModulePath);
+  // " ends the attribute; &#39; would be decoded to ' before the JS parser runs.
+  const out = jsAttr(`a"b&#39;c'd`);
+  assert.ok(!out.includes('"'), out);
+  assert.ok(!out.includes("&#39;"), out);
+  assert.ok(out.includes("&amp;#39;"), out);
+  assert.equal(safeHref("javascript:alert(1)"), "");
+  assert.equal(safeHref(" data:text/html,x"), "");
+  assert.equal(safeHref(null), "");
+  assert.equal(safeHref('https://x.example/?a=1&b="2"'), "https://x.example/?a=1&amp;b=&quot;2&quot;");
+});
+
+test("M2 triageEmailRow: hostile From/subject/unsubscribe header stay inert", async () => {
+  const { triageEmailRow } = await import(htmlModulePath);
+  const html = triageEmailRow({
+    id: "m1",
+    threadId: "t1",
+    from: `<img src=x onerror=alert(1)> <a"onmouseover="alert(2)@x.com>`,
+    subject: "&#39;);alert(3);//",
+    listUnsubscribe: `<https://x.example/u"><script>alert(4)</script>>`,
+    listUnsubscribePost: `"><b>`,
+  });
+  assert.ok(!/<img|<script|<b>/i.test(html), html);
+  // No attribute is closed early by an injected quote.
+  assert.ok(!/"onmouseover=/i.test(html), html);
+  // The subject's entity cannot decode to a quote inside the onclick handler.
+  assert.ok(!html.includes("'&#39;"), html);
+});
+
+test("M2 eventsPage: event fields are escaped and non-http links are dropped", async () => {
+  const { eventsPage } = await import(pagesModulePath);
+  const { body } = eventsPage(
+    [
+      {
+        id: `e1"><script>alert(0)</script>`,
+        title: "<script>alert(1)</script>",
+        description: "<img src=x onerror=alert(2)>",
+        location: "<b>loc</b>",
+        interest: "<i>wine</i>",
+        configuredLocation: "<u>Vegas</u>",
+        url: "javascript:alert(3)",
+        calendarEventUrl: "javascript:alert(4)",
+        pricePerPerson: "<s>$1</s>",
+        rating: "<em>5</em>",
+        date: "2999-01-01",
+      },
+    ],
+    { eventInterests: [{}], locations: [] },
+  );
+  assert.ok(!/<script|<img|<b>|<i>|<u>|<s>|<em>/i.test(body), body);
+  assert.ok(!/href="javascript:/i.test(body), body);
+});
+
+test("M2 list pages: stored names/emails/reasons are escaped", async () => {
+  const { blocklistPage, viplistPage, oklistPage, statsPage } = await import(pagesModulePath);
+  const entry = {
+    email: `x@y.com"><svg onload=alert(1)>`,
+    name: "<img src=x onerror=alert(2)>",
+    reason: "<b>junk</b>",
+    date: "2026-01-01",
+  };
+  for (const page of [blocklistPage, viplistPage, oklistPage]) {
+    const html = page([entry]);
+    assert.ok(!/<img|<svg|<b>/i.test(html), page.name);
+  }
+  const { body } = statsPage({ daily: [] }, [entry]);
+  assert.ok(!/<img|<svg|<b>junk/i.test(body), "statsPage");
+});
+
+test("M2 app: error responses do not leak internal error detail", async () => {
+  await withApp(async (base) => {
+    // No credentials.json in the test cwd → getGmailClient throws an ENOENT naming the path.
+    let r = await fetch(`${base}/sender?email=a%40b.com`);
+    let t = await r.text();
+    assert.equal(r.status, 500);
+    assert.ok(!/credentials\.json|ENOENT|\bat .+:\d+:\d+/.test(t), t);
+    r = await fetch(`${base}/api/preview/abc`);
+    t = await r.text();
+    assert.ok(!/credentials\.json|ENOENT/.test(t), t);
+    r = await fetch(`${base}/api/junk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromEmail: "a@b.com" }),
+    });
+    assert.equal(r.status, 500);
+    const j = await r.json();
+    assert.equal(j.error, "Internal server error");
+  });
+});
+
+test("M2 triagePage: a From header cannot close the page-data JSON script", async () => {
+  const { triagePage } = await import(pagesModulePath);
+  const out = triagePage(
+    [{ id: "m1", threadId: "t1", from: `x</script><script>alert(1)</script> <a@b.com>`, subject: "s" }],
+    [],
+    {},
+    [],
+  );
+  const html = typeof out === "string" ? out : out.body + out.script;
+  const m = html.match(/<script type="application\/json" id="page-data">([\s\S]*?)<\/script>/);
+  assert.ok(m, "page-data block present");
+  const data = JSON.parse(m[1]);
+  assert.ok(data.seenSenders[0].includes("</script>")); // value preserved
+  assert.ok(!/<script>alert/.test(html), "no injected script element");
+});
+
+const securityHeadersModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "securityHeaders.js"),
+).href;
+
+test("M3 securityHeadersFor: base policy everywhere, full CSP only under /app", async () => {
+  const { securityHeadersFor, APP_CSP, BASE_CSP } = await import(securityHeadersModulePath);
+  for (const p of ["/", "/triage", "/api/lists", "/application", "/apps/x"]) {
+    const h = securityHeadersFor(p);
+    assert.equal(h["Content-Security-Policy"], BASE_CSP, p);
+    assert.equal(h["X-Content-Type-Options"], "nosniff");
+    assert.equal(h["Referrer-Policy"], "no-referrer");
+    assert.equal(h["X-Frame-Options"], "SAMEORIGIN");
+  }
+  assert.ok(!BASE_CSP.includes("script-src"), "old UI relies on inline scripts");
+  for (const p of ["/app", "/app/", "/app/assets/index.js", "/app/triage"]) {
+    assert.equal(securityHeadersFor(p)["Content-Security-Policy"], APP_CSP, p);
+  }
+  assert.match(APP_CSP, /script-src 'self'(;|$)/);
+  assert.ok(!/script-src[^;]*unsafe/.test(APP_CSP));
+});
+
+test("M3 app: headers on every response; email-body sandbox CSP not clobbered", async () => {
+  await withApp(async (base) => {
+    let r = await fetch(`${base}/api/review`);
+    await r.text();
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(r.headers.get("x-frame-options"), "SAMEORIGIN");
+    assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+    assert.match(r.headers.get("content-security-policy"), /frame-ancestors 'self'/);
+    // Rejected by the origin guard: still carries the headers.
+    r = await fetch(`${base}/api/lists/add`, { method: "POST", headers: { Origin: "https://evil.example" } });
+    await r.text();
+    assert.equal(r.status, 403);
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    // Email-body routes keep their own sandbox policy.
+    for (const p of ["/api/triage/body", "/api/preview/abc"]) {
+      r = await fetch(`${base}${p}`);
+      await r.text();
+      assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups", p);
+    }
+    // The React shell, when a build is present (not in CI's backend job).
+    if (fs.existsSync(path.join(projectDir, "web", "dist", "index.html"))) {
+      r = await fetch(`${base}/app/`);
+      await r.text();
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get("content-security-policy"), /default-src 'self'; script-src 'self'/);
+    }
+  });
+});
+
+test("M3 web build: index.html has no inline script the /app CSP would block", () => {
+  const p = path.join(projectDir, "web", "dist", "index.html");
+  if (!fs.existsSync(p)) return; // web suite not built in this environment
+  const html = fs.readFileSync(p, "utf8");
+  const inline = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>/gi)];
+  assert.equal(inline.length, 0, inline.map((m) => m[0]).join("\n"));
 });

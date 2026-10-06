@@ -49,6 +49,7 @@ import {
   getDelPendSummary,
   getGmailClient,
   getLabelId,
+  isSafeQueryEmail,
   labelSender,
   reapplyBlocklist,
   reapplyRules,
@@ -76,6 +77,7 @@ import {
   loadOklist,
   removeFromOklist,
 } from "./lib/oklist.js";
+import { originGuard } from "./lib/originGuard.js";
 import {
   APP_VERSION,
   blocklistPage,
@@ -116,6 +118,7 @@ import {
   startEventsSearchScheduler,
   startScheduler,
 } from "./lib/scheduler.js";
+import { securityHeaders } from "./lib/securityHeaders.js";
 import {
   addEventInterest,
   addLocation,
@@ -145,7 +148,9 @@ import {
   ACTION_DISPATCH,
   filterHidden,
   guardScope,
+  isConfirmed,
   normalizeGuard,
+  SENDER_QUERY_ACTIONS,
   shapeTriageEmail,
 } from "./lib/triageApi.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
@@ -170,8 +175,42 @@ function findPart(part, mimeType) {
   }
   return null;
 }
+// Security headers on every response (incl. the guard's own 403/421). Email-body
+// routes replace the CSP with their sandbox policy after this runs.
+app.use(securityHeaders());
+// Cross-origin / DNS-rebinding guard — before the body parsers, so a rejected
+// request's body is never parsed. See app/lib/originGuard.js and ALLOWED_HOSTS.
+app.use(originGuard());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Reject a sender value that would widen a Gmail search (see isSafeQueryEmail).
+// Returns true when it has already sent the 400.
+function rejectUnsafeSender(res, fromEmail, { html = false } = {}) {
+  if (isSafeQueryEmail(fromEmail)) return false;
+  if (html) res.status(400).send("Invalid sender");
+  else res.status(400).json({ ok: false, error: "Invalid fromEmail" });
+  return true;
+}
+
+// ─── Error responses ──────────────────────────────────────────────────────────
+// Clients get a generic message; the real error (which can carry paths, library
+// internals or Gmail detail) goes to the server log only.
+function logServerError(label, e) {
+  console.error(`[${label}] error:`, e?.stack || e?.message || e);
+  return "Internal server error";
+}
+function htmlServerError(res, e, label) {
+  logServerError(label, e);
+  res
+    .status(500)
+    .send(
+      shell(
+        "Error",
+        `<div style="padding:24px"><pre style="color:red">Something went wrong. Details are in the server log.</pre></div>`,
+      ),
+    );
+}
 
 // ─── List-overlap conflict detection (pure JS, no Gmail API needed) ───────────
 function getListConflicts(viplist, oklist, blocklist) {
@@ -287,14 +326,7 @@ app.get("/triage", async (req, res) => {
       console.error("[/triage] post-response error:", e.stack || e.message);
       return;
     }
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/triage");
   }
 });
 
@@ -304,14 +336,7 @@ app.get("/stats", (req, res) => {
     const { body, script } = statsPage(loadStats(), loadBlocklist());
     res.send(shell("Stats", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/stats");
   }
 });
 
@@ -322,7 +347,7 @@ app.get("/blocklist", (req, res) => {
 });
 app.post("/blocklist/add", (req, res) => {
   const { email, name, reason } = req.body;
-  if (email)
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
     addToBlocklist(
       email.trim().toLowerCase(),
       reason || "manual",
@@ -333,8 +358,8 @@ app.post("/blocklist/add", (req, res) => {
 app.post("/blocklist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) =>
       addToBlocklist(l.toLowerCase(), req.body.reason || "manual"),
     );
@@ -356,14 +381,15 @@ app.get("/viplist", (req, res) => {
 });
 app.post("/viplist/add", (req, res) => {
   const { email, name } = req.body;
-  if (email) addToViplist(email.trim().toLowerCase(), name?.trim() || null);
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
+    addToViplist(email.trim().toLowerCase(), name?.trim() || null);
   res.redirect("/viplist");
 });
 app.post("/viplist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) => addToViplist(l.toLowerCase()));
   res.redirect("/viplist");
 });
@@ -383,14 +409,15 @@ app.get("/oklist", (req, res) => {
 });
 app.post("/oklist/add", (req, res) => {
   const { email, name } = req.body;
-  if (email) addToOklist(email.trim().toLowerCase(), name?.trim() || null);
+  if (email && isSafeQueryEmail(email.trim().toLowerCase()))
+    addToOklist(email.trim().toLowerCase(), name?.trim() || null);
   res.redirect("/oklist");
 });
 app.post("/oklist/bulk", (req, res) => {
   (req.body.emails || "")
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
+    .map((l) => l.trim().toLowerCase())
+    .filter(isSafeQueryEmail)
     .forEach((l) => addToOklist(l.toLowerCase()));
   res.redirect("/oklist");
 });
@@ -412,14 +439,7 @@ app.get("/lists", (req, res) => {
     );
     res.send(shell("Label Lists", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/lists");
   }
 });
 app.post("/lists/remove", (req, res) => {
@@ -439,7 +459,7 @@ app.post("/lists/backup", (req, res) => {
     const n = createNamedBackup();
     res.json({ ok: true, n });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({ ok: false, error: logServerError("/lists/backup", e) });
   }
 });
 
@@ -463,7 +483,7 @@ app.post("/api/reapply", async (req, res) => {
       return res.json({ ok: true, list, totalLabeled: 0, results: [] });
 
     // Bulk guard: count per-entry emails
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       let totalCount = 0;
       const breakdown = [];
       for (const entry of entries) {
@@ -551,11 +571,13 @@ app.post("/api/reapply", async (req, res) => {
   } catch (e) {
     if (res.headersSent) {
       res.write(
-        `data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`,
+        `data: ${JSON.stringify({ type: "error", error: logServerError("/api/reapply", e) })}\n\n`,
       );
       res.end();
     } else {
-      res.status(500).json({ ok: false, error: e.message });
+      res
+        .status(500)
+        .json({ ok: false, error: logServerError("/api/reapply", e) });
     }
   }
 });
@@ -623,7 +645,9 @@ app.post("/api/reapply/preview", async (req, res) => {
       breakdown,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/reapply/preview", e) });
   }
 });
 
@@ -774,6 +798,7 @@ app.post("/api/tier", async (req, res) => {
   const { id, fromEmail, fromName, tier, confirmed } = req.body;
   if (!["..VIP", "..OK"].includes(tier))
     return res.status(400).json({ ok: false, error: "Invalid tier" });
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     const isVip = tier === "..VIP";
@@ -782,7 +807,7 @@ app.post("/api/tier", async (req, res) => {
       : isOklisted(fromEmail, fromName || null);
     let labeled = 0;
     if (!alreadyListed) {
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -824,17 +849,20 @@ app.post("/api/tier", async (req, res) => {
     });
     res.json({ ok: true, labeled, tier });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, labeled: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/tier", e), labeled: 0 });
   }
 });
 
 // ─── API: OK & Clean ───────────────────────────────────────────────────────────
 app.post("/api/ok-clean", async (req, res) => {
   const { id, fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     // Guard checks the bulk .DelPend operation on other emails from sender
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -864,7 +892,11 @@ app.post("/api/ok-clean", async (req, res) => {
     });
     res.json({ ok: true, cleaned });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, cleaned: 0 });
+    res.status(500).json({
+      ok: false,
+      error: logServerError("/api/ok-clean", e),
+      cleaned: 0,
+    });
   }
 });
 
@@ -874,9 +906,10 @@ app.post("/api/ok-clean", async (req, res) => {
 // the future-state list is VIP.
 app.post("/api/vip-clean", async (req, res) => {
   const { id, fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -906,16 +939,21 @@ app.post("/api/vip-clean", async (req, res) => {
     });
     res.json({ ok: true, cleaned });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, cleaned: 0 });
+    res.status(500).json({
+      ok: false,
+      error: logServerError("/api/vip-clean", e),
+      cleaned: 0,
+    });
   }
 });
 
 // ─── API: Junk ─────────────────────────────────────────────────────────────────
 app.post("/api/junk", async (req, res) => {
   const { fromEmail, fromName, confirmed } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!confirmed) {
+    if (!isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -940,13 +978,16 @@ app.post("/api/junk", async (req, res) => {
     });
     res.json({ ok: true, moved });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, moved: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/junk", e), moved: 0 });
   }
 });
 
 // ─── API: Unsub ────────────────────────────────────────────────────────────────
 app.post("/api/unsub", async (req, res) => {
   const { fromEmail, fromName, unsubUrl, unsubPost } = req.body;
+  if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
     const { result, openTab, openTabUrl } = await tryUnsubscribe(
@@ -975,7 +1016,9 @@ app.post("/api/unsub", async (req, res) => {
       openTabUrl,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, moved: 0 });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/unsub", e), moved: 0 });
   }
 });
 
@@ -988,7 +1031,9 @@ app.post("/api/delete", async (req, res) => {
     appendLog({ type: "triage", action: "delete", msgId: id });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/delete", e) });
   }
 });
 
@@ -1005,7 +1050,9 @@ app.post("/api/archive", async (req, res) => {
     appendLog({ type: "triage", action: "archive", msgId: id });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/archive", e) });
   }
 });
 
@@ -1013,20 +1060,14 @@ app.post("/api/archive", async (req, res) => {
 app.get("/sender", async (req, res) => {
   const { email, name } = req.query;
   if (!email) return res.redirect("/legacy");
+  if (rejectUnsafeSender(res, email, { html: true })) return;
   try {
     const gmail = await getGmailClient();
     const emails = await fetchSenderEmails(gmail, email);
     const { body, script } = senderPage(emails, email, name || null);
     res.send(shell(name || email, body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${esc(e.message)}\n${esc(e.stack)}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/sender");
   }
 });
 
@@ -1046,14 +1087,7 @@ app.get("/labeled", async (req, res) => {
     };
     res.send(shell(titles[label], body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/labeled");
   }
 });
 
@@ -1076,7 +1110,9 @@ app.post("/api/delete-many", async (req, res) => {
     }
     res.json({ ok: true, trashed: ids.length });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/delete-many", e) });
   }
 });
 
@@ -1087,31 +1123,18 @@ app.post("/api/delpend/trash-all", async (req, res) => {
     await trashDelPend(gmail, null);
     res.redirect("/legacy");
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/api/delpend/trash-all");
   }
 });
 app.post("/api/delpend/trash-sender", async (req, res) => {
   const { email } = req.body;
+  if (rejectUnsafeSender(res, email, { html: true })) return;
   try {
     const gmail = await getGmailClient();
     await trashDelPend(gmail, email);
     res.redirect("/legacy");
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/api/delpend/trash-sender");
   }
 });
 
@@ -1153,7 +1176,7 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
       "</div><div><strong>Subject:</strong> " +
       g("Subject").replace(/</g, "&lt;") +
       "</div><div><strong>Date:</strong> " +
-      g("Date") +
+      g("Date").replace(/</g, "&lt;") +
       "</div></div>";
   return (
     "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body>" +
@@ -1163,13 +1186,25 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
   );
 }
 
+// Headers for any route that serves raw email HTML. The sandbox CSP gives the
+// document an opaque origin with scripts disabled (popups allowed so links open).
+function setEmailBodyHeaders(res) {
+  res.set("Content-Security-Policy", "sandbox allow-popups");
+  res.set("Referrer-Policy", "no-referrer");
+}
+
 // ─── API: Preview ──────────────────────────────────────────────────────────────
 app.get("/api/preview/:id", async (req, res) => {
+  // Same isolation as /api/triage/body: the message HTML is attacker-controlled, so
+  // render it in a unique opaque origin with no script execution even if opened
+  // top-level or framed without a sandbox attribute.
+  setEmailBodyHeaders(res);
   try {
     const gmail = await getGmailClient();
     res.send(await buildPreviewDocument(gmail, req.params.id));
   } catch (e) {
-    res.send("<pre style='color:red'>Error: " + e.message + "</pre>");
+    logServerError("/api/preview", e);
+    res.status(500).send("<pre style='color:red'>Error loading message.</pre>");
   }
 });
 
@@ -1220,7 +1255,9 @@ app.post("/api/review", async (req, res) => {
     res.json({ ok: true, analysis });
   } catch (e) {
     console.error("Review error:", e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review", e) });
   }
 });
 
@@ -1230,14 +1267,7 @@ app.get("/review", (req, res) => {
     const { body, script } = reviewPage(items);
     res.send(shell("Claude Review", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/review");
   }
 });
 
@@ -1280,7 +1310,9 @@ app.post("/api/review/execute", async (req, res) => {
     });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/execute", e) });
   }
 });
 
@@ -1297,7 +1329,9 @@ app.post("/api/review/calendar", async (req, res) => {
     updateReview(id, { calendarLinks });
     res.json({ ok: true, url });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/calendar", e) });
   }
 });
 
@@ -1318,7 +1352,9 @@ app.post("/api/review/dismiss", async (req, res) => {
     removeFromReview(id);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res
+      .status(500)
+      .json({ ok: false, error: logServerError("/api/review/dismiss", e) });
   }
 });
 
@@ -1333,14 +1369,7 @@ app.get("/settings", (req, res) => {
     );
     res.send(shell("Settings", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/settings");
   }
 });
 
@@ -1397,7 +1426,10 @@ app.post("/settings/daily-summary/test", async (req, res) => {
     const sent = await sendDailySummary(gmail, { force: true });
     res.json({ ok: true, sent });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({
+      ok: false,
+      error: logServerError("/settings/daily-summary/test", e),
+    });
   }
 });
 app.post("/settings/run-scan", async (req, res) => {
@@ -1420,7 +1452,7 @@ app.post("/settings/run-scan", async (req, res) => {
       timeLabel,
     });
   } catch (e) {
-    res.json({ ok: false, error: e.message });
+    res.json({ ok: false, error: logServerError("/settings/run-scan", e) });
   }
 });
 
@@ -1430,14 +1462,7 @@ app.get("/rules", (req, res) => {
     const { body, script } = rulesPage(loadRules());
     res.send(shell("Rules", body, script));
   } catch (e) {
-    res
-      .status(500)
-      .send(
-        shell(
-          "Error",
-          `<div style="padding:24px"><pre style="color:red">${e.message}</pre></div>`,
-        ),
-      );
+    htmlServerError(res, e, "/rules");
   }
 });
 app.post("/rules/add", (req, res) => {
@@ -1510,11 +1535,12 @@ app.get("/debug", async (req, res) => {
           "]",
       );
   } catch (e) {
-    out.push("\n❌ " + e.message + "\n" + e.stack);
+    console.error("[/debug] error:", e?.stack || e);
+    out.push("\n❌ " + e.message);
   }
   res.send(
     "<pre style='font-family:monospace;padding:24px;line-height:1.6'>" +
-      out.join("\n") +
+      esc(out.join("\n")) +
       "</pre>",
   );
 });
@@ -1541,7 +1567,8 @@ app.post("/settings/delete-named-backup", (req, res) => {
   } catch (_e) {}
   res.redirect("/settings");
 });
-app.get("/reset", (req, res) => {
+// POST, not GET: it mutates state, and a GET can be triggered by any <img> tag.
+app.post("/reset", (req, res) => {
   resetStats();
   res.redirect("/legacy");
 });
@@ -1738,7 +1765,7 @@ app.get("/api/triage/body", async (req, res) => {
   const { id } = req.query;
   // Defense-in-depth (item 40): sandbox the response so a direct top-level open of the
   // body URL is isolated (unique origin, no scripts), mirroring the allow-popups iframe.
-  res.set("Content-Security-Policy", "sandbox allow-popups");
+  setEmailBodyHeaders(res);
   if (!id) return res.status(400).send("<pre>Missing id</pre>");
   try {
     const gmail = await getGmailClient();
@@ -1770,6 +1797,8 @@ app.post("/api/triage/action", async (req, res) => {
   } = req.body;
   if (!ACTION_DISPATCH[action])
     return res.status(400).json({ ok: false, error: "Invalid action" });
+  if (SENDER_QUERY_ACTIONS.has(action) && rejectUnsafeSender(res, fromEmail))
+    return;
   const name = fromName || null;
   const undoBase = {
     action,
@@ -1788,7 +1817,7 @@ app.post("/api/triage/action", async (req, res) => {
         : isOklisted(fromEmail, name);
       let labeled = 0;
       if (!alreadyListed) {
-        if (!confirmed) {
+        if (!isConfirmed(confirmed)) {
           const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
           const count = await countMatchingEmails(gmail, q);
           if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1846,7 +1875,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "ok-clean" || action === "vip-clean") {
       const isVip = action === "vip-clean";
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1887,7 +1916,7 @@ app.post("/api/triage/action", async (req, res) => {
     }
 
     if (action === "junk") {
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1926,7 +1955,7 @@ app.post("/api/triage/action", async (req, res) => {
 
     if (action === "delete-all" || action === "archive-all") {
       const isDelete = action === "delete-all";
-      if (!confirmed) {
+      if (!isConfirmed(confirmed)) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         return res.json(
@@ -2071,7 +2100,7 @@ app.post("/api/triage/undo", async (req, res) => {
       });
     } else if (spec.undo === "removeListEntry" || spec.undo === "listOnly") {
       // Idempotent-add guard (H2): only undo the list entry if THIS action added it.
-      if (d.addedToList) {
+      if (d.addedToList === true) {
         const ln = d.listName;
         if (ln === "vip") removeFromViplist(d.fromEmail, d.fromName || null);
         else if (ln === "ok") removeFromOklist(d.fromEmail, d.fromName || null);
@@ -2129,8 +2158,10 @@ app.get("/api/lists", (req, res) => {
 app.post("/api/lists/add", (req, res) => {
   const { list, email, name, reason } = req.body || {};
   if (!email) return res.status(400).json({ error: "Missing email" });
+  const addr = String(email).trim().toLowerCase();
+  if (!isSafeQueryEmail(addr))
+    return res.status(400).json({ error: "Invalid email" });
   try {
-    const addr = String(email).trim().toLowerCase();
     const nm = name != null ? String(name).trim() || null : null;
     // addToViplist/addToOklist return whether this add just crossed the
     // name-fragmentation threshold (fires on the transition only) — carried in the
@@ -2561,9 +2592,15 @@ if (process.env.WEB_APP_ENABLED !== "0") {
   );
 }
 
-app.listen(PORT, () => {
-  console.log("Gmail triage server on http://localhost:" + PORT);
-  startScheduler(getGmailClient);
-  startDailySummaryScheduler(getGmailClient);
-  startEventsSearchScheduler(getGmailClient);
-});
+// Exported so the test suite can mount the real middleware + routes on an
+// ephemeral port. GMAIL_TRIAGE_NO_LISTEN=1 (tests only) skips the listener and the
+// schedulers; production never sets it.
+export { app };
+
+if (process.env.GMAIL_TRIAGE_NO_LISTEN !== "1")
+  app.listen(PORT, () => {
+    console.log("Gmail triage server on http://localhost:" + PORT);
+    startScheduler(getGmailClient);
+    startDailySummaryScheduler(getGmailClient);
+    startEventsSearchScheduler(getGmailClient);
+  });
