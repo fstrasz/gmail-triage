@@ -1,4 +1,5 @@
 import type { TriageAction } from "../lib/api.ts";
+import type { StampTone } from "../shell/Stamp.tsx";
 import type { Dir } from "./swipeMap.ts";
 
 // Human label + semantic color token per action. The label is the accessible
@@ -18,34 +19,35 @@ export const ACTION_LABEL: Record<TriageAction, string> = {
   review: "Review",
 };
 
-// Tailwind bg-color utility per action — for the desktop action column where
-// each button's background IS the action color (white text over color).
-export const ACTION_BG: Record<TriageAction, string> = {
-  ok: "bg-ok",
-  vip: "bg-vip",
-  "ok-clean": "bg-ok",
-  "vip-clean": "bg-vip",
-  junk: "bg-junk",
-  unsub: "bg-muted",
-  archive: "bg-ink",
-  delete: "bg-junk",
-  "delete-all": "bg-junk",
-  "archive-all": "bg-ink",
-  review: "bg-review",
+// Ink per action — the one colour that action's mark is stamped in. Neutral
+// moves (archive, unsub, sender-wide archive) are graphite: they file mail
+// away without a judgement, so they borrow no decision colour.
+export const ACTION_TONE: Record<TriageAction, StampTone> = {
+  ok: "ok",
+  vip: "vip",
+  "ok-clean": "ok",
+  "vip-clean": "vip",
+  junk: "junk",
+  unsub: "graphite",
+  archive: "graphite",
+  delete: "junk",
+  "delete-all": "junk",
+  "archive-all": "graphite",
+  review: "review",
 };
 
-// Tailwind text-color utility token per action (references semantic tokens).
+// Tailwind text-color utility per action (references semantic tokens).
 export const ACTION_COLOR: Record<TriageAction, string> = {
   ok: "text-ok",
   vip: "text-vip",
   "ok-clean": "text-ok",
   "vip-clean": "text-vip",
   junk: "text-junk",
-  unsub: "text-muted",
-  archive: "text-ink",
+  unsub: "text-graphite",
+  archive: "text-graphite",
   delete: "text-junk",
   "delete-all": "text-junk",
-  "archive-all": "text-ink",
+  "archive-all": "text-graphite",
   review: "text-review",
 };
 

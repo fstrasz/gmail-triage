@@ -1166,7 +1166,9 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
     : "<p>No content</p>";
   const body = htmlData
     ? decoded
-    : "<pre style='white-space:pre-wrap;font-family:sans-serif;font-size:14px'>" +
+    : // Plain-text mail has no styling of its own, so it gets the app's notebook
+      // ink and a readable measure instead of a raw <pre>.
+      "<pre style='white-space:pre-wrap;word-break:break-word;max-width:70ch;margin:0;font-family:inherit;font-size:15px;line-height:1.6;color:#231d16'>" +
       decoded.replace(/</g, "&lt;") +
       "</pre>";
   const meta = noMeta
@@ -1179,7 +1181,7 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
       g("Date").replace(/</g, "&lt;") +
       "</div></div>";
   return (
-    "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;color:#475569;font-size:.85rem}.meta strong{color:#1e293b}</style></head><body>" +
+    "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #ddd5c7;padding-bottom:12px;margin-bottom:16px;color:#6b6155;font-size:.85rem}.meta strong{color:#231d16}</style></head><body>" +
     meta +
     body +
     "</body></html>"

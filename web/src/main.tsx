@@ -3,7 +3,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./shell/tokens.css";
+import { applyTheme, loadTheme } from "./lib/theme.ts";
 import { AppRoutes } from "./routes.tsx";
+
+applyTheme(loadTheme());
 
 const queryClient = new QueryClient();
 

@@ -12,6 +12,11 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // Precache the font and icons too, so an installed PWA opens offline
+        // with its own type rather than a fallback face.
+        globPatterns: ["**/*.{js,css,html,woff2,png,svg,webmanifest}"],
+      },
       // Service worker is generated into the dist directory; Express serves it
       // from the /app/ base path, which is correct for the scope below.
       manifest: {
@@ -21,8 +26,8 @@ export default defineConfig({
         display: "standalone",
         start_url: "/app/",
         scope: "/app/",
-        background_color: "#0E1726",
-        theme_color: "#0E1726",
+        background_color: "#2f2822",
+        theme_color: "#2f2822",
         icons: [
           {
             src: "pwa-192.png",

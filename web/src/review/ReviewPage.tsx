@@ -1,5 +1,7 @@
+import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
+import { btnPrimary } from "../shell/ui.ts";
 import { ReviewDetail } from "./ReviewDetail.tsx";
 import { ReviewList } from "./ReviewList.tsx";
 import type { ReviewEvent } from "./reviewApi.ts";
@@ -16,7 +18,12 @@ export function ReviewPage() {
   const calendar = useCalendar();
   const dismiss = useDismiss();
 
-  const desktop = useMediaQuery("(hover: hover) and (pointer: fine)");
+  // Split view needs room as well as a mouse: a narrow desktop window gets the
+  // phone list→detail flow, and a wide touch screen (iPad landscape) the split.
+  const finePointer = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const tablet = useMediaQuery("(min-width: 768px)");
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const desktop = (finePointer && tablet) || wide;
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const items = review.data ?? [];
@@ -86,7 +93,7 @@ export function ReviewPage() {
           <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-hairline">
             {list}
           </aside>
-          <div className="min-w-0 flex-1 overflow-hidden bg-white">
+          <div className="min-w-0 flex-1 overflow-hidden bg-paper">
             {detail ?? (
               <p className="p-4 text-sm text-muted">Select a review item.</p>
             )}
@@ -102,13 +109,14 @@ export function ReviewPage() {
       <Header count={pending.length} />
       {actionError && <ActionErrorBanner />}
       {active ? (
-        <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-hairline bg-white">
+        <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-hairline bg-paper">
           <button
             type="button"
             onClick={() => setSelectedId(null)}
-            className="flex-shrink-0 border-b border-hairline px-4 py-2 text-left text-sm font-semibold text-ink"
+            className="inline-flex min-h-11 flex-shrink-0 items-center gap-1.5 border-b border-rule px-4 text-left text-sm font-semibold text-ink"
           >
-            ← Back
+            <ArrowLeft aria-hidden size={16} />
+            Back
           </button>
           <div className="min-h-0 flex-1">{detail}</div>
         </div>
@@ -126,8 +134,8 @@ export function ReviewPage() {
 function Header({ count }: { count: number }) {
   return (
     <header className="mb-4 flex items-center gap-3">
-      <h1 className="text-lg font-semibold text-ink">
-        Review <span className="font-mono text-muted">{count}</span>
+      <h1 className="text-xl font-semibold text-ink">
+        Review <span className="tabular font-medium text-muted">{count}</span>
       </h1>
     </header>
   );
@@ -150,7 +158,7 @@ function ReviewSkeleton() {
       <Header count={0} />
       <div
         data-testid="review-skeleton"
-        className="flex-1 animate-pulse rounded-2xl border border-hairline bg-hairline/40"
+        className="flex-1 rounded-2xl border border-rule bg-paper motion-safe:animate-pulse"
       />
     </div>
   );
@@ -174,10 +182,7 @@ function ReconnectGmail() {
       <p className="text-sm text-muted">
         The review queue could not be loaded. Re-authorize to continue.
       </p>
-      <a
-        href="/auth"
-        className="rounded-xl bg-ink px-4 py-2 font-semibold text-white"
-      >
+      <a href="/auth" className={btnPrimary}>
         Reconnect
       </a>
     </div>

@@ -15,7 +15,7 @@ export function ActivityLogSection({ entries }: { entries: ActivityEntry[] }) {
       ) : (
         <div className="max-h-80 overflow-y-auto">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-white text-xs uppercase tracking-wide text-muted">
+            <thead className="sticky top-0 bg-paper text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="py-1 pr-3 font-semibold">Time</th>
                 <th className="py-1 pr-3 font-semibold">Action</th>

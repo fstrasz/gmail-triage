@@ -1,13 +1,24 @@
+import { CalendarDays, Check } from "lucide-react";
+import { Stamp, type StampTone } from "../shell/Stamp.tsx";
 import type { ReviewItem } from "./reviewApi.ts";
 import { formatDate } from "./reviewApi.ts";
 
 // Colored action badge per suggested disposition (tokens, no raw hexes).
-const ACTION_BADGE: Record<string, { label: string; cls: string }> = {
-  keep: { label: "Keep", cls: "bg-ok text-white" },
-  archive: { label: "Archive", cls: "bg-muted text-white" },
-  junk: { label: "Junk", cls: "bg-junk text-white" },
-  none: { label: "None", cls: "border border-hairline text-muted" },
+const ACTION_BADGE: Record<string, { label: string; tone: StampTone }> = {
+  keep: { label: "Keep", tone: "ok" },
+  archive: { label: "Archive", tone: "graphite" },
+  junk: { label: "Junk", tone: "junk" },
+  none: { label: "None", tone: "note" },
 };
+
+// "Name <addr@x>" → "Name"; a bare address is returned as-is.
+function senderName(from: string): string {
+  const name = from
+    .replace(/<[^>]*>/, "")
+    .replace(/"/g, "")
+    .trim();
+  return name || from;
+}
 
 function Row({
   item,
@@ -31,34 +42,33 @@ function Row({
         onClick={() => onSelect(item.id)}
         className={`w-full px-3 py-2 text-left transition-colors ${
           selected
-            ? "bg-ink/5 shadow-[inset_3px_0_0] shadow-ink"
-            : "hover:bg-hairline/30"
+            ? "bg-paper ring-1 ring-inset ring-rule-strong"
+            : "hover:bg-paper/60"
         }`}
       >
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-            {item.from}
+            {senderName(item.from)}
           </span>
           {executed && (
-            <span
+            <Check
               aria-label="Executed"
-              className="shrink-0 font-semibold text-ok"
-            >
-              ✓
-            </span>
+              size={16}
+              className="shrink-0 text-ok"
+            />
           )}
         </div>
         <p className="truncate text-sm text-muted">{item.subject}</p>
         <div className="mt-1 flex items-center gap-2">
           <span className="text-xs text-muted">{formatDate(item.date)}</span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-xs font-semibold ${badge.cls}`}
-          >
-            {badge.label}
-          </span>
+          <Stamp tone={badge.tone}>{badge.label}</Stamp>
           {eventCount > 0 && (
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-xs text-muted">
-              📅 {eventCount}
+            <span className="inline-flex items-center gap-1 rounded-full border border-rule-strong px-1.5 py-0.5 text-xs text-muted">
+              <CalendarDays aria-hidden size={12} />
+              {eventCount}
+              <span className="sr-only">
+                {eventCount === 1 ? "event" : "events"}
+              </span>
             </span>
           )}
         </div>
@@ -82,7 +92,7 @@ export function ReviewList({
     <div className="flex flex-col">
       {pending.length > 0 && (
         <>
-          <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+          <p className="px-3 py-2 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted">
             Pending
           </p>
           <ul className="flex flex-col divide-y divide-hairline">
@@ -99,7 +109,7 @@ export function ReviewList({
       )}
       {executed.length > 0 && (
         <>
-          <p className="mt-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+          <p className="mt-2 px-3 py-2 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted">
             Executed
           </p>
           <ul className="flex flex-col divide-y divide-hairline">

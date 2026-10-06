@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { btnSecondary } from "../../shell/ui.ts";
 import { Card, Field, numberInputClass, saveBtnClass } from "../Card.tsx";
 import type { Settings } from "../settingsApi.ts";
 import { useRunScan, useSetScheduler } from "../settingsQueries.ts";
@@ -85,7 +86,7 @@ export function SchedulerSection({ settings }: { settings: Settings }) {
       <div className="mt-4 border-t border-hairline pt-3">
         <button
           type="button"
-          className="rounded-lg border border-ink px-3 py-1.5 text-sm font-semibold text-ink disabled:opacity-40"
+          className={btnSecondary}
           disabled={runScan.isPending}
           onClick={() => runScan.mutate()}
         >

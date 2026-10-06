@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { btnPrimary, input } from "../shell/ui.ts";
 import type { ReviewEvent } from "./reviewApi.ts";
 
 // Editable per-event form. Seeds from the Claude-extracted event; the operator
@@ -32,12 +33,12 @@ export function CalendarForm({
     });
   }
 
-  const field = "rounded border border-hairline px-2 py-1 text-sm text-ink";
+  const field = input;
 
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-2 rounded-lg border border-hairline p-3"
+      className="flex flex-col gap-2 rounded-lg border border-rule bg-paper p-3"
     >
       <input
         aria-label="Event title"
@@ -78,7 +79,7 @@ export function CalendarForm({
       <button
         type="submit"
         disabled={disabled}
-        className="self-start rounded-lg bg-review px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+        className={`self-start ${btnPrimary}`}
       >
         Add to Calendar
       </button>

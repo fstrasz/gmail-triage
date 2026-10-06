@@ -11,3 +11,6 @@ deploy.log
 scripts/session-*
 web/dist
 web/node_modules
+# Impeccable local review captures
+.impeccable/review/
+.impeccable/shot.sh

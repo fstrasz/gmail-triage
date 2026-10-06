@@ -1,4 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import {
+  btnDanger,
+  btnPrimary,
+  btnSecondary,
+  dialogContent,
+  dialogOverlay,
+  dialogTitle,
+} from "../shell/ui.ts";
 
 export interface GuardInfo {
   count: number;
@@ -32,7 +40,7 @@ export function GuardDialog({
     : isArchive
       ? `Archive ${guard?.count}`
       : "Confirm";
-  const confirmBg = isArchive ? "bg-ink" : "bg-junk";
+  const confirmCls = isArchive ? btnPrimary : btnDanger;
   return (
     <Dialog.Root
       open={guard != null}
@@ -41,16 +49,16 @@ export function GuardDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-          <Dialog.Title className="text-base font-semibold text-ink">
-            {title}
-          </Dialog.Title>
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={dialogContent}>
+          <Dialog.Title className={dialogTitle}>{title}</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-ink">
             {guard?.message}
           </Dialog.Description>
           {guard?.scope && (
-            <p className="mt-1 text-xs text-muted">{guard.scope}</p>
+            <p className="mt-2 inline-block rounded-md bg-sunk px-2 py-1 text-xs font-medium text-graphite">
+              {guard.scope}
+            </p>
           )}
           {isDelete && (
             <p className="mt-2 text-sm text-ink">
@@ -64,18 +72,11 @@ export function GuardDialog({
           )}
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg border border-hairline px-4 py-2 text-sm font-medium text-ink"
-              >
+              <button type="button" className={btnSecondary}>
                 Cancel
               </button>
             </Dialog.Close>
-            <button
-              type="button"
-              className={`rounded-lg ${confirmBg} px-4 py-2 text-sm font-semibold text-white`}
-              onClick={onConfirm}
-            >
+            <button type="button" className={confirmCls} onClick={onConfirm}>
               {confirmLabel}
             </button>
           </div>

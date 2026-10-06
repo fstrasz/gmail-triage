@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { ConfirmDialog } from "../settings/ConfirmDialog.tsx";
+import { btnPrimary, btnSecondary, input } from "../shell/ui.ts";
 import type { Rule } from "./listsApi.ts";
 import {
   useAddRule,
@@ -8,7 +9,7 @@ import {
   useUpdateRule,
 } from "./listsQueries.ts";
 
-const INPUT = "rounded-lg border border-hairline px-2 py-1 text-sm text-ink";
+const INPUT = input;
 
 function linesToArray(v: string): string[] {
   return v
@@ -79,7 +80,7 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
       {rules.length === 0 ? (
         <p className="text-sm text-muted">No rules yet.</p>
       ) : (
-        <ul className="divide-y divide-hairline rounded-xl border border-hairline">
+        <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-paper">
           {rules.map((r) => (
             <li
               key={r.id}
@@ -107,7 +108,7 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
                 onClick={() => toggleRule.mutate({ id: r.id })}
                 className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
                   r.enabled
-                    ? "border-ok bg-ok text-white"
+                    ? "border-ok bg-ok text-on-fill"
                     : "border-hairline text-muted"
                 }`}
               >
@@ -148,7 +149,7 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
 
       <form
         onSubmit={submit}
-        className="flex flex-col gap-2 rounded-xl border border-hairline p-3"
+        className="flex flex-col gap-2 rounded-xl border border-rule bg-paper p-3"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">
           {editingId ? "Edit rule" : "Add rule"}
@@ -193,16 +194,12 @@ export function RulesSection({ rules }: { rules: Rule[] }) {
           <button
             type="submit"
             disabled={!label.trim() || busy}
-            className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+            className={btnPrimary}
           >
             {editingId ? "Save" : "Add rule"}
           </button>
           {editingId && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="rounded-lg border border-hairline px-3 py-1.5 text-sm font-medium text-ink"
-            >
+            <button type="button" onClick={resetForm} className={btnSecondary}>
               Cancel
             </button>
           )}

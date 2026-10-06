@@ -1,9 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
+import {
+  btnPrimary,
+  btnSecondary,
+  dialogOverlay,
+  dialogTitle,
+  input,
+} from "../shell/ui.ts";
 import type { CalendarEventInput, EventItem } from "./eventsApi.ts";
 
-const FIELD =
-  "w-full rounded-lg border border-hairline px-3 py-2 text-sm text-ink outline-none focus:border-ink";
+const FIELD = `${input} w-full`;
 
 export function AddToCalendarDialog({
   event,
@@ -35,11 +41,9 @@ export function AddToCalendarDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(30rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-          <Dialog.Title className="text-base font-semibold text-ink">
-            Add to Calendar
-          </Dialog.Title>
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-rule bg-paper p-5 text-ink shadow-float">
+          <Dialog.Title className={dialogTitle}>Add to Calendar</Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted">
             Confirm the details before creating the calendar event.
           </Dialog.Description>
@@ -106,18 +110,11 @@ export function AddToCalendarDialog({
             </label>
             <div className="mt-1 flex justify-end gap-2">
               <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-lg border border-hairline px-4 py-2 text-sm font-medium text-ink"
-                >
+                <button type="button" className={btnSecondary}>
                   Cancel
                 </button>
               </Dialog.Close>
-              <button
-                type="submit"
-                disabled={pending}
-                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              >
+              <button type="submit" disabled={pending} className={btnPrimary}>
                 {pending ? "Adding…" : "Add to Calendar"}
               </button>
             </div>

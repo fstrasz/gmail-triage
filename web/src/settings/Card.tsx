@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { btnPrimary, input } from "../shell/ui.ts";
 
 /** A titled settings card. Shared shell so every section looks the same. */
 export function Card({
@@ -9,8 +10,8 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-white p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+    <section className="rounded-2xl border border-rule bg-paper p-4 sm:p-5">
+      <h2 className="title-hand mb-3 text-base font-semibold text-ink">
         {title}
       </h2>
       {children}
@@ -27,16 +28,15 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 py-1 text-sm text-ink">
+    <label className="flex min-h-10 items-center justify-between gap-3 py-1 text-sm text-ink">
       <span>{label}</span>
       {children}
     </label>
   );
 }
 
-const INPUT = "rounded-lg border border-hairline px-2 py-1 text-sm text-ink";
+const INPUT = input;
 export const inputClass = INPUT;
 export const numberInputClass = `${INPUT} w-20 text-right`;
 
-export const saveBtnClass =
-  "mt-3 rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40";
+export const saveBtnClass = `mt-3 ${btnPrimary}`;

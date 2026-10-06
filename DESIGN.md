@@ -1,85 +1,173 @@
 ---
 name: Gmail Triage
-description: A personal sorting tool for one inbox — every sender gets one clear decision.
+description: One owner's field notebook for his inbox — every sender gets one decision, stamped in ink.
 colors:
-  ink: "#0e1726"
-  muted: "#64748b"
-  hairline: "#e6eaf1"
-  paper: "#ffffff"
-  vip: "#d97706"
-  ok: "#0f766e"
-  junk: "#dc2626"
-  review: "#7c3aed"
-  fragmented-amber: "#b45309"
+  desk: "#ebe5da"
+  paper: "#fbf8f2"
+  sunk: "#f3eee5"
+  rule: "#ddd5c7"
+  rule-strong: "#c9bfae"
+  ink: "#231d16"
+  graphite: "#4d453c"
+  muted: "#6b6155"
+  board: "#2f2822"
+  board-ink: "#d9cfc0"
+  on-fill: "#fbf8f2"
+  vip: "#985600"
+  ok: "#0b6b60"
+  junk: "#b4261a"
+  review: "#6a3dbf"
+  letter: "#ffffff"
+  desk-night: "#15120e"
+  paper-night: "#211d18"
+  sunk-night: "#1a1713"
+  rule-night: "#352f27"
+  rule-strong-night: "#4a4237"
+  ink-night: "#efe8dc"
+  graphite-night: "#cfc5b5"
+  muted-night: "#a99e8e"
+  board-night: "#2b251e"
+  board-ink-night: "#b8ad9c"
+  on-fill-night: "#15120e"
+  vip-night: "#f2ad4b"
+  ok-night: "#4cc7b4"
+  junk-night: "#f27b6b"
+  review-night: "#b9a2f7"
 typography:
+  headline:
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: "-0.01em"
+    fontVariation: "'CASL' 1"
   title:
-    fontFamily: "ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
-    lineHeight: 1.75
+    lineHeight: 1.375
+    letterSpacing: "-0.01em"
+    fontVariation: "'CASL' 1"
   body:
-    fontFamily: "ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.43
+    fontVariation: "'CASL' 0"
+  action:
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 700
+    lineHeight: 1.4
+    fontVariation: "'CASL' 0"
   label:
-    fontFamily: "ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.75rem"
-    fontWeight: 600
-    lineHeight: 1.33
-    letterSpacing: "0.025em"
-  mono:
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 700
+    lineHeight: 1.45
+    letterSpacing: "0.08em"
+    fontVariation: "'CASL' 0"
+  stamp:
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 700
+    lineHeight: 1
+    letterSpacing: "0.06em"
+    fontVariation: "'CASL' 0"
+  numeric:
+    fontFamily: "Recursive, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
+    fontFeature: "'tnum' 1"
 rounded:
-  sm: "4px"
-  md: "8px"
-  lg: "12px"
-  xl: "16px"
-  full: "9999px"
+  stamp: "4px"
+  key: "5px"
+  letter: "6px"
+  control: "8px"
+  thumb: "12px"
+  sheet: "16px"
+  pill: "9999px"
 spacing:
+  hair: "2px"
   xs: "4px"
   sm: "8px"
   md: "12px"
   lg: "16px"
-  xl: "24px"
+  xl: "20px"
+  target-coarse: "44px"
 components:
   button-primary:
     backgroundColor: "{colors.ink}"
-    textColor: "{colors.paper}"
-    rounded: "{rounded.md}"
+    textColor: "{colors.on-fill}"
+    rounded: "{rounded.control}"
     padding: "6px 12px"
     typography: "{typography.body}"
-  button-action:
+  button-secondary:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.lg}"
-    padding: "8px 12px"
-  card:
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  button-secondary-hover:
+    backgroundColor: "{colors.sunk}"
+  button-danger-confirm:
+    backgroundColor: "{colors.junk}"
+    textColor: "{colors.on-fill}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  button-danger-outline:
     backgroundColor: "{colors.paper}"
-    rounded: "{rounded.xl}"
-    padding: "16px"
-  chip-filter:
+    textColor: "{colors.junk}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  action-workbench:
     backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.full}"
-    padding: "4px 12px"
-  chip-list-badge:
-    textColor: "{colors.paper}"
-    rounded: "{rounded.sm}"
-    padding: "2px 6px"
-    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+    typography: "{typography.action}"
+  action-thumb:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.thumb}"
+    padding: "0 12px"
+    height: "48px"
   input-text:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.md}"
-    padding: "8px 12px"
-  toast:
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  pill:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.graphite}"
+    rounded: "{rounded.pill}"
+    padding: "4px 12px"
+  pill-active:
     backgroundColor: "{colors.ink}"
-    textColor: "{colors.paper}"
-    rounded: "{rounded.lg}"
-    padding: "12px 16px"
+    textColor: "{colors.on-fill}"
+    rounded: "{rounded.pill}"
+    padding: "4px 12px"
+  sheet:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.sheet}"
+    padding: "16px"
+  stamp:
+    rounded: "{rounded.stamp}"
+    padding: "1px 6px"
+    typography: "{typography.stamp}"
+  key-cap:
+    backgroundColor: "{colors.sunk}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.key}"
+    padding: "0 6px"
+  nav-cover:
+    backgroundColor: "{colors.board}"
+    textColor: "{colors.board-ink}"
+  nav-tab-active:
+    backgroundColor: "{colors.desk}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.thumb}"
+  letter:
+    backgroundColor: "{colors.letter}"
+    rounded: "{rounded.letter}"
+    width: "760px"
 ---
 
 # Design System: Gmail Triage
@@ -88,180 +176,272 @@ components:
 
 **Creative North Star: "The Field Notebook"**
 
-Gmail Triage is one person's own sorting tool, not a product sold to strangers. It should feel the
-way a well-kept field notebook does: personal and used daily, with an order that reflects its owner.
-Each page holds plain records, and the marks on them carry meaning. The notebook is quiet so the
-marks can speak. In this app the marks are the four action colours, VIP, OK, Junk and Review, and
-everything around them steps back.
+Gmail Triage is one owner's field notebook laid open on a desk. The desk is the warm ground every
+screen sits on. The pages are paper sheets with ruled edges. A dark bookcloth cover holds the index
+of tabs. Decisions are marked on the page with ink stamps. The app supervises mail automation for a
+single person, so it is meant to read like his own notebook and not like a product sold to strangers.
+It deliberately refuses the grey SaaS default of white cards, slate text and one blue accent.
 
-Density is high and calm. The owner triages in short, focused bursts, on the desktop at the keyboard
-and on an iPhone with one thumb, so screens favour many legible rows over generous whitespace. Type
-is small, sentence-case and set in the system face. Weight, not size, sets the hierarchy.
+Density is high and calm. Triage happens in short bursts, at a desk with the keyboard or on an iPhone
+with one thumb, so screens favour many legible rows over generous whitespace. One typeface,
+Recursive, does all the work. Body text runs it as a plain sans, and titles lean into its casual axis,
+so headings read as the owner's handwriting over a printed page. Depth is tonal: desk, sunk paper and
+paper. The only shadow belongs to things that float, plus the sender's letter laid on the page.
 
-The notebook metaphor is the direction, and the current implementation only partly expresses it.
-Today's neutrals are cool slate, and the surfaces are plain white with hairline borders. **Decided
-2026-10-05, after the first critique:** the owner chose the *full notebook* direction (warm neutrals
-throughout, notebook cues, more character in type). The alternatives were a light-touch tonal layer
-and keeping today's cool slate. That redesign is tracked as future-release #64 and will replace this
-file's Colors and Typography sections when it lands. Until then, the tokens below describe the code
-as it is.
+This world replaced an earlier cool-slate interface in October 2026. The owner rejected the Strasz
+Assessment Systems brand palette for this app on 2026-10-05, and the notebook direction is his pinned
+choice (future-release #64). The dark theme, "desk at night", mirrors every surface and ink, and it
+is a supported theme rather than an extra.
 
 **Key Characteristics:**
-- Quiet neutral chrome; colour is reserved for meaning.
-- Dense, compact rows and controls; small sentence-case type in the system face.
-- Weight (600) carries hierarchy, not large sizes.
-- Rounded but not soft: 8–16px corners on controls and cards, full pills for filters.
-- Every action has a labelled control; gestures and keys are accelerators.
+- A warm desk, paper sheets with ruled edges, and a dark cover that holds the index.
+- Four decision inks (VIP, OK, Junk, Review), used as text, outlines and stamps, each meaning one decision.
+- The ink stamp is the signature mark for tier badges, list badges, action results and the swipe preview.
+- One family, Recursive: linear body, casual titles, tabular numerals.
+- Flat tonal layers. A shadow means "floating" (or the letter laid on the page).
+- Layout is chosen by both room and pointer type. Touch gets 44px targets everywhere.
 
 ## Colors
 
-A cool slate neutral base, with four saturated action colours that each mean exactly one decision.
+Warm paper neutrals on a tan desk, a dark cover, and four saturated inks that each carry exactly one
+decision. Every value has a night counterpart (the `-night` tokens) that mirrors its role. Theme
+follows the OS unless Settings pins light or dark, and the pin is stored per device, because an
+iPhone in low light and a desk monitor can want different themes.
 
 ### Primary
-- **Notebook Ink** (#0e1726): A near-black navy. Used for body text, page titles, primary buttons,
-  toasts and the active nav state. It is the voice of the interface.
+- **Notebook Ink** (`ink`): Warm near-black. Used for body text, titles, primary buttons, the active
+  filter pill, the focus ring and key caps. It is the interface's voice. At night it becomes a warm
+  off-white (`ink-night`).
 
-### Secondary
-- **VIP Amber** (#d97706): The VIP decision, used for VIP and VIP & Clean, and for VIP list badges.
-- **OK Teal** (#0f766e): The OK decision, used for OK and OK & Clean, and for OK list badges.
-- **Junk Red** (#dc2626): Junk and every destructive action (Delete, Delete All, Reset Blocklist,
-  Danger Zone).
-- **Review Violet** (#7c3aed): Sending a message to Claude review.
+### Secondary: the decision inks
+- **Marigold** (`vip`): The VIP decision, used for VIP and VIP & Clean, VIP stamps and VIP list badges.
+- **Ledger Teal** (`ok`): The OK decision, used for OK and OK & Clean, "Keep" in Review, OK stamps, and
+  the native control accent (checkboxes).
+- **Correction Red** (`junk`): Junk, Blocklist, and every action that removes something (Delete,
+  Delete All, Reset & Rebuild, Reset Blocklist).
+- **Review Violet** (`review`): Sending a message to Claude review.
+
+All four clear 4.5:1 on paper in both themes: 5.40, 6.03, 6.13 and 6.53 on day paper, and 8.66,
+8.09, 6.24 and 7.64 on night paper. The cool-slate VIP amber they replaced (#d97706) was only 3.19:1
+on white.
 
 ### Tertiary
-- **Fragmented Amber** (#b45309): Shown on an amber-tinted pill, it is the warning marker for an
-  address stored under three or more names. It is the only warning colour outside the action set.
+- **Cover Board** (`board`, `board-ink`): The bookcloth cover. It is the background of the nav rail
+  (desktop) and the tab bar (phone), and it fills the top safe-area inset. Its pale tan ink labels the
+  inactive tabs. It is also the browser/status-bar `theme-color` in both themes (#2f2822 by day,
+  #2b251e by night), so iOS's white status text stays legible.
 
 ### Neutral
-- **Pencil Grey** (#64748b): Secondary text, inactive nav tabs, labels and section headers.
-- **Hairline** (#e6eaf1): Borders and dividers, plus translucent fills for row hover and quiet
-  backgrounds.
-- **Paper** (#ffffff): Cards, dialogs, sheets and inputs.
+- **Desk** (`desk`): The ground under every page and the colour of the active index tab, which is cut
+  from the cover so it opens onto the page.
+- **Paper** (`paper`): Sheets, cards, dialogs, inputs, and resting buttons.
+- **Sunk Paper** (`sunk`): A recessed paper tone for side columns (queue, action column), key caps,
+  read-only blocks, button hover, and the margin around the letter.
+- **Rule** (`rule`) / **Strong Rule** (`rule-strong`): 1px sheet edges and dividers / control
+  outlines, dashed separators and scrollbar thumbs. `hairline` remains a legacy alias of `rule`.
+- **Graphite** (`graphite`): Secondary reading text (snippets, explanations) and the neutral moves
+  (Archive, Unsub, Archive All) that file mail without a judgement.
+- **Pencil** (`muted`): Metadata, dates, section labels and placeholders.
+- **Letter White** (`letter`): Pure white used ONLY behind the sender's email HTML.
+- **Scrim**: ink at 45% (black at 60% at night) behind dialogs and sheets.
 
 ### Named Rules
-**The One Meaning Rule.** Each action colour means one decision and nothing else. VIP amber never
-decorates, and junk red appears only where something is removed. A colour that means two things
-means nothing.
+**The One Meaning Rule.** Each decision ink means one decision and nothing else. Marigold never
+decorates, correction red appears only where something is removed, and neutral moves borrow no
+decision colour. A colour that means two things means nothing.
 
-**The Quiet Chrome Rule.** Navigation, cards, inputs and secondary buttons stay in ink, pencil grey,
-hairline and paper. If chrome needs colour to be found, the layout is wrong.
+**The Ink-Not-Paint Rule.** Decision inks are applied as text, 1–1.5px outlines and stamps (with at
+most a 7% wash of their own ink). The only solid ink fill is the final confirm button of a destructive
+act (Reset Blocklist, a guarded Delete). A filled decision colour anywhere else is wrong.
+
+**The Quiet Chrome Rule.** The cover is the one coloured chrome. The board-coloured rail or tab bar
+holds the index, and everything else (sheets, inputs, secondary buttons, pills) stays in paper, ink,
+graphite and rule. If a control needs colour to be found, the layout is wrong.
+
+**The Sender's Letter Rule.** Email HTML is shown in a sandboxed iframe on Letter White, laid on the
+page as an inset letter. The sender's own colours are never restyled or themed, including at night.
 
 ## Typography
 
-**Body Font:** the system UI face (ui-sans-serif, system-ui, sans-serif)
-**Mono Font:** the system monospace, used only for technical values
+**Font:** Recursive (vendored, OFL, variable weight 300–1000 with the Casual axis), falling back to
+ui-sans-serif, system-ui, sans-serif. Monospace roles use the same family.
 
-**Character:** One family, no display face. The interface reads like neat handwriting in a notebook
-rather than a printed magazine, so hierarchy comes from weight and colour, not scale.
+**Character:** One family with two hands. Body text is set at CASL 0, a plain and readable linear sans.
+Page titles and the email subject in the preview are set at CASL 1, the owner's handwriting, with
+-0.01em tracking. Numerals that align (counts, dates, key caps) are tabular.
 
 ### Hierarchy
-- **Title** (600, 1.125rem, 1.75): Page titles ("Triage 4", "Lists", "Settings").
-- **Body** (400–600, 0.875rem, 1.43): Almost everything: rows, controls, buttons, form labels.
-- **Label** (600, 0.75rem, letter-spacing 0.025em, uppercase for card headers): Card section headers
-  ("LOCATIONS", "LAST 30 DAYS"), list badges, nav tab labels, metadata.
+- **Headline** (600, 1.25rem, casual): Page titles ("Triage 13", "Lists", "Settings"). The queue count
+  sits beside the title in pencil at 500 weight.
+- **Title** (600, 1.125rem, casual): The previewed email subject, dialog titles and empty-state lines.
+- **Body** (400–600, 0.875rem, 1.43): Rows, controls, buttons, form labels. A sender's name is 600 at
+  0.875–1rem, and the subject on a phone card is 600 at 0.9375rem.
+- **Action** (700, 0.8125rem): Workbench action buttons. Thumb buttons on the phone are 700 at
+  0.9375rem.
+- **Label** (700, 0.6875rem, 0.08em tracking, uppercase, pencil): Group names inside a sheet ("Queue",
+  "Keep", "Remove", "Draft reply", a location group). Nav tab labels are 600 at the same size.
+- **Stamp** (700, 0.6875rem, 0.06em tracking, uppercase): Badge text inside a stamp.
 
 ### Named Rules
-**The Weight-Not-Size Rule.** Emphasis is 600 weight at body size. No size above 1.125rem appears in
-the app. A bigger heading is a sign the screen is doing too much.
+**The Two Hands Rule.** Casual (CASL 1) is for titles only. Body, labels, stamps and data stay linear
+(CASL 0). A casual paragraph reads as noise.
+
+**The Weight-Over-Size Rule.** Emphasis is weight at body size. Nothing in the app exceeds 1.25rem
+except the enlarged swipe-preview stamp (1.25rem, 0.12em tracking).
 
 ## Layout
 
-The app shell is a single navigation element. On small screens it is a bottom tab bar, and from the
-`md` breakpoint (768px) up it is a 64px left rail. The content scrolls beside or above it.
+The app shell is one `nav` element on the cover. On phones (under 768px) it is a bottom tab bar, with
+the content sheet's bottom corners rounded at 16px above it. From 768px it is a 76px left rail, and the
+desk's top-left corner is rounded at 16px against the cover. The active tab is filled with the desk
+colour and joins the page like an index tab. The **Legacy** link sits at the foot of the rail on
+desktop. On phones it is in the Settings header ("Legacy UI"), because the tab bar has no room.
 
-1. **Triage, desktop:** four panes: a fixed-width queue column (192px) of sender rows, the selected
-   card, the message preview, and a column of action buttons.
-2. **Triage, mobile:** a single swipe card capped at 28rem wide. Primary actions sit at the bottom in
-   thumb reach, respecting the safe-area inset, and a "⋯" opens a bottom sheet with the rest.
-3. **Lists:** a full-width bordered list with filter pills and a search field.
-4. **Review and Events:** centred columns capped at 48rem.
-5. **Settings:** a two-column card grid from the `lg` breakpoint, capped at 56rem.
+**Triage layout is chosen by room as well as pointer type:**
+1. **Phone (touch, under 768px):** the swipe deck. One card (capped at 28rem) with up to two peeking
+   behind it, then feedback and Undo, then three thumb buttons plus "⋯" in thumb reach above the
+   safe-area inset, then the Hide VIP/OK pill.
+2. **Touch at 768px and up (iPad portrait):** a tappable 240px queue sheet beside the same deck.
+3. **Fine pointer at 768px and up, or any device at 1024px and up:** the four-pane workbench. It is one
+   sheet split into a sunk queue (208–288px), a sunk action column (160px) of grouped actions with key
+   caps, and a paper preview with the sender, a stamp, and the subject in the casual hand. Below the
+   preview, the email letter is centred on a sunk margin and capped at 760px.
 
-Spacing runs on a 4px base. 8px and 12px gaps dominate, with 16px card padding. Rows use about 8px of
-vertical padding, which is what makes the app dense.
+Keyboard shortcuts are live in both the workbench and the tablet layout.
+
+Other screens are single columns anchored at the page's left padding and capped at 56rem (Lists,
+Labeled, Settings, whose cards form a two-column grid from 1024px). Events is a centred 48rem column.
+Review is a list-and-detail split.
+
+Spacing runs on a 4px base. Page padding is 12, 16 or 20px by breakpoint. Gaps between controls are
+mostly 8px and 12px, sheets pad 16–20px, and rows pad 8px vertically, which is what keeps the app dense.
+
+**Coarse pointers** (iPhone, iPad) get 44px minimum targets on every button, pill, link action and
+input, and 16px input text so iOS does not zoom on focus.
 
 ## Elevation & Depth
 
-The system is almost entirely flat. Surfaces separate by hairline borders and the white-on-white
-change between page and card, not by shadow. Shadows appear only on things that float above the page:
-the toast (large), the dialogs and bottom sheet (extra large), and a faint small shadow on a few
-cards. The owner chose to let the next critique decide whether this stays flat or gains layered
-depth, so treat the current state as the record, not the rule.
+Depth is tonal, not shadowed. Three paper tones stack: desk, then sunk paper for side columns and
+recessed blocks, then paper for the working sheet. Edges are 1px rules. One shadow exists, `float`,
+and it marks things that leave the page: dialogs, the "⋯" bottom sheet, and the sender's letter laid
+on the preview pane. Peeking deck cards show depth by scale and offset (each 3.5% smaller, 9px lower,
+25% fainter), not by shadow.
+
+### Shadow Vocabulary
+- **Float** (`box-shadow: 0 12px 32px -8px rgb(20 14 8 / 0.28), 0 2px 6px rgb(20 14 8 / 0.12)`):
+  Dialogs, bottom sheets and the inset letter. Nothing that rests on the page.
+
+### Named Rules
+**The Flat Page Rule.** Anything on the page is flat. A shadow means the element is lying on top of
+the page, either floating or laid there as a letter.
 
 ## Shapes
 
-Corners are consistently rounded and scale with the element. Badges are 4px, buttons and inputs 8px,
-action buttons and toasts 12px, and cards, dialogs and the queue panel 16px. Filter chips are full
-pills. Bottom sheets round only their top corners. Borders are always 1px hairline. There are no
-icons in the chrome: actions are words, and the only glyph is "⋯".
+Corners scale with the object. Stamps are 4px, key caps 5px, the letter 6px, buttons and inputs 8px,
+thumb buttons and index tabs 12px, and sheets, dialogs and the deck card 16px. Bottom sheets round only
+their top corners. Pills are fully round. Stamps use a 1.5px border in their own ink, and everything
+else uses 1px rules. Dashed strong rules mark a change of kind within a sheet: the swipe legend, the
+sender-wide actions group, and pencilled "note" stamps. Icons are Lucide line icons at 1.75–2px
+stroke, sized 14–22px, used in the nav, as the "⋯" overflow, for swipe directions and in small metadata
+lines. Actions themselves are always words.
 
 ## Components
 
 ### Buttons
-Plain, word-labelled and confident, with no icons.
-- **Shape:** gently rounded (8px for standard buttons, 12px for triage action buttons).
-- **Primary:** Notebook Ink fill with white 600-weight text at 6px × 12px ("Add", "Save").
-- **Triage action, desktop:** a vertical column of full-width buttons, each **filled** with its action
-  colour and white text at 0.75rem / 600 (`TriagePage.tsx`). All eleven actions are visible at once.
-  *(Corrected 2026-10-05: an earlier draft described outlined coloured-text buttons in a row, which
-  is `Deck.tsx`'s desktop branch, and that branch never renders.)*
-- **Triage action, mobile:** white with a hairline border and coloured text in the action's colour,
-  with a few filling the width and a "⋯" overflow sheet for the rest.
-- **Secondary:** white with a hairline border and ink text ("Create Backup", "Run Auto-Clean Now").
-- **Destructive:** a Junk Red fill with white text ("Reset Blocklist").
-- **Disabled:** 40% opacity.
+Word-labelled and confident, on paper.
+- **Shape:** gently rounded (8px).
+- **Primary:** an ink fill with paper text at 600 weight ("Add", "Save", "Search Now"). It lightens to
+  85% ink on hover.
+- **Secondary:** paper with a strong-rule outline and ink text. Hover shifts it to sunk paper.
+- **Danger outline:** paper with a 50% correction-red outline and red text ("Reset & Rebuild"), with a
+  10% red wash on hover.
+- **Danger confirm:** a correction-red fill with paper text. It appears only as the last step of a
+  destructive dialog.
+- **Quiet:** pencil text with no border, turning ink on a sunk hover.
+- **Link action:** ink 600 text with a strong-rule underline at 3px offset that darkens to ink on hover
+  ("Edit", "Undo", "Legacy UI").
+- **Disabled:** 40% opacity, no pointer events.
 
-### Chips
-- **Filter chips** (Lists): full pills with a hairline border. The selected chip is filled ink with
-  white text, and each carries a count.
-- **List badges:** small 4px-rounded filled tags in the tier colour, with white label-weight text,
-  each with an inline "×" to remove.
-- **Fragmented marker:** an amber-tinted pill with dark amber bold text. It reports and never acts.
+### Triage actions
+- **Workbench:** a column of full-width paper buttons with a strong-rule outline. Text is in the
+  action's ink (700, 0.8125rem) with a right-aligned key cap. On hover the border takes the ink and a 7%
+  wash appears. They are grouped under labels: Keep, Keep & Clean, File, Remove. "All from this sender"
+  is set apart below a dashed rule at the foot of the column.
+- **Thumb row (phone/tablet):** 48px-tall paper buttons with 12px corners and 0.9375rem bold ink-coloured
+  text, plus a 56px "⋯" that opens a bottom sheet with the rest. Pressed state is sunk paper.
 
-### Cards / Containers
+### Stamp (signature)
+The notebook's mark is a decision inked onto the page. It is an uppercase 0.6875rem bold word in a 4px
+box with a 1.5px border in its own ink and a 7% wash of the same ink. Tones are vip, ok, junk, review,
+graphite (neutral moves), and note (dashed graphite, for pencilled observations like "Fragmented").
+- **Tier and list badges:** VIP and OK on cards and queue rows, and list entries such as "BLOCKLIST ·
+  ANY NAME ×".
+- **Action result:** the result stamp presses in (180ms scale 1.12 to 1, ease-out-expo) beside the
+  feedback line and Undo. This is skipped under reduced motion.
+- **Swipe preview:** while a card is dragged, the decision the release will make is stamped across the
+  card at -6°, with a 3px border and 1.25rem text, inking in from 25% to full as the drag nears the
+  commit threshold.
+- **Done:** an empty inbox shows an OK "Done" stamp tilted -3°.
+
+### Chips / Pills
+- **Filter and toggle pills:** fully round, 4px × 12px. At rest they are paper with a strong-rule
+  outline and graphite text. Active is an ink fill with paper text. They are paired with `aria-pressed`
+  and carry counts in tabular numerals ("VIP 12").
+
+### Cards / Containers (sheets)
 - **Corner Style:** 16px.
-- **Background:** Paper on the page background.
-- **Shadow Strategy:** none at rest (see Elevation & Depth).
-- **Border:** 1px hairline.
-- **Internal Padding:** 16px. The header is a Label-style uppercase pencil-grey title.
+- **Background:** paper on desk. Side columns inside a sheet are sunk paper.
+- **Shadow Strategy:** none (see Elevation & Depth).
+- **Border:** 1px rule.
+- **Internal Padding:** 16px, rising to 20px on wider phone cards and dialogs.
 
 ### Inputs / Fields
-- **Style:** a 1px hairline stroke on white with 8px corners and 8px × 12px padding.
-- **Focus:** the border turns ink. A dedicated focus-visible ring is not consistently defined across
-  controls.
+- **Style:** paper with a 1px strong rule, 8px corners, 6px × 10px padding, ink text and pencil
+  placeholders. The caret is ink, and checkboxes take the teal accent.
+- **Focus:** the global keyboard focus ring is a 2px ink outline at 2px offset with 6px rounding. It is
+  the same everywhere.
+- **Coarse pointer:** 44px tall with 16px text.
+
+### Key cap
+A small sunk-paper key with a strong-rule border, 5px corners and 0.75rem semibold tabular text. It
+appears beside workbench actions and in the Shortcuts dialog.
 
 ### Navigation
-Six word-only tabs (Triage, Lists, Events, Review, Settings, Labeled) plus a "Legacy UI" link.
-Inactive tabs are pencil grey and turn ink on hover. The active tab is ink at 600 weight. There is no
-pill or underline: weight alone marks where you are. It is a left rail on desktop and a bottom bar on
-mobile.
+The cover holds six tabs (Triage, Lists, Events, Review, Settings, Labeled). Each is a 20px line icon
+over a 0.6875rem semibold label, 44px tall on phones and 56px in the rail. Inactive tabs are board-ink
+and turn bright on hover. The active tab is cut out of the cover in desk colour with ink text: it hangs
+down from the page on phones and reaches right into the page in the rail. Legacy is a plain anchor at
+the foot of the rail (desktop only), deliberately leaving the SPA.
 
-### Toast
-Action feedback renders **inline in the Triage header**: the result of the last action, plus an
-"Undo" button when the action can honestly be reversed. It clears after 6 seconds. An ink-filled
-floating `Toast.tsx` component exists, but nothing renders it. *(Corrected 2026-10-05: an earlier
-draft described the floating bar as live.)*
-
-### Triage Card (signature)
-The heart of the app is one sender at a time, showing name, address, subject, date and snippet, with
-the full message available on demand. It is a swipe card on mobile and the centre pane on desktop.
-Its action row is the only place where all four action colours appear together.
+### Letter (email body)
+The sender's HTML is shown in a sandboxed iframe on Letter White with a 1px rule border. In the
+workbench it is centred on a sunk margin, capped at 760px, with 6px corners and the float shadow. On
+the phone card it opens inline under "Show message" at 8px corners. Its content is never restyled.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep each action colour tied to its single meaning (The One Meaning Rule).
-- **Do** use 600 weight at 0.875rem for emphasis rather than a larger size.
-- **Do** separate surfaces with 1px hairline borders and 8–16px radii, scaled to the element.
-- **Do** give every action a labelled control; swipes and arrow keys are accelerators only.
-- **Do** keep mobile primary actions at the bottom within thumb reach, respecting the safe-area
-  inset.
+- **Do** keep each decision ink tied to its single meaning (The One Meaning Rule), and render neutral
+  moves in graphite.
+- **Do** apply decision inks as text, outlines and stamps. Reserve a solid ink fill for the final
+  destructive confirm.
+- **Do** use the Stamp for every tier, list or result mark, so a colour always arrives in the same form.
+- **Do** separate surfaces by tone (desk, sunk, paper) and 1px rules. Use the float shadow only for
+  dialogs, sheets and the letter.
+- **Do** set titles in Recursive at CASL 1 and everything else at CASL 0. Use tabular numerals for counts
+  and dates.
+- **Do** give coarse pointers 44px targets and 16px input text.
+- **Do** define both a day and a night value for any new colour token, and check decision inks at 4.5:1
+  on paper in both themes.
+- **Do** keep every action reachable by a labelled control. Swipes and keys are accelerators.
 
 ### Don't:
-- **Don't** use the Strasz Assessment Systems brand palette in this app (owner's decision,
-  2026-10-05).
-- **Don't** introduce a display font or headings larger than 1.125rem.
-- **Don't** use junk red for anything that does not remove something.
-- **Don't** add colour to chrome (nav, cards, inputs) to make it stand out.
-- **Don't** reference colour utilities that have no token. The desktop queue's `bg-tint` currently
-  renders nothing, because no `tint` token is defined.
+- **Don't** use the Strasz Assessment Systems brand palette in this app (owner's decision, 2026-10-05).
+- **Don't** return to the grey SaaS default: white cards, slate text, one blue accent.
+- **Don't** colour any chrome except the cover. Sheets, inputs and secondary buttons stay paper and ink.
+- **Don't** restyle, invert or theme the sender's email HTML. It always sits on Letter White.
+- **Don't** use correction red for anything that does not remove something.
+- **Don't** set body copy, labels or data in the casual axis.
+- **Don't** put a shadow on anything resting on the page.
+- **Don't** use colour utilities that have no token. Every colour must resolve to a variable in
+  `tokens.css`.

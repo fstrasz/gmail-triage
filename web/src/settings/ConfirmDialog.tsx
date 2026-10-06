@@ -1,4 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import {
+  btnDanger,
+  btnSecondary,
+  dialogContent,
+  dialogOverlay,
+  dialogTitle,
+} from "../shell/ui.ts";
 
 // A small confirm dialog modeled on triage/GuardDialog.tsx (Radix). Used for the
 // destructive backup-restore / delete confirms in the Backups section.
@@ -25,28 +32,19 @@ export function ConfirmDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-          <Dialog.Title className="text-base font-semibold text-ink">
-            {title}
-          </Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-muted">
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={dialogContent}>
+          <Dialog.Title className={dialogTitle}>{title}</Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm text-graphite">
             {message}
           </Dialog.Description>
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg border border-hairline px-4 py-2 text-sm font-medium text-ink"
-              >
+              <button type="button" className={btnSecondary}>
                 Cancel
               </button>
             </Dialog.Close>
-            <button
-              type="button"
-              className="rounded-lg bg-junk px-4 py-2 text-sm font-semibold text-white"
-              onClick={onConfirm}
-            >
+            <button type="button" className={btnDanger} onClick={onConfirm}>
               {confirmLabel}
             </button>
           </div>

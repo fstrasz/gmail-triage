@@ -4,26 +4,203 @@
  * (no tailwind.config.ts content globs required). */
 @import "tailwindcss";
 
-/* Semantic palette from the Triage Deck mockup. Components reference these
- * tokens (via var(--…) or the @theme utility colors) rather than raw hexes. */
-:root {
-  --color-vip: #d97706;
-  --color-ok: #0f766e;
-  --color-junk: #dc2626;
-  --color-review: #7c3aed;
-  --color-ink: #0e1726;
-  --color-muted: #64748b;
-  --color-hairline: #e6eaf1;
+/* Dark theme follows the OS unless Settings pins one: `data-theme` on <html>
+ * ("light" | "dark") overrides the media query. See lib/theme.ts. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
 }
 
-/* Expose the same tokens to Tailwind's theme so `text-vip`, `bg-ok`, etc.
- * resolve to the semantic colors. */
-@theme {
-  --color-vip: #d97706;
-  --color-ok: #0f766e;
-  --color-junk: #dc2626;
-  --color-review: #7c3aed;
-  --color-ink: #0e1726;
-  --color-muted: #64748b;
-  --color-hairline: #e6eaf1;
+/* Recursive (OFL, vendored in ./fonts): one latin file carrying the weight and
+ * Casual axes. Body text runs at CASL 0 (a plain sans); titles lean casual. */
+@font-face {
+  font-family: "Recursive";
+  font-style: normal;
+  font-weight: 300 1000;
+  font-display: swap;
+  src: url("./fonts/recursive-casl-latin.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---- The Field Notebook ---------------------------------------------------
+ * Desk: the ground everything sits on. Paper: the pages (cards, sheets,
+ * dialogs). Sunk: a recessed paper tone for side columns. Board: the cover,
+ * which holds the index (nav). Four decision inks, each with one meaning. */
+:root {
+  --desk: #ebe5da;
+  --paper: #fbf8f2;
+  --sunk: #f3eee5;
+  --rule: #ddd5c7;
+  --rule-strong: #c9bfae;
+  --ink: #231d16;
+  --muted: #6b6155;
+  --graphite: #4d453c;
+  --board: #2f2822;
+  --board-ink: #d9cfc0;
+  --on-fill: #fbf8f2;
+  --scrim: rgb(35 29 22 / 0.45);
+
+  --vip: #985600;
+  --ok: #0b6b60;
+  --junk: #b4261a;
+  --review: #6a3dbf;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --desk: #15120e;
+  --paper: #211d18;
+  --sunk: #1a1713;
+  --rule: #352f27;
+  --rule-strong: #4a4237;
+  --ink: #efe8dc;
+  --muted: #a99e8e;
+  --graphite: #cfc5b5;
+  --board: #2b251e;
+  --board-ink: #b8ad9c;
+  --on-fill: #15120e;
+  --scrim: rgb(0 0 0 / 0.6);
+
+  --vip: #f2ad4b;
+  --ok: #4cc7b4;
+  --junk: #f27b6b;
+  --review: #b9a2f7;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #15120e;
+    --paper: #211d18;
+    --sunk: #1a1713;
+    --rule: #352f27;
+    --rule-strong: #4a4237;
+    --ink: #efe8dc;
+    --muted: #a99e8e;
+    --graphite: #cfc5b5;
+    --board: #2b251e;
+    --board-ink: #b8ad9c;
+    --on-fill: #15120e;
+    --scrim: rgb(0 0 0 / 0.6);
+
+    --vip: #f2ad4b;
+    --ok: #4cc7b4;
+    --junk: #f27b6b;
+    --review: #b9a2f7;
+
+    color-scheme: dark;
+  }
+}
+
+/* Tailwind theme: utilities (`bg-paper`, `text-vip`, `border-rule`, …) read the
+ * live variables above, so a theme switch needs no class changes. */
+@theme inline {
+  --color-desk: var(--desk);
+  --color-paper: var(--paper);
+  --color-sunk: var(--sunk);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  /* Legacy alias: older markup says `hairline`; it is the same rule colour. */
+  --color-hairline: var(--rule);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-graphite: var(--graphite);
+  --color-board: var(--board);
+  --color-board-ink: var(--board-ink);
+  --color-on-fill: var(--on-fill);
+  --color-scrim: var(--scrim);
+  --color-vip: var(--vip);
+  --color-ok: var(--ok);
+  --color-junk: var(--junk);
+  --color-review: var(--review);
+
+  --font-sans: "Recursive", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Recursive", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --shadow-float: 0 12px 32px -8px rgb(20 14 8 / 0.28),
+    0 2px 6px rgb(20 14 8 / 0.12);
+
+  --animate-stamp: stamp 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes stamp {
+  from {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---- Base: the browser surfaces belong to the notebook too ---------------- */
+@layer base {
+  html {
+    background: var(--desk);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-variation-settings: "CASL" 0;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-color: var(--rule-strong) transparent;
+    accent-color: var(--ok);
+  }
+
+  body {
+    min-height: 100dvh;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--vip) 28%, transparent);
+    color: var(--ink);
+  }
+
+  input,
+  textarea,
+  select {
+    caret-color: var(--ink);
+    background-color: var(--paper);
+    color: var(--ink);
+  }
+
+  ::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+
+  /* One focus ring everywhere: ink, offset off the element, keyboard only. */
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  a {
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+
+  kbd,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Titles lean casual: the owner's hand, not the printer's. */
+  h1,
+  .title-hand {
+    font-variation-settings: "CASL" 1;
+    letter-spacing: -0.01em;
+  }
 }

@@ -18,7 +18,7 @@ export function StatsCard({ stats }: { stats: Stats }) {
         {ITEMS.map((it) => (
           <div
             key={it.key}
-            className="rounded-lg bg-hairline/30 p-2 text-center"
+            className="rounded-lg border border-rule bg-sunk p-2 text-center"
           >
             <dt className="text-xs uppercase tracking-wide text-muted">
               {it.label}

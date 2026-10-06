@@ -1,5 +1,7 @@
+import { X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { btnPrimary } from "../../shell/ui.ts";
 import { Card, inputClass } from "../Card.tsx";
 import {
   useAddInterest,
@@ -80,10 +82,10 @@ export function InterestsSection({ interests }: { interests: string[] }) {
                 <button
                   type="button"
                   aria-label={`Remove ${topic}`}
-                  className="text-muted hover:text-junk"
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-md text-muted hover:bg-junk/10 hover:text-junk pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   onClick={() => remove.mutate(topic)}
                 >
-                  &times;
+                  <X aria-hidden size={14} strokeWidth={2.25} />
                 </button>
               </>
             )}
@@ -98,10 +100,7 @@ export function InterestsSection({ interests }: { interests: string[] }) {
           onChange={(e) => setValue(e.target.value)}
           aria-label="New interest"
         />
-        <button
-          type="submit"
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white"
-        >
+        <button type="submit" className={btnPrimary}>
           Add
         </button>
       </form>

@@ -1,4 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import {
+  btnSecondary,
+  dialogContent,
+  dialogOverlay,
+  dialogTitle,
+  kbd,
+} from "../shell/ui.ts";
 import { ACTION_LABEL, DIR_ARROW } from "./actionMeta.ts";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction } from "./swipeMap.ts";
@@ -40,28 +47,27 @@ export function ShortcutsDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-5 shadow-xl">
-          <Dialog.Title className="text-base font-semibold text-ink">
+        <Dialog.Overlay className={dialogOverlay} />
+        <Dialog.Content className={dialogContent}>
+          <Dialog.Title className={dialogTitle}>
             Keyboard shortcuts
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-muted">
             Sender-wide and Clean actions have no shortcut — use the buttons.
           </Dialog.Description>
-          <dl className="mt-3 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 text-sm">
+          <dl className="mt-4 grid grid-cols-[4.5rem_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
             {rows.map(([k, label]) => (
               <div key={`${k}-${label}`} className="contents">
-                <dt className="font-mono font-semibold text-ink">{k}</dt>
-                <dd className="text-muted">{label}</dd>
+                <dt>
+                  <kbd className={kbd}>{k}</kbd>
+                </dt>
+                <dd className="text-graphite">{label}</dd>
               </div>
             ))}
           </dl>
           <div className="mt-5 flex justify-end">
             <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg border border-hairline px-4 py-2 text-sm font-medium text-ink"
-              >
+              <button type="button" className={btnSecondary}>
                 Close
               </button>
             </Dialog.Close>

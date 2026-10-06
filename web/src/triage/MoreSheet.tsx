@@ -1,5 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import type { TriageAction } from "../lib/api.ts";
+import { dialogOverlay, label } from "../shell/ui.ts";
 import { ACTION_COLOR, ACTION_LABEL } from "./actionMeta.ts";
 
 // The full overflow sheet. Holds every action NOT in the primary button row,
@@ -26,7 +27,7 @@ export function MoreSheet({
       type="button"
       role="menuitem"
       aria-label={ACTION_LABEL[a]}
-      className={`flex items-center justify-between rounded-lg px-3 py-3 text-left text-base font-medium ${ACTION_COLOR[a]} hover:bg-hairline`}
+      className={`flex min-h-12 items-center justify-between rounded-lg px-3 text-left text-base font-semibold ${ACTION_COLOR[a]} hover:bg-sunk active:bg-sunk`}
       onClick={() => {
         onPick(a);
         onOpenChange(false);
@@ -38,15 +39,19 @@ export function MoreSheet({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
+        <Dialog.Overlay className={dialogOverlay} />
         <Dialog.Content
           aria-label="More actions"
-          className="fixed inset-x-0 bottom-0 z-50 mx-auto w-[min(28rem,100vw)] rounded-t-2xl bg-white p-3 shadow-xl"
+          className="fixed inset-x-0 bottom-0 z-50 mx-auto w-[min(28rem,100vw)] rounded-t-2xl border border-b-0 border-rule bg-paper p-3 text-ink shadow-float"
           style={{
             paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
           }}
         >
-          <Dialog.Title className="px-2 pb-2 pt-1 text-sm font-semibold text-muted">
+          <div
+            aria-hidden
+            className="mx-auto mb-2 h-1 w-10 rounded-full bg-rule-strong"
+          />
+          <Dialog.Title className="title-hand px-3 pb-1 pt-1 text-base font-semibold text-ink">
             More actions
           </Dialog.Title>
           <Dialog.Description className="sr-only">
@@ -56,10 +61,8 @@ export function MoreSheet({
             {general.map(item)}
             {senderWide.length > 0 && (
               <>
-                <hr className="my-2 border-hairline" />
-                <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                  All from this sender
-                </p>
+                <hr className="my-2 border-dashed border-rule-strong" />
+                <p className={`px-3 pb-1 ${label}`}>All from this sender</p>
                 {senderWide.map(item)}
               </>
             )}
