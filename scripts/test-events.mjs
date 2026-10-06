@@ -5026,3 +5026,61 @@ test("M2 triagePage: a From header cannot close the page-data JSON script", asyn
   assert.ok(data.seenSenders[0].includes("</script>")); // value preserved
   assert.ok(!/<script>alert/.test(html), "no injected script element");
 });
+
+const securityHeadersModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "securityHeaders.js"),
+).href;
+
+test("M3 securityHeadersFor: base policy everywhere, full CSP only under /app", async () => {
+  const { securityHeadersFor, APP_CSP, BASE_CSP } = await import(securityHeadersModulePath);
+  for (const p of ["/", "/triage", "/api/lists", "/application", "/apps/x"]) {
+    const h = securityHeadersFor(p);
+    assert.equal(h["Content-Security-Policy"], BASE_CSP, p);
+    assert.equal(h["X-Content-Type-Options"], "nosniff");
+    assert.equal(h["Referrer-Policy"], "no-referrer");
+    assert.equal(h["X-Frame-Options"], "SAMEORIGIN");
+  }
+  assert.ok(!BASE_CSP.includes("script-src"), "old UI relies on inline scripts");
+  for (const p of ["/app", "/app/", "/app/assets/index.js", "/app/triage"]) {
+    assert.equal(securityHeadersFor(p)["Content-Security-Policy"], APP_CSP, p);
+  }
+  assert.match(APP_CSP, /script-src 'self'(;|$)/);
+  assert.ok(!/script-src[^;]*unsafe/.test(APP_CSP));
+});
+
+test("M3 app: headers on every response; email-body sandbox CSP not clobbered", async () => {
+  await withApp(async (base) => {
+    let r = await fetch(`${base}/api/review`);
+    await r.text();
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(r.headers.get("x-frame-options"), "SAMEORIGIN");
+    assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+    assert.match(r.headers.get("content-security-policy"), /frame-ancestors 'self'/);
+    // Rejected by the origin guard: still carries the headers.
+    r = await fetch(`${base}/api/lists/add`, { method: "POST", headers: { Origin: "https://evil.example" } });
+    await r.text();
+    assert.equal(r.status, 403);
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    // Email-body routes keep their own sandbox policy.
+    for (const p of ["/api/triage/body", "/api/preview/abc"]) {
+      r = await fetch(`${base}${p}`);
+      await r.text();
+      assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups", p);
+    }
+    // The React shell, when a build is present (not in CI's backend job).
+    if (fs.existsSync(path.join(projectDir, "web", "dist", "index.html"))) {
+      r = await fetch(`${base}/app/`);
+      await r.text();
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get("content-security-policy"), /default-src 'self'; script-src 'self'/);
+    }
+  });
+});
+
+test("M3 web build: index.html has no inline script the /app CSP would block", () => {
+  const p = path.join(projectDir, "web", "dist", "index.html");
+  if (!fs.existsSync(p)) return; // web suite not built in this environment
+  const html = fs.readFileSync(p, "utf8");
+  const inline = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>/gi)];
+  assert.equal(inline.length, 0, inline.map((m) => m[0]).join("\n"));
+});

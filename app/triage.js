@@ -118,6 +118,7 @@ import {
   startEventsSearchScheduler,
   startScheduler,
 } from "./lib/scheduler.js";
+import { securityHeaders } from "./lib/securityHeaders.js";
 import {
   addEventInterest,
   addLocation,
@@ -174,6 +175,9 @@ function findPart(part, mimeType) {
   }
   return null;
 }
+// Security headers on every response (incl. the guard's own 403/421). Email-body
+// routes replace the CSP with their sandbox policy after this runs.
+app.use(securityHeaders());
 // Cross-origin / DNS-rebinding guard — before the body parsers, so a rejected
 // request's body is never parsed. See app/lib/originGuard.js and ALLOWED_HOSTS.
 app.use(originGuard());
