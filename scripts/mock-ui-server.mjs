@@ -20,6 +20,8 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// Same response headers as production (CSP etc.) so a policy violation shows up here.
+import { securityHeaders } from "../app/lib/securityHeaders.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WEB_DIST = path.join(ROOT, "web", "dist");
@@ -1319,6 +1321,7 @@ function previewDocument(id, { noMeta = false } = {}) {
 // ---------------------------------------------------------------------------
 
 const app = express();
+app.use(securityHeaders());
 app.use(express.json());
 
 // Latency so loading states are visible. Applied to /api only.
