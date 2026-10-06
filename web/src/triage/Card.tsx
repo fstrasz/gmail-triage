@@ -42,7 +42,7 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-rule bg-paper p-4 text-ink sm:p-5">
+    <div className="flex h-full min-h-72 flex-col rounded-2xl border border-rule bg-paper p-4 text-ink sm:p-5">
       {/* Header: sender + tier stamp + date */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

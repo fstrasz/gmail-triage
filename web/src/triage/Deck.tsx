@@ -105,10 +105,9 @@ export function Deck({
   return (
     <div className="flex flex-1 flex-col">
       {/* Card stack */}
-      <div
-        className="relative mx-auto max-h-[30rem] w-full max-w-md flex-1"
-        style={{ minHeight: "20rem" }}
-      >
+      {/* The top card sits in flow and sizes to its content; the peeking
+          cards are laid behind it at the same size. */}
+      <div className="relative mx-auto w-full max-w-md">
         {peek
           .slice()
           .reverse()
@@ -133,7 +132,7 @@ export function Deck({
 
         {top && (
           <div
-            className="absolute inset-0 touch-none select-none"
+            className="relative touch-none select-none"
             style={dragStyle}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
