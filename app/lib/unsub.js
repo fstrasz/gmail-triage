@@ -285,12 +285,26 @@ async function unsubHttp(url, oneClick, deps = {}) {
   }
 }
 
-async function unsubMailto(gmail, val) {
-  const [addr, q] = val.split("?");
-  const p = new URLSearchParams(q || "");
-  const subject = p.get("subject") || "Unsubscribe";
-  const body = p.get("body") || "Please unsubscribe me.";
-  const mime = [
+// One bare recipient only: no commas/semicolons (multiple recipients), no
+// whitespace or CR/LF (header injection), no angle brackets or quotes.
+const MAILTO_ADDR_RE = /^[^\s@,;<>"()]+@[^\s@,;<>"()]+$/;
+const stripCrLf = (s) => String(s).replace(/[\r\n]+/g, " ");
+
+/** Build the RFC 5322 message for a mailto: unsubscribe, or null if unsafe. */
+export function buildUnsubMime(val) {
+  const v = String(val || "").replace(/^mailto:/i, "");
+  const q = v.indexOf("?");
+  let addr;
+  try {
+    addr = decodeURIComponent(q === -1 ? v : v.slice(0, q)).trim();
+  } catch {
+    return null;
+  }
+  if (!MAILTO_ADDR_RE.test(addr)) return null;
+  const p = new URLSearchParams(q === -1 ? "" : v.slice(q + 1));
+  const subject = stripCrLf(p.get("subject") || "Unsubscribe");
+  const body = stripCrLf(p.get("body") || "Please unsubscribe me.");
+  return [
     "From: me",
     "To: " + addr,
     "Subject: " + subject,
@@ -299,6 +313,11 @@ async function unsubMailto(gmail, val) {
     "",
     body,
   ].join("\r\n");
+}
+
+async function unsubMailto(gmail, val) {
+  const mime = buildUnsubMime(val);
+  if (!mime) return "mailto-error: invalid recipient";
   const raw = Buffer.from(mime).toString("base64url");
   try {
     await gmail.users.messages.send({ userId: "me", requestBody: { raw } });

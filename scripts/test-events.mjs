@@ -4869,3 +4869,53 @@ test("H4 tryUnsubscribe: a hostname resolving to a private IP is not fetched", a
   assert.equal(fetched, 1);
   assert.equal(ok.result, "http-get");
 });
+
+// Mock Gmail capturing the decoded MIME of every send.
+function mailtoMockGmail() {
+  const sent = [];
+  return {
+    sent,
+    users: {
+      messages: {
+        send: async ({ requestBody }) => {
+          sent.push(Buffer.from(requestBody.raw, "base64url").toString("utf8"));
+          return {};
+        },
+      },
+    },
+  };
+}
+
+test("L2 mailto unsubscribe: CR/LF in subject/body cannot inject headers", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  const gmail = mailtoMockGmail();
+  const r = await tryUnsubscribe(
+    gmail,
+    "<mailto:unsub@list.example?subject=hi%0D%0ABcc:%20victim@x.com&body=a%0D%0A%0D%0Ab>",
+    "",
+    "a@b.com",
+  );
+  assert.equal(r.result, "mailto-sent");
+  assert.equal(gmail.sent.length, 1);
+  const [head] = gmail.sent[0].split("\r\n\r\n");
+  const headerLines = head.split("\r\n");
+  assert.ok(!headerLines.some((l) => /^bcc:/i.test(l)), head);
+  assert.ok(headerLines.includes("To: unsub@list.example"), head);
+  assert.ok(headerLines.some((l) => l.startsWith("Subject: hi")));
+});
+
+test("L2 mailto unsubscribe: refuses multiple or malformed recipients", async () => {
+  const { tryUnsubscribe } = await import(unsubModulePath);
+  for (const hdr of [
+    "<mailto:a@x.com,b@y.com>",
+    "<mailto:a@x.com%2Cb@y.com>",
+    "<mailto:a@x.com;b@y.com>",
+    "<mailto:a@x.com%0D%0ABcc:c@z.com>",
+    "<mailto:not-an-address>",
+  ]) {
+    const gmail = mailtoMockGmail();
+    const r = await tryUnsubscribe(gmail, hdr, "", "a@b.com");
+    assert.equal(gmail.sent.length, 0, hdr);
+    assert.match(r.result, /^mailto-error/, hdr);
+  }
+});
