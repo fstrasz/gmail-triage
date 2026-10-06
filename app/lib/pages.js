@@ -1,7 +1,7 @@
 import { loadBlocklist } from "./blocklist.js";
 import { sortGroupKeysByLocationOrder } from "./eventSearch.js";
 import { extractEmail, extractName } from "./gmail.js";
-import { esc, triageEmailRow } from "./html.js";
+import { esc, jsStr, triageEmailRow } from "./html.js";
 import { loadOklist } from "./oklist.js";
 import { loadRules } from "./rules.js";
 import { loadStats } from "./stats.js";
@@ -810,9 +810,8 @@ export function senderPage(emails, fromEmail, fromName) {
     </div>
   `;
 
-  const safeEmail = fromEmail.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const script = `
-    var pageFromEmail='${safeEmail}';
+    var pageFromEmail=${jsStr(fromEmail)};
     var emailPanel=document.getElementById('email-panel');
     var previewPanel=document.getElementById('preview-panel');
     var previewIframe=document.getElementById('preview-iframe');
@@ -909,7 +908,7 @@ export function senderPage(emails, fromEmail, fromName) {
         updateTrashBtn();
       }catch(e){alert('Error: '+e.message);}
     }
-    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ""}
+    ${firstId ? `window.addEventListener('load',function(){openPreview(${jsStr(firstId)});});` : ""}
   `;
 
   return { body, script };
@@ -1006,7 +1005,7 @@ export function labeledPage(labelName, emails) {
           if(activePreviewId===id)closePreview();
         });
     }
-    ${firstId ? `window.addEventListener('load',function(){openPreview('${firstId}');});` : ""}
+    ${firstId ? `window.addEventListener('load',function(){openPreview(${jsStr(firstId)});});` : ""}
   `;
   return { body, script };
 }
@@ -1461,7 +1460,7 @@ export function listsPage(
     document.addEventListener('keydown',function(e){if(e.key==='Escape'&&document.getElementById('reset-modal').style.display!=='none')closeResetModal();});
 
     // Init
-    var _viewMode = '${viewMode}';
+    var _viewMode = ${jsStr(viewMode)};
     loadPrefs();
     if (_viewMode !== 'compact') { renderHeaders(); reorderCells(); sortRows(); }
     // Restore filter chip
@@ -2388,7 +2387,7 @@ export function settingsPage(
         else { cb.checked = !intended; }
       } catch(e) { cb.checked = !intended; }
     };
-    scheduleDebugExpiry(${settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? `"${settings.dailySummaryDebugEnabledAt}"` : "null"});
+    scheduleDebugExpiry(${jsStr(settings.dailySummaryDebug && settings.dailySummaryDebugEnabledAt ? settings.dailySummaryDebugEnabledAt : null)});
     function openRestoreModal(type, n, count, date) {
       var modal = document.getElementById('restore-modal');
       if (!modal) return;

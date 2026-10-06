@@ -4510,3 +4510,43 @@ test("runReadTriagePass: a thrown error inside triage does not prevent completio
   );
   assert.equal(gmail._sendCalls.length, 0);
 });
+
+// ─── Security hardening (2026-10 review) ─────────────────────────────────────
+
+const pagesModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "pages.js"),
+).href;
+
+// Extract every inline <script> body (no src) from an HTML string.
+function inlineScripts(html) {
+  return [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(
+    (m) => m[1],
+  );
+}
+
+test("H1 jsStr: JSON-encodes and neutralises </script> and line separators", async () => {
+  const { jsStr } = await import(htmlModulePath);
+  const LS = String.fromCharCode(0x2028);
+  for (const v of ["a'b", "</script><script>alert(1)</script>", "x" + LS + "y", 'q"\\']) {
+    const out = jsStr(v);
+    assert.ok(!out.includes("<"), out);
+    assert.ok(!out.includes(LS), "raw U+2028 must be escaped");
+    assert.equal(JSON.parse(out), v); // round-trips to the same value
+  }
+  assert.equal(jsStr(null), "null");
+  assert.equal(jsStr(undefined), "null");
+});
+
+test("H1 senderPage: a hostile email cannot break out of the inline script", async () => {
+  const { senderPage } = await import(pagesModulePath);
+  const { shell } = await import(htmlModulePath);
+  const evil = "a@b.com</script><script>alert(1)</script>";
+  const { body, script } = senderPage([], evil, null);
+  assert.ok(!script.toLowerCase().includes("</script"), script.slice(0, 200));
+  // No injected <script> element: the only scripts are the ones the page emits.
+  const html = shell("x", body, script);
+  assert.ok(!inlineScripts(html).some((sc) => sc.trim().startsWith("alert(1)")));
+  // And the value still reaches the page intact.
+  const m = script.match(/var pageFromEmail=(.*?);\n/);
+  assert.equal(JSON.parse(m[1]), evil);
+});

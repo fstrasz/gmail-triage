@@ -18,6 +18,21 @@ export function safe(s) {
     .replace(/'/g, "\\'");
 }
 
+// U+2028/U+2029, built from code points so no raw separator lands in this source.
+const LINE_SEPARATORS = new RegExp(`[${String.fromCharCode(0x2028, 0x2029)}]`, "g");
+
+/**
+ * Serialise a value as a JS literal for interpolation into an inline <script>.
+ * JSON.stringify alone is not enough: a string containing "</script>" would close
+ * the element, so every "<" is escaped (plus U+2028/2029, which are line
+ * terminators in pre-ES2019 JS string literals).
+ */
+export function jsStr(v) {
+  return JSON.stringify(v ?? null)
+    .replace(/</g, "\\u003c")
+    .replace(LINE_SEPARATORS, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
+}
+
 export function triageEmailRow(e) {
   const fromEmail = extractEmail(e.from);
   const fromName = extractName(e.from);
