@@ -40,7 +40,7 @@ export function ReviewDetail({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex-shrink-0 border-b border-hairline px-4 py-3">
+      <div className="flex-shrink-0 border-b border-rule px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <p className="min-w-0 truncate text-sm text-muted">
             {item.from} · {formatDate(item.date)}
@@ -125,7 +125,7 @@ export function ReviewDetail({
                       href={existing}
                       target="_blank"
                       rel="noreferrer"
-                      className="self-start rounded-lg border border-hairline px-3 py-1.5 text-sm font-semibold text-review"
+                      className="self-start rounded-lg border border-rule px-3 py-1.5 text-sm font-semibold text-review"
                     >
                       Open in Calendar
                     </a>
@@ -165,7 +165,7 @@ export function ReviewDetail({
             title="Email body"
             sandbox="allow-popups"
             src={getBodyUrl(item.id)}
-            className="h-96 w-full rounded-lg border border-hairline bg-white"
+            className="h-96 w-full rounded-lg border border-rule bg-white"
           />
         </div>
       </div>

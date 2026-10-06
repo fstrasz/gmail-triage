@@ -1,138 +1,782 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-05T17:30:00Z",
+  "generatedAt": "2026-10-06T15:54:38.672Z",
   "title": "Design System: Gmail Triage",
   "extensions": {
     "colorMeta": {
-      "ink": { "role": "primary", "displayName": "Notebook Ink", "canonical": "oklch(20.4% 0.033 260.3)", "tonalRamp": ["oklch(15% 0.033 260.3)", "oklch(25% 0.033 260.3)", "oklch(35% 0.033 260.3)", "oklch(45% 0.033 260.3)", "oklch(55% 0.033 260.3)", "oklch(70% 0.033 260.3)", "oklch(85% 0.033 260.3)", "oklch(95% 0.033 260.3)"] },
-      "vip": { "role": "secondary", "displayName": "VIP Amber", "canonical": "oklch(66.6% 0.157 58.3)", "tonalRamp": ["oklch(15% 0.157 58.3)", "oklch(25% 0.157 58.3)", "oklch(35% 0.157 58.3)", "oklch(45% 0.157 58.3)", "oklch(55% 0.157 58.3)", "oklch(70% 0.157 58.3)", "oklch(85% 0.157 58.3)", "oklch(95% 0.157 58.3)"] },
-      "ok": { "role": "secondary", "displayName": "OK Teal", "canonical": "oklch(51.1% 0.086 186.4)", "tonalRamp": ["oklch(15% 0.086 186.4)", "oklch(25% 0.086 186.4)", "oklch(35% 0.086 186.4)", "oklch(45% 0.086 186.4)", "oklch(55% 0.086 186.4)", "oklch(70% 0.086 186.4)", "oklch(85% 0.086 186.4)", "oklch(95% 0.086 186.4)"] },
-      "junk": { "role": "secondary", "displayName": "Junk Red", "canonical": "oklch(57.7% 0.215 27.3)", "tonalRamp": ["oklch(15% 0.2 27.3)", "oklch(25% 0.2 27.3)", "oklch(35% 0.2 27.3)", "oklch(45% 0.2 27.3)", "oklch(55% 0.2 27.3)", "oklch(70% 0.2 27.3)", "oklch(85% 0.2 27.3)", "oklch(95% 0.2 27.3)"] },
-      "review": { "role": "secondary", "displayName": "Review Violet", "canonical": "oklch(54.1% 0.247 293)", "tonalRamp": ["oklch(15% 0.2 293)", "oklch(25% 0.2 293)", "oklch(35% 0.2 293)", "oklch(45% 0.2 293)", "oklch(55% 0.2 293)", "oklch(70% 0.2 293)", "oklch(85% 0.2 293)", "oklch(95% 0.2 293)"] },
-      "fragmented-amber": { "role": "tertiary", "displayName": "Fragmented Amber", "canonical": "#b45309" },
-      "muted": { "role": "neutral", "displayName": "Pencil Grey", "canonical": "oklch(55.4% 0.041 257.4)", "tonalRamp": ["oklch(15% 0.041 257.4)", "oklch(25% 0.041 257.4)", "oklch(35% 0.041 257.4)", "oklch(45% 0.041 257.4)", "oklch(55% 0.041 257.4)", "oklch(70% 0.041 257.4)", "oklch(85% 0.041 257.4)", "oklch(95% 0.041 257.4)"] },
-      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "oklch(93.6% 0.01 261.8)", "tonalRamp": ["oklch(15% 0.01 261.8)", "oklch(25% 0.01 261.8)", "oklch(35% 0.01 261.8)", "oklch(45% 0.01 261.8)", "oklch(55% 0.01 261.8)", "oklch(70% 0.01 261.8)", "oklch(85% 0.01 261.8)", "oklch(95% 0.01 261.8)"] },
-      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff" }
+      "desk": {
+        "role": "neutral",
+        "displayName": "Desk",
+        "canonical": "oklch(92.4% 0.016 82.8)",
+        "theme": "light",
+        "cssVar": "--desk",
+        "tonalRamp": [
+          "oklch(15% 0.016 82.8)",
+          "oklch(25% 0.016 82.8)",
+          "oklch(35% 0.016 82.8)",
+          "oklch(45% 0.016 82.8)",
+          "oklch(55% 0.016 82.8)",
+          "oklch(70% 0.016 82.8)",
+          "oklch(85% 0.016 82.8)",
+          "oklch(95% 0.016 82.8)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(98.0% 0.009 84.6)",
+        "theme": "light",
+        "cssVar": "--paper",
+        "tonalRamp": [
+          "oklch(15% 0.009 84.6)",
+          "oklch(25% 0.009 84.6)",
+          "oklch(35% 0.009 84.6)",
+          "oklch(45% 0.009 84.6)",
+          "oklch(55% 0.009 84.6)",
+          "oklch(70% 0.009 84.6)",
+          "oklch(85% 0.009 84.6)",
+          "oklch(95% 0.009 84.6)"
+        ]
+      },
+      "sunk": {
+        "role": "neutral",
+        "displayName": "Sunk Paper",
+        "canonical": "oklch(95.1% 0.013 82.4)",
+        "theme": "light",
+        "cssVar": "--sunk",
+        "tonalRamp": [
+          "oklch(15% 0.013 82.4)",
+          "oklch(25% 0.013 82.4)",
+          "oklch(35% 0.013 82.4)",
+          "oklch(45% 0.013 82.4)",
+          "oklch(55% 0.013 82.4)",
+          "oklch(70% 0.013 82.4)",
+          "oklch(85% 0.013 82.4)",
+          "oklch(95% 0.013 82.4)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(87.6% 0.021 81.8)",
+        "theme": "light",
+        "cssVar": "--rule",
+        "tonalRamp": [
+          "oklch(15% 0.021 81.8)",
+          "oklch(25% 0.021 81.8)",
+          "oklch(35% 0.021 81.8)",
+          "oklch(45% 0.021 81.8)",
+          "oklch(55% 0.021 81.8)",
+          "oklch(70% 0.021 81.8)",
+          "oklch(85% 0.021 81.8)",
+          "oklch(95% 0.021 81.8)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "oklch(80.8% 0.026 81.1)",
+        "theme": "light",
+        "cssVar": "--rule-strong",
+        "tonalRamp": [
+          "oklch(15% 0.026 81.1)",
+          "oklch(25% 0.026 81.1)",
+          "oklch(35% 0.026 81.1)",
+          "oklch(45% 0.026 81.1)",
+          "oklch(55% 0.026 81.1)",
+          "oklch(70% 0.026 81.1)",
+          "oklch(85% 0.026 81.1)",
+          "oklch(95% 0.026 81.1)"
+        ]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Notebook Ink",
+        "canonical": "oklch(23.5% 0.016 71.2)",
+        "theme": "light",
+        "cssVar": "--ink",
+        "tonalRamp": [
+          "oklch(15% 0.016 71.2)",
+          "oklch(25% 0.016 71.2)",
+          "oklch(35% 0.016 71.2)",
+          "oklch(45% 0.016 71.2)",
+          "oklch(55% 0.016 71.2)",
+          "oklch(70% 0.016 71.2)",
+          "oklch(85% 0.016 71.2)",
+          "oklch(95% 0.016 71.2)"
+        ]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "oklch(39.6% 0.018 70.5)",
+        "theme": "light",
+        "cssVar": "--graphite",
+        "tonalRamp": [
+          "oklch(15% 0.018 70.5)",
+          "oklch(25% 0.018 70.5)",
+          "oklch(35% 0.018 70.5)",
+          "oklch(45% 0.018 70.5)",
+          "oklch(55% 0.018 70.5)",
+          "oklch(70% 0.018 70.5)",
+          "oklch(85% 0.018 70.5)",
+          "oklch(95% 0.018 70.5)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Pencil",
+        "canonical": "oklch(49.8% 0.023 72.3)",
+        "theme": "light",
+        "cssVar": "--muted",
+        "tonalRamp": [
+          "oklch(15% 0.023 72.3)",
+          "oklch(25% 0.023 72.3)",
+          "oklch(35% 0.023 72.3)",
+          "oklch(45% 0.023 72.3)",
+          "oklch(55% 0.023 72.3)",
+          "oklch(70% 0.023 72.3)",
+          "oklch(85% 0.023 72.3)",
+          "oklch(95% 0.023 72.3)"
+        ]
+      },
+      "board": {
+        "role": "tertiary",
+        "displayName": "Cover Board",
+        "canonical": "oklch(28.3% 0.015 62.8)",
+        "theme": "light",
+        "cssVar": "--board",
+        "tonalRamp": [
+          "oklch(15% 0.015 62.8)",
+          "oklch(25% 0.015 62.8)",
+          "oklch(35% 0.015 62.8)",
+          "oklch(45% 0.015 62.8)",
+          "oklch(55% 0.015 62.8)",
+          "oklch(70% 0.015 62.8)",
+          "oklch(85% 0.015 62.8)",
+          "oklch(95% 0.015 62.8)"
+        ]
+      },
+      "board-ink": {
+        "role": "tertiary",
+        "displayName": "Cover Ink",
+        "canonical": "oklch(85.8% 0.023 78.2)",
+        "theme": "light",
+        "cssVar": "--board-ink",
+        "tonalRamp": [
+          "oklch(15% 0.023 78.2)",
+          "oklch(25% 0.023 78.2)",
+          "oklch(35% 0.023 78.2)",
+          "oklch(45% 0.023 78.2)",
+          "oklch(55% 0.023 78.2)",
+          "oklch(70% 0.023 78.2)",
+          "oklch(85% 0.023 78.2)",
+          "oklch(95% 0.023 78.2)"
+        ]
+      },
+      "on-fill": {
+        "role": "neutral",
+        "displayName": "On-Fill Paper",
+        "canonical": "oklch(98.0% 0.009 84.6)",
+        "theme": "light",
+        "cssVar": "--on-fill",
+        "tonalRamp": [
+          "oklch(15% 0.009 84.6)",
+          "oklch(25% 0.009 84.6)",
+          "oklch(35% 0.009 84.6)",
+          "oklch(45% 0.009 84.6)",
+          "oklch(55% 0.009 84.6)",
+          "oklch(70% 0.009 84.6)",
+          "oklch(85% 0.009 84.6)",
+          "oklch(95% 0.009 84.6)"
+        ]
+      },
+      "vip": {
+        "role": "secondary",
+        "displayName": "Marigold (VIP)",
+        "canonical": "oklch(51.9% 0.119 62.1)",
+        "theme": "light",
+        "cssVar": "--vip",
+        "tonalRamp": [
+          "oklch(15% 0.119 62.1)",
+          "oklch(25% 0.119 62.1)",
+          "oklch(35% 0.119 62.1)",
+          "oklch(45% 0.119 62.1)",
+          "oklch(55% 0.119 62.1)",
+          "oklch(70% 0.119 62.1)",
+          "oklch(85% 0.119 62.1)",
+          "oklch(95% 0.119 62.1)"
+        ]
+      },
+      "ok": {
+        "role": "secondary",
+        "displayName": "Ledger Teal (OK)",
+        "canonical": "oklch(47.5% 0.082 182.4)",
+        "theme": "light",
+        "cssVar": "--ok",
+        "tonalRamp": [
+          "oklch(15% 0.082 182.4)",
+          "oklch(25% 0.082 182.4)",
+          "oklch(35% 0.082 182.4)",
+          "oklch(45% 0.082 182.4)",
+          "oklch(55% 0.082 182.4)",
+          "oklch(70% 0.082 182.4)",
+          "oklch(85% 0.082 182.4)",
+          "oklch(95% 0.082 182.4)"
+        ]
+      },
+      "junk": {
+        "role": "secondary",
+        "displayName": "Correction Red (Junk)",
+        "canonical": "oklch(50.3% 0.180 29.7)",
+        "theme": "light",
+        "cssVar": "--junk",
+        "tonalRamp": [
+          "oklch(15% 0.160 29.7)",
+          "oklch(25% 0.160 29.7)",
+          "oklch(35% 0.160 29.7)",
+          "oklch(45% 0.160 29.7)",
+          "oklch(55% 0.160 29.7)",
+          "oklch(70% 0.160 29.7)",
+          "oklch(85% 0.160 29.7)",
+          "oklch(95% 0.160 29.7)"
+        ]
+      },
+      "review": {
+        "role": "secondary",
+        "displayName": "Review Violet",
+        "canonical": "oklch(48.8% 0.192 294.0)",
+        "theme": "light",
+        "cssVar": "--review",
+        "tonalRamp": [
+          "oklch(15% 0.160 294.0)",
+          "oklch(25% 0.160 294.0)",
+          "oklch(35% 0.160 294.0)",
+          "oklch(45% 0.160 294.0)",
+          "oklch(55% 0.160 294.0)",
+          "oklch(70% 0.160 294.0)",
+          "oklch(85% 0.160 294.0)",
+          "oklch(95% 0.160 294.0)"
+        ]
+      },
+      "letter": {
+        "role": "neutral",
+        "displayName": "Letter White",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "theme": "light",
+        "cssVar": null,
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9)",
+          "oklch(25% 0.000 89.9)",
+          "oklch(35% 0.000 89.9)",
+          "oklch(45% 0.000 89.9)",
+          "oklch(55% 0.000 89.9)",
+          "oklch(70% 0.000 89.9)",
+          "oklch(85% 0.000 89.9)",
+          "oklch(95% 0.000 89.9)"
+        ]
+      },
+      "desk-night": {
+        "role": "neutral",
+        "displayName": "Desk (night)",
+        "canonical": "oklch(18.4% 0.009 75.0)",
+        "theme": "dark",
+        "cssVar": "--desk",
+        "tonalRamp": [
+          "oklch(15% 0.009 75.0)",
+          "oklch(25% 0.009 75.0)",
+          "oklch(35% 0.009 75.0)",
+          "oklch(45% 0.009 75.0)",
+          "oklch(55% 0.009 75.0)",
+          "oklch(70% 0.009 75.0)",
+          "oklch(85% 0.009 75.0)",
+          "oklch(95% 0.009 75.0)"
+        ]
+      },
+      "paper-night": {
+        "role": "neutral",
+        "displayName": "Paper (night)",
+        "canonical": "oklch(23.4% 0.011 73.4)",
+        "theme": "dark",
+        "cssVar": "--paper",
+        "tonalRamp": [
+          "oklch(15% 0.011 73.4)",
+          "oklch(25% 0.011 73.4)",
+          "oklch(35% 0.011 73.4)",
+          "oklch(45% 0.011 73.4)",
+          "oklch(55% 0.011 73.4)",
+          "oklch(70% 0.011 73.4)",
+          "oklch(85% 0.011 73.4)",
+          "oklch(95% 0.011 73.4)"
+        ]
+      },
+      "sunk-night": {
+        "role": "neutral",
+        "displayName": "Sunk Paper (night)",
+        "canonical": "oklch(20.7% 0.009 75.1)",
+        "theme": "dark",
+        "cssVar": "--sunk",
+        "tonalRamp": [
+          "oklch(15% 0.009 75.1)",
+          "oklch(25% 0.009 75.1)",
+          "oklch(35% 0.009 75.1)",
+          "oklch(45% 0.009 75.1)",
+          "oklch(55% 0.009 75.1)",
+          "oklch(70% 0.009 75.1)",
+          "oklch(85% 0.009 75.1)",
+          "oklch(95% 0.009 75.1)"
+        ]
+      },
+      "rule-night": {
+        "role": "neutral",
+        "displayName": "Rule (night)",
+        "canonical": "oklch(30.9% 0.016 75.0)",
+        "theme": "dark",
+        "cssVar": "--rule",
+        "tonalRamp": [
+          "oklch(15% 0.016 75.0)",
+          "oklch(25% 0.016 75.0)",
+          "oklch(35% 0.016 75.0)",
+          "oklch(45% 0.016 75.0)",
+          "oklch(55% 0.016 75.0)",
+          "oklch(70% 0.016 75.0)",
+          "oklch(85% 0.016 75.0)",
+          "oklch(95% 0.016 75.0)"
+        ]
+      },
+      "rule-strong-night": {
+        "role": "neutral",
+        "displayName": "Strong Rule (night)",
+        "canonical": "oklch(38.4% 0.021 75.8)",
+        "theme": "dark",
+        "cssVar": "--rule-strong",
+        "tonalRamp": [
+          "oklch(15% 0.021 75.8)",
+          "oklch(25% 0.021 75.8)",
+          "oklch(35% 0.021 75.8)",
+          "oklch(45% 0.021 75.8)",
+          "oklch(55% 0.021 75.8)",
+          "oklch(70% 0.021 75.8)",
+          "oklch(85% 0.021 75.8)",
+          "oklch(95% 0.021 75.8)"
+        ]
+      },
+      "ink-night": {
+        "role": "primary",
+        "displayName": "Notebook Ink (night)",
+        "canonical": "oklch(93.3% 0.018 81.3)",
+        "theme": "dark",
+        "cssVar": "--ink",
+        "tonalRamp": [
+          "oklch(15% 0.018 81.3)",
+          "oklch(25% 0.018 81.3)",
+          "oklch(35% 0.018 81.3)",
+          "oklch(45% 0.018 81.3)",
+          "oklch(55% 0.018 81.3)",
+          "oklch(70% 0.018 81.3)",
+          "oklch(85% 0.018 81.3)",
+          "oklch(95% 0.018 81.3)"
+        ]
+      },
+      "graphite-night": {
+        "role": "neutral",
+        "displayName": "Graphite (night)",
+        "canonical": "oklch(82.7% 0.025 79.7)",
+        "theme": "dark",
+        "cssVar": "--graphite",
+        "tonalRamp": [
+          "oklch(15% 0.025 79.7)",
+          "oklch(25% 0.025 79.7)",
+          "oklch(35% 0.025 79.7)",
+          "oklch(45% 0.025 79.7)",
+          "oklch(55% 0.025 79.7)",
+          "oklch(70% 0.025 79.7)",
+          "oklch(85% 0.025 79.7)",
+          "oklch(95% 0.025 79.7)"
+        ]
+      },
+      "muted-night": {
+        "role": "neutral",
+        "displayName": "Pencil (night)",
+        "canonical": "oklch(70.4% 0.026 77.4)",
+        "theme": "dark",
+        "cssVar": "--muted",
+        "tonalRamp": [
+          "oklch(15% 0.026 77.4)",
+          "oklch(25% 0.026 77.4)",
+          "oklch(35% 0.026 77.4)",
+          "oklch(45% 0.026 77.4)",
+          "oklch(55% 0.026 77.4)",
+          "oklch(70% 0.026 77.4)",
+          "oklch(85% 0.026 77.4)",
+          "oklch(95% 0.026 77.4)"
+        ]
+      },
+      "board-night": {
+        "role": "tertiary",
+        "displayName": "Cover Board (night)",
+        "canonical": "oklch(26.9% 0.015 71.4)",
+        "theme": "dark",
+        "cssVar": "--board",
+        "tonalRamp": [
+          "oklch(15% 0.015 71.4)",
+          "oklch(25% 0.015 71.4)",
+          "oklch(35% 0.015 71.4)",
+          "oklch(45% 0.015 71.4)",
+          "oklch(55% 0.015 71.4)",
+          "oklch(70% 0.015 71.4)",
+          "oklch(85% 0.015 71.4)",
+          "oklch(95% 0.015 71.4)"
+        ]
+      },
+      "board-ink-night": {
+        "role": "tertiary",
+        "displayName": "Cover Ink (night)",
+        "canonical": "oklch(75.2% 0.027 78.9)",
+        "theme": "dark",
+        "cssVar": "--board-ink",
+        "tonalRamp": [
+          "oklch(15% 0.027 78.9)",
+          "oklch(25% 0.027 78.9)",
+          "oklch(35% 0.027 78.9)",
+          "oklch(45% 0.027 78.9)",
+          "oklch(55% 0.027 78.9)",
+          "oklch(70% 0.027 78.9)",
+          "oklch(85% 0.027 78.9)",
+          "oklch(95% 0.027 78.9)"
+        ]
+      },
+      "on-fill-night": {
+        "role": "neutral",
+        "displayName": "On-Fill Paper (night)",
+        "canonical": "oklch(18.4% 0.009 75.0)",
+        "theme": "dark",
+        "cssVar": "--on-fill",
+        "tonalRamp": [
+          "oklch(15% 0.009 75.0)",
+          "oklch(25% 0.009 75.0)",
+          "oklch(35% 0.009 75.0)",
+          "oklch(45% 0.009 75.0)",
+          "oklch(55% 0.009 75.0)",
+          "oklch(70% 0.009 75.0)",
+          "oklch(85% 0.009 75.0)",
+          "oklch(95% 0.009 75.0)"
+        ]
+      },
+      "vip-night": {
+        "role": "secondary",
+        "displayName": "Marigold (VIP) (night)",
+        "canonical": "oklch(79.6% 0.138 72.7)",
+        "theme": "dark",
+        "cssVar": "--vip",
+        "tonalRamp": [
+          "oklch(15% 0.138 72.7)",
+          "oklch(25% 0.138 72.7)",
+          "oklch(35% 0.138 72.7)",
+          "oklch(45% 0.138 72.7)",
+          "oklch(55% 0.138 72.7)",
+          "oklch(70% 0.138 72.7)",
+          "oklch(85% 0.138 72.7)",
+          "oklch(95% 0.138 72.7)"
+        ]
+      },
+      "ok-night": {
+        "role": "secondary",
+        "displayName": "Ledger Teal (OK) (night)",
+        "canonical": "oklch(75.6% 0.112 181.2)",
+        "theme": "dark",
+        "cssVar": "--ok",
+        "tonalRamp": [
+          "oklch(15% 0.112 181.2)",
+          "oklch(25% 0.112 181.2)",
+          "oklch(35% 0.112 181.2)",
+          "oklch(45% 0.112 181.2)",
+          "oklch(55% 0.112 181.2)",
+          "oklch(70% 0.112 181.2)",
+          "oklch(85% 0.112 181.2)",
+          "oklch(95% 0.112 181.2)"
+        ]
+      },
+      "junk-night": {
+        "role": "secondary",
+        "displayName": "Correction Red (Junk) (night)",
+        "canonical": "oklch(71.6% 0.149 29.2)",
+        "theme": "dark",
+        "cssVar": "--junk",
+        "tonalRamp": [
+          "oklch(15% 0.149 29.2)",
+          "oklch(25% 0.149 29.2)",
+          "oklch(35% 0.149 29.2)",
+          "oklch(45% 0.149 29.2)",
+          "oklch(55% 0.149 29.2)",
+          "oklch(70% 0.149 29.2)",
+          "oklch(85% 0.149 29.2)",
+          "oklch(95% 0.149 29.2)"
+        ]
+      },
+      "review-night": {
+        "role": "secondary",
+        "displayName": "Review Violet (night)",
+        "canonical": "oklch(76.4% 0.122 295.8)",
+        "theme": "dark",
+        "cssVar": "--review",
+        "tonalRamp": [
+          "oklch(15% 0.122 295.8)",
+          "oklch(25% 0.122 295.8)",
+          "oklch(35% 0.122 295.8)",
+          "oklch(45% 0.122 295.8)",
+          "oklch(55% 0.122 295.8)",
+          "oklch(70% 0.122 295.8)",
+          "oklch(85% 0.122 295.8)",
+          "oklch(95% 0.122 295.8)"
+        ]
+      }
     },
     "typographyMeta": {
-      "title": { "displayName": "Title", "purpose": "Page titles only; the largest size in the app." },
-      "body": { "displayName": "Body", "purpose": "Rows, controls, buttons and form labels; 600 weight for emphasis." },
-      "label": { "displayName": "Label", "purpose": "Uppercase card headers, list badges, nav tab labels, metadata." },
-      "mono": { "displayName": "Mono", "purpose": "Technical values only." }
+      "headline": {
+        "displayName": "Headline (casual hand)",
+        "purpose": "Page titles; CASL 1, -0.01em."
+      },
+      "title": {
+        "displayName": "Title (casual hand)",
+        "purpose": "Previewed subject, dialog titles, empty states; CASL 1."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rows, controls, buttons, form labels; CASL 0."
+      },
+      "action": {
+        "displayName": "Action",
+        "purpose": "Workbench decision buttons, 700 weight."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase pencil group names inside a sheet (Queue, Keep, Remove)."
+      },
+      "stamp": {
+        "displayName": "Stamp",
+        "purpose": "Uppercase text inside ink stamps."
+      },
+      "numeric": {
+        "displayName": "Numeric",
+        "purpose": "Counts, dates and key caps in tabular numerals."
+      }
     },
-    "shadows": [
-      { "name": "floating-toast", "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)", "purpose": "Toast floating above the bottom nav." },
-      { "name": "floating-dialog", "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "purpose": "Dialogs and the bottom sheet." },
-      { "name": "card-faint", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "A few cards and the desktop queue panel; under review." }
+    "fonts": [
+      {
+        "family": "Recursive",
+        "source": "web/src/shell/fonts/recursive-casl-latin.woff2",
+        "weights": "300 1000",
+        "axes": {
+          "CASL": "0 for body, 1 for titles"
+        },
+        "license": "OFL"
+      }
     ],
-    "motion": [],
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 12px 32px -8px rgb(20 14 8 / 0.28), 0 2px 6px rgb(20 14 8 / 0.12)",
+        "purpose": "Dialogs, bottom sheets and the inset letter only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "stamp",
+        "value": "stamp 180ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Result stamp presses in from scale 1.12 / opacity 0; skipped under reduced motion."
+      },
+      {
+        "name": "control",
+        "value": "150ms colour transition",
+        "purpose": "Buttons, pills and tabs."
+      },
+      {
+        "name": "swipe-preview",
+        "value": "opacity 0.25 + 0.75 * drag progress",
+        "purpose": "The pending decision stamp inks in as the drag nears the commit threshold."
+      }
+    ],
     "breakpoints": [
-      { "name": "md", "value": "768px" },
-      { "name": "lg", "value": "1024px" }
-    ]
+      {
+        "name": "md",
+        "value": "768px",
+        "purpose": "Rail replaces the tab bar; touch gets a queue beside the deck; a fine pointer gets the workbench."
+      },
+      {
+        "name": "lg",
+        "value": "1024px",
+        "purpose": "Any device gets the four-pane workbench; Settings goes two-column."
+      },
+      {
+        "name": "fine-pointer",
+        "value": "(hover: hover) and (pointer: fine)",
+        "purpose": "With md, selects the workbench."
+      },
+      {
+        "name": "coarse-pointer",
+        "value": "(pointer: coarse)",
+        "purpose": "44px targets and 16px input text."
+      }
+    ],
+    "themes": {
+      "storage": "localStorage key 'gmail-triage:theme', per device; absent means follow prefers-color-scheme",
+      "attribute": "data-theme=\"light\"|\"dark\" on <html> overrides the media query",
+      "themeColor": {
+        "light": "#2f2822",
+        "dark": "#2b251e"
+      }
+    }
   },
   "components": [
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Default commit button (Add, Save).",
-      "html": "<button class=\"ds-btn-primary\">Add</button>",
-      "css": ".ds-btn-primary { background: var(--color-ink, #0e1726); color: #fff; padding: 6px 12px; border: none; border-radius: 8px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-primary:hover { background: #1e293b; } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; }"
-    },
-    {
-      "name": "Triage Action Button",
-      "kind": "button",
-      "refersTo": "button-action",
-      "description": "One triage decision; text carries the action colour.",
-      "html": "<button class=\"ds-btn-action ds-vip\">VIP</button> <button class=\"ds-btn-action ds-ok\">OK</button> <button class=\"ds-btn-action ds-junk\">Junk</button> <button class=\"ds-btn-action ds-review\">Review</button>",
-      "css": ".ds-btn-action { background: #fff; border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 12px; padding: 8px 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-action:hover { background: rgb(230 234 241 / 0.4); } .ds-btn-action:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; } .ds-vip { color: var(--color-vip, #d97706); } .ds-ok { color: var(--color-ok, #0f766e); } .ds-junk { color: var(--color-junk, #dc2626); } .ds-review { color: var(--color-review, #7c3aed); }"
+      "description": "Default commit (Add, Save, Search Now). Ink fill, paper text.",
+      "html": "<button class=\"ds-btn-primary\">Save</button>",
+      "css": ".ds-btn-primary { background: var(--ink, #231d16); color: var(--on-fill, #fbf8f2); border: none; border-radius: 8px; padding: 6px 12px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background-color 150ms; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--ink, #231d16) 85%, transparent); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; pointer-events: none; }"
     },
     {
       "name": "Secondary Button",
       "kind": "button",
-      "refersTo": "button-action",
-      "description": "Non-committing action (Create Backup, Run Auto-Clean Now).",
-      "html": "<button class=\"ds-btn-secondary\">Create Backup</button>",
-      "css": ".ds-btn-secondary { background: #fff; color: var(--color-ink, #0e1726); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 8px; padding: 6px 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn-secondary:hover { border-color: var(--color-ink, #0e1726); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; }"
+      "refersTo": "button-secondary",
+      "description": "Non-committing action (Ignore, Run Auto-Clean Now). Paper with a strong-rule outline.",
+      "html": "<button class=\"ds-btn-secondary\">Run Auto-Clean Now</button>",
+      "css": ".ds-btn-secondary { background: var(--paper, #fbf8f2); color: var(--ink, #231d16); border: 1px solid var(--rule-strong, #c9bfae); border-radius: 8px; padding: 6px 12px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background-color 150ms; } .ds-btn-secondary:hover { background: var(--sunk, #f3eee5); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Outline / Confirm",
+      "kind": "button",
+      "refersTo": "button-danger-outline",
+      "description": "Removal entry point (outline) and the final destructive confirm, the only solid decision-ink fill.",
+      "html": "<button class=\"ds-btn-danger-outline\">Reset &amp; Rebuild</button> <button class=\"ds-btn-danger\">Reset Blocklist</button>",
+      "css": ".ds-btn-danger-outline, .ds-btn-danger { border-radius: 8px; padding: 6px 12px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background-color 150ms; } .ds-btn-danger-outline { background: var(--paper, #fbf8f2); color: var(--junk, #b4261a); border: 1px solid color-mix(in oklab, var(--junk, #b4261a) 50%, transparent); } .ds-btn-danger-outline:hover { background: color-mix(in oklab, var(--junk, #b4261a) 10%, var(--paper, #fbf8f2)); } .ds-btn-danger { background: var(--junk, #b4261a); color: var(--on-fill, #fbf8f2); border: none; } .ds-btn-danger:hover { background: color-mix(in oklab, var(--junk, #b4261a) 85%, transparent); } .ds-btn-danger-outline:focus-visible, .ds-btn-danger:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; }"
+    },
+    {
+      "name": "Workbench Action",
+      "kind": "button",
+      "refersTo": "action-workbench",
+      "description": "One triage decision in the desktop action column: ink-coloured text, strong-rule outline, key cap.",
+      "html": "<div class=\"ds-actcol\"><span class=\"ds-label\">Keep</span><button class=\"ds-act ds-vip\">VIP <kbd class=\"ds-kbd\">V</kbd></button><button class=\"ds-act ds-ok\">OK <kbd class=\"ds-kbd\">O</kbd></button><span class=\"ds-label\">File</span><button class=\"ds-act ds-review\">Review <kbd class=\"ds-kbd\">R</kbd></button><button class=\"ds-act ds-graphite\">Unsub</button><span class=\"ds-label\">Remove</span><button class=\"ds-act ds-junk\">Junk <kbd class=\"ds-kbd\">!</kbd></button></div>",
+      "css": ".ds-actcol { display: flex; flex-direction: column; gap: 4px; width: 140px; padding: 10px; background: var(--sunk, #f3eee5); } .ds-label { font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #6b6155); margin-top: 8px; } .ds-act { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--paper, #fbf8f2); border: 1px solid var(--rule-strong, #c9bfae); border-radius: 8px; padding: 6px 10px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 700; cursor: pointer; transition: background-color 150ms, border-color 150ms; } .ds-act:hover { border-color: currentColor; background: color-mix(in oklab, currentColor 7%, var(--paper, #fbf8f2)); } .ds-act:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; } .ds-vip { color: var(--vip, #985600); } .ds-ok { color: var(--ok, #0b6b60); } .ds-junk { color: var(--junk, #b4261a); } .ds-review { color: var(--review, #6a3dbf); } .ds-graphite { color: var(--graphite, #4d453c); } .ds-kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1px solid var(--rule-strong, #c9bfae); border-radius: 5px; background: var(--sunk, #f3eee5); padding: 0 6px; font: 600 0.75rem/1.5 Recursive, ui-sans-serif, sans-serif; font-variant-numeric: tabular-nums; color: var(--ink, #231d16); }"
+    },
+    {
+      "name": "Stamp",
+      "kind": "chip",
+      "refersTo": "stamp",
+      "description": "The signature ink stamp: tier/list badges, action results, the swipe preview. One form per decision ink.",
+      "html": "<span class=\"ds-stamp ds-s-vip\">VIP</span> <span class=\"ds-stamp ds-s-ok\">OK · Any name</span> <span class=\"ds-stamp ds-s-junk\">Blocklist</span> <span class=\"ds-stamp ds-s-review\">Review</span> <span class=\"ds-stamp ds-s-note\">Fragmented</span> <span class=\"ds-stamp ds-s-ok ds-stamp-big\">Done</span>",
+      "css": ".ds-stamp { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid currentColor; border-radius: 4px; padding: 1px 6px; background: color-mix(in oklab, currentColor 7%, transparent); font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.6875rem; font-weight: 700; line-height: 1rem; letter-spacing: 0.06em; text-transform: uppercase; animation: ds-stamp 180ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-s-vip { color: var(--vip, #985600); } .ds-s-ok { color: var(--ok, #0b6b60); } .ds-s-junk { color: var(--junk, #b4261a); } .ds-s-review { color: var(--review, #6a3dbf); } .ds-s-note { color: var(--graphite, #4d453c); border-style: dashed; } .ds-stamp-big { transform: rotate(-3deg); padding: 4px 12px; font-size: 0.875rem; } @keyframes ds-stamp { from { transform: scale(1.12); opacity: 0; } to { opacity: 1; } } @media (prefers-reduced-motion: reduce) { .ds-stamp { animation: none; } }"
+    },
+    {
+      "name": "Filter Pill",
+      "kind": "chip",
+      "refersTo": "pill",
+      "description": "Filter / toggle pill with aria-pressed; active is an ink fill.",
+      "html": "<button class=\"ds-pill\" aria-pressed=\"true\">All 59</button> <button class=\"ds-pill\" aria-pressed=\"false\">VIP 12</button> <button class=\"ds-pill\" aria-pressed=\"false\">OK 18</button>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px; border: 1px solid var(--rule-strong, #c9bfae); background: var(--paper, #fbf8f2); color: var(--graphite, #4d453c); padding: 4px 12px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; font-variant-numeric: tabular-nums; cursor: pointer; transition: color 150ms; } .ds-pill:hover { color: var(--ink, #231d16); } .ds-pill[aria-pressed=\"true\"] { border-color: var(--ink, #231d16); background: var(--ink, #231d16); color: var(--on-fill, #fbf8f2); } .ds-pill:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; }"
     },
     {
       "name": "Text Input",
       "kind": "input",
       "refersTo": "input-text",
-      "description": "Hairline field; border turns ink on focus.",
-      "html": "<input class=\"ds-input\" placeholder=\"Add a location\" />",
-      "css": ".ds-input { background: #fff; color: var(--color-ink, #0e1726); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 8px; padding: 8px 12px; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; outline: none; } .ds-input::placeholder { color: var(--color-muted, #64748b); } .ds-input:focus { border-color: var(--color-ink, #0e1726); }"
+      "description": "Paper field with a strong rule; 44px tall with 16px text on coarse pointers.",
+      "html": "<input class=\"ds-input\" placeholder=\"Add a location (e.g. Las Vegas, NV)\">",
+      "css": ".ds-input { background: var(--paper, #fbf8f2); color: var(--ink, #231d16); caret-color: var(--ink, #231d16); border: 1px solid var(--rule-strong, #c9bfae); border-radius: 8px; padding: 6px 10px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; width: 260px; } .ds-input::placeholder { color: var(--muted, #6b6155); opacity: 1; } .ds-input:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; } @media (pointer: coarse) { .ds-input { min-height: 44px; font-size: 1rem; } }"
     },
     {
-      "name": "Filter Chip",
-      "kind": "chip",
-      "refersTo": "chip-filter",
-      "description": "Lists filter pill with a count; selected is filled ink.",
-      "html": "<button class=\"ds-chip ds-chip-on\">All 7</button> <button class=\"ds-chip\">VIP 3</button>",
-      "css": ".ds-chip { background: #fff; color: var(--color-muted, #64748b); border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 9999px; padding: 4px 12px; font: 500 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-chip:hover { color: var(--color-ink, #0e1726); } .ds-chip-on { background: var(--color-ink, #0e1726); color: #fff; border-color: var(--color-ink, #0e1726); } .ds-chip:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: 2px; }"
-    },
-    {
-      "name": "List Badge + Fragmented Marker",
-      "kind": "chip",
-      "refersTo": "chip-list-badge",
-      "description": "Tier-coloured list membership tags and the report-only fragmentation pill.",
-      "html": "<span class=\"ds-badge ds-badge-vip\">VIP · Dana CEO ×</span> <span class=\"ds-badge ds-badge-ok\">OK · D. Chief ×</span> <span class=\"ds-frag\">Fragmented</span>",
-      "css": ".ds-badge { display: inline-flex; align-items: center; color: #fff; border-radius: 4px; padding: 2px 6px; font: 600 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; } .ds-badge-vip { background: var(--color-vip, #d97706); } .ds-badge-ok { background: var(--color-ok, #0f766e); } .ds-frag { display: inline-flex; align-items: center; border-radius: 9999px; padding: 2px 6px; background: rgb(245 158 11 / 0.2); color: #b45309; font: 700 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; }"
-    },
-    {
-      "name": "Settings Card",
+      "name": "Sheet",
       "kind": "card",
-      "refersTo": "card",
-      "description": "Hairline-bordered 16px-rounded container with an uppercase label header.",
-      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-h\">Locations</h2><p class=\"ds-card-b\">Las Vegas · Temecula</p></section>",
-      "css": ".ds-card { background: #fff; border: 1px solid var(--color-hairline, #e6eaf1); border-radius: 16px; padding: 16px; max-width: 22rem; } .ds-card-h { margin: 0 0 12px; font: 600 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.025em; text-transform: uppercase; color: var(--color-muted, #64748b); } .ds-card-b { margin: 0; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; color: var(--color-ink, #0e1726); }"
+      "refersTo": "sheet",
+      "description": "A sheet of paper on the desk: 16px corners, 1px rule, no shadow.",
+      "html": "<div class=\"ds-desk\"><section class=\"ds-sheet\"><h3 class=\"ds-sheet-title\">Locations</h3><p class=\"ds-sheet-body\">Events are grouped by these places, in this order.</p></section></div>",
+      "css": ".ds-desk { background: var(--desk, #ebe5da); padding: 20px; } .ds-sheet { background: var(--paper, #fbf8f2); border: 1px solid var(--rule, #ddd5c7); border-radius: 16px; padding: 16px 20px; color: var(--ink, #231d16); } .ds-sheet-title { margin: 0 0 6px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 1rem; font-weight: 600; } .ds-sheet-body { margin: 0; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; color: var(--graphite, #4d453c); }"
     },
     {
-      "name": "Navigation",
+      "name": "Cover Navigation",
       "kind": "nav",
-      "refersTo": "nav",
-      "description": "Word-only tabs; weight alone marks the active tab.",
-      "html": "<nav class=\"ds-nav\"><a class=\"ds-tab ds-tab-on\">Triage</a><a class=\"ds-tab\">Lists</a><a class=\"ds-tab\">Events</a><a class=\"ds-tab\">Review</a><a class=\"ds-tab\">Settings</a></nav>",
-      "css": ".ds-nav { display: flex; border-top: 1px solid var(--color-hairline, #e6eaf1); } .ds-tab { flex: 1; text-align: center; padding: 8px 0; font: 400 0.75rem/1.33 ui-sans-serif, system-ui, sans-serif; color: var(--color-muted, #64748b); cursor: pointer; text-decoration: none; } .ds-tab:hover { color: var(--color-ink, #0e1726); } .ds-tab-on { color: var(--color-ink, #0e1726); font-weight: 600; } .ds-tab:focus-visible { outline: 2px solid var(--color-ink, #0e1726); outline-offset: -2px; }"
+      "refersTo": "nav-cover",
+      "description": "The bookcloth cover holding the index; the active tab is cut out in desk colour and reaches into the page.",
+      "html": "<nav class=\"ds-cover\"><a class=\"ds-tab ds-tab-active\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"22 12 16 12 14 15 10 15 8 12 2 12\"/><path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"/></svg>Triage</a><a class=\"ds-tab\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m3 17 2 2 4-4\"/><path d=\"m3 7 2 2 4-4\"/><path d=\"M13 6h8\"/><path d=\"M13 12h8\"/><path d=\"M13 18h8\"/></svg>Lists</a><a class=\"ds-tab\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg>Events</a></nav>",
+      "css": ".ds-cover { display: flex; flex-direction: column; gap: 4px; width: 76px; padding: 12px 0; background: var(--board, #2f2822); } .ds-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; margin-left: 8px; border-radius: 12px 0 0 12px; font-family: Recursive, ui-sans-serif, system-ui, sans-serif; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.025em; color: var(--board-ink, #d9cfc0); text-decoration: none; transition: color 150ms; } .ds-tab:hover { color: var(--on-fill, #fbf8f2); } .ds-tab-active { background: var(--desk, #ebe5da); color: var(--ink, #231d16); } .ds-tab:focus-visible { outline: 2px solid var(--ink, #231d16); outline-offset: 2px; }"
     },
     {
-      "name": "Toast",
+      "name": "Letter",
       "kind": "custom",
-      "refersTo": "toast",
-      "description": "Result of the last action, with Undo only when honestly reversible.",
-      "html": "<div class=\"ds-toast\"><span>Junked ShoeBarn Deals</span><button class=\"ds-toast-undo\">Undo</button></div>",
-      "css": ".ds-toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 28rem; background: var(--color-ink, #0e1726); color: #fff; border-radius: 12px; padding: 12px 16px; font: 400 0.875rem/1.43 ui-sans-serif, system-ui, sans-serif; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); } .ds-toast-undo { background: none; border: none; color: #fff; font-weight: 600; text-decoration: underline; cursor: pointer; }"
+      "refersTo": "letter",
+      "description": "Sender HTML in a sandboxed white iframe laid on a sunk margin as an inset letter; never restyled.",
+      "html": "<div class=\"ds-letter-margin\"><div class=\"ds-letter\"><strong>Last chance: fall fares from $59</strong><p>Sender content keeps its own colours.</p></div></div>",
+      "css": ".ds-letter-margin { background: var(--sunk, #f3eee5); padding: 16px; } .ds-letter { max-width: 760px; margin: 0 auto; background: #ffffff; color: #222222; border: 1px solid var(--rule, #ddd5c7); border-radius: 6px; padding: 20px 28px; box-shadow: 0 12px 32px -8px rgb(20 14 8 / 0.28), 0 2px 6px rgb(20 14 8 / 0.12); font-family: Arial, sans-serif; font-size: 14px; }"
     }
   ],
   "narrative": {
     "northStar": "The Field Notebook",
-    "overview": "Gmail Triage is one person's own sorting tool, not a product sold to strangers. It should feel the way a well-kept field notebook does: personal and used daily, with an order that reflects its owner. Each page holds plain records, and the marks on them carry meaning. The notebook is quiet so the marks can speak. In this app the marks are the four action colours, VIP, OK, Junk and Review, and everything around them steps back.\n\nDensity is high and calm. The owner triages in short, focused bursts, on the desktop at the keyboard and on an iPhone with one thumb, so screens favour many legible rows over generous whitespace. Type is small, sentence-case and set in the system face. Weight, not size, sets the hierarchy.\n\nThe notebook metaphor is the direction, and the current implementation only partly expresses it. Today's neutrals are cool slate, and the surfaces are plain white with hairline borders. Whether the notebook's warmth and tactility should reach the palette and surfaces is an open question, to be settled by the next critique, not assumed here. Depth is also under review (see Elevation & Depth).",
+    "overview": "Gmail Triage is one owner's field notebook laid open on a desk. The desk is the warm ground every screen sits on. The pages are paper sheets with ruled edges. A dark bookcloth cover holds the index of tabs. Decisions are marked on the page with ink stamps. The app supervises mail automation for a single person, so it is meant to read like his own notebook and not like a product sold to strangers. It deliberately refuses the grey SaaS default of white cards, slate text and one blue accent.\n\nDensity is high and calm. Triage happens in short bursts, at a desk with the keyboard or on an iPhone with one thumb, so screens favour many legible rows over generous whitespace. One typeface, Recursive, does all the work. Body text runs it as a plain sans, and titles lean into its casual axis, so headings read as the owner's handwriting over a printed page. Depth is tonal: desk, sunk paper and paper. The only shadow belongs to things that float, plus the sender's letter laid on the page.\n\nThis world replaced an earlier cool-slate interface in October 2026. The owner rejected the Strasz Assessment Systems brand palette for this app on 2026-10-05, and the notebook direction is his pinned choice (future-release #64). The dark theme, \"desk at night\", mirrors every surface and ink, and it is a supported theme rather than an extra.",
     "keyCharacteristics": [
-      "Quiet neutral chrome; colour is reserved for meaning.",
-      "Dense, compact rows and controls; small sentence-case type in the system face.",
-      "Weight (600) carries hierarchy, not large sizes.",
-      "Rounded but not soft: 8–16px corners on controls and cards, full pills for filters.",
-      "Every action has a labelled control; gestures and keys are accelerators."
+      "A warm desk, paper sheets with ruled edges, and a dark cover that holds the index.",
+      "Four decision inks (VIP, OK, Junk, Review), used as text, outlines and stamps, each meaning one decision.",
+      "The ink stamp is the signature mark for tier badges, list badges, action results and the swipe preview.",
+      "One family, Recursive: linear body, casual titles, tabular numerals.",
+      "Flat tonal layers. A shadow means \"floating\" (or the letter laid on the page).",
+      "Layout is chosen by both room and pointer type. Touch gets 44px targets everywhere."
     ],
     "rules": [
-      { "name": "The One Meaning Rule", "body": "Each action colour means one decision and nothing else. VIP amber never decorates, and junk red appears only where something is removed. A colour that means two things means nothing.", "section": "colors" },
-      { "name": "The Quiet Chrome Rule", "body": "Navigation, cards, inputs and secondary buttons stay in ink, pencil grey, hairline and paper. If chrome needs colour to be found, the layout is wrong.", "section": "colors" },
-      { "name": "The Weight-Not-Size Rule", "body": "Emphasis is 600 weight at body size. No size above 1.125rem appears in the app. A bigger heading is a sign the screen is doing too much.", "section": "typography" }
+      {
+        "name": "The One Meaning Rule",
+        "body": "Each decision ink means one decision and nothing else. Marigold never decorates, correction red appears only where something is removed, and neutral moves borrow no decision colour. A colour that means two things means nothing.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-Not-Paint Rule",
+        "body": "Decision inks are applied as text, 1–1.5px outlines and stamps (with at most a 7% wash of their own ink). The only solid ink fill is the final confirm button of a destructive act (Reset Blocklist, a guarded Delete). A filled decision colour anywhere else is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Chrome Rule",
+        "body": "The cover is the one coloured chrome. The board-coloured rail or tab bar holds the index, and everything else (sheets, inputs, secondary buttons, pills) stays in paper, ink, graphite and rule. If a control needs colour to be found, the layout is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sender's Letter Rule",
+        "body": "Email HTML is shown in a sandboxed iframe on Letter White, laid on the page as an inset letter. The sender's own colours are never restyled or themed, including at night.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Hands Rule",
+        "body": "Casual (CASL 1) is for titles only. Body, labels, stamps and data stay linear (CASL 0). A casual paragraph reads as noise.",
+        "section": "typography"
+      },
+      {
+        "name": "The Weight-Over-Size Rule",
+        "body": "Emphasis is weight at body size. Nothing in the app exceeds 1.25rem except the enlarged swipe-preview stamp (1.25rem, 0.12em tracking).",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Page Rule",
+        "body": "Anything on the page is flat. A shadow means the element is lying on top of the page, either floating or laid there as a letter.",
+        "section": "elevation"
+      }
     ],
     "dos": [
-      "Do keep each action colour tied to its single meaning (The One Meaning Rule).",
-      "Do use 600 weight at 0.875rem for emphasis rather than a larger size.",
-      "Do separate surfaces with 1px hairline borders and 8–16px radii, scaled to the element.",
-      "Do give every action a labelled control; swipes and arrow keys are accelerators only.",
-      "Do keep mobile primary actions at the bottom within thumb reach, respecting the safe-area inset."
+      "**Do** keep each decision ink tied to its single meaning (The One Meaning Rule), and render neutral moves in graphite.",
+      "**Do** apply decision inks as text, outlines and stamps. Reserve a solid ink fill for the final destructive confirm.",
+      "**Do** use the Stamp for every tier, list or result mark, so a colour always arrives in the same form.",
+      "**Do** separate surfaces by tone (desk, sunk, paper) and 1px rules. Use the float shadow only for dialogs, sheets and the letter.",
+      "**Do** set titles in Recursive at CASL 1 and everything else at CASL 0. Use tabular numerals for counts and dates.",
+      "**Do** give coarse pointers 44px targets and 16px input text.",
+      "**Do** define both a day and a night value for any new colour token, and check decision inks at 4.5:1 on paper in both themes.",
+      "**Do** keep every action reachable by a labelled control. Swipes and keys are accelerators."
     ],
     "donts": [
-      "Don't use the Strasz Assessment Systems brand palette in this app (owner's decision, 2026-10-05).",
-      "Don't introduce a display font or headings larger than 1.125rem.",
-      "Don't use junk red for anything that does not remove something.",
-      "Don't add colour to chrome (nav, cards, inputs) to make it stand out.",
-      "Don't reference colour utilities that have no token. The desktop queue's `bg-tint` currently renders nothing, because no `tint` token is defined."
+      "**Don't** use the Strasz Assessment Systems brand palette in this app (owner's decision, 2026-10-05).",
+      "**Don't** return to the grey SaaS default: white cards, slate text, one blue accent.",
+      "**Don't** colour any chrome except the cover. Sheets, inputs and secondary buttons stay paper and ink.",
+      "**Don't** restyle, invert or theme the sender's email HTML. It always sits on Letter White.",
+      "**Don't** use correction red for anything that does not remove something.",
+      "**Don't** set body copy, labels or data in the casual axis.",
+      "**Don't** put a shadow on anything resting on the page.",
+      "**Don't** use colour utilities that have no token. Every colour must resolve to a variable in `tokens.css`."
     ]
   }
 }

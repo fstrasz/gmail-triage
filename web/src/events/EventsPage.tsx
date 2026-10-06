@@ -174,7 +174,7 @@ export function EventsPage() {
         ) : !data || data.groups.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+          <div className="flex w-full max-w-4xl flex-col gap-6">
             {data.groups.map((group) => (
               <section key={group.location}>
                 <h2 className="mb-2 flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted">
@@ -207,7 +207,7 @@ function EventsSkeleton() {
   return (
     <div
       data-testid="events-skeleton"
-      className="mx-auto flex w-full max-w-3xl animate-pulse flex-col gap-3"
+      className="flex w-full max-w-4xl animate-pulse flex-col gap-3"
     >
       <div className="h-24 rounded-xl border border-rule bg-paper" />
       <div className="h-24 rounded-xl border border-rule bg-paper" />
