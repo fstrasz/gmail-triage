@@ -1,7 +1,8 @@
-import { MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { Stamp } from "../shell/Stamp.tsx";
+import { btnQuiet } from "../shell/ui.ts";
 import { ACTION_COLOR, ACTION_LABEL, ACTION_TONE } from "./actionMeta.ts";
 import { Card } from "./Card.tsx";
 import { MoreSheet } from "./MoreSheet.tsx";
@@ -37,10 +38,16 @@ export function Deck({
   onMoreOpenChange,
   feedback,
   footer,
+  position,
+  onNavigate,
 }: {
   cards: TriageEmail[];
   mode: Mode;
   onAction: (action: TriageAction) => void;
+  /** 1-based queue position of the top card, and the queue length. */
+  position: { index: number; total: number };
+  /** Select the previous/next email without acting on the current one. */
+  onNavigate: (step: -1 | 1) => void;
   moreOpen: boolean;
   onMoreOpenChange: (open: boolean) => void;
   /** Action feedback + Undo, rendered above the action row. */
@@ -158,10 +165,37 @@ export function Deck({
         )}
       </div>
 
-      {/* Thumb zone: feedback + Undo directly above the action row, the
-          mode toggle below it. */}
-      <div className="mx-auto mt-auto flex min-h-11 w-full max-w-md items-center justify-center pt-3">
-        {feedback}
+      {/* Thumb zone: Prev/Next flank feedback + Undo (or the queue position
+          when there is no feedback) directly above the action row, the mode
+          toggle below it. Moving only selects; it never acts. */}
+      <div className="mx-auto mt-auto flex min-h-11 w-full max-w-md items-center gap-2 pt-3">
+        <button
+          type="button"
+          aria-label="Previous email"
+          disabled={position.index <= 1}
+          className={`${btnQuiet} shrink-0 pl-1.5`}
+          onClick={() => onNavigate(-1)}
+        >
+          <ChevronLeft aria-hidden size={18} />
+          Prev
+        </button>
+        <div className="flex min-w-0 flex-1 justify-center">
+          {feedback ?? (
+            <span className="text-xs tabular-nums text-muted">
+              {position.index} of {position.total}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label="Next email"
+          disabled={position.index >= position.total}
+          className={`${btnQuiet} shrink-0 pr-1.5`}
+          onClick={() => onNavigate(1)}
+        >
+          Next
+          <ChevronRight aria-hidden size={18} />
+        </button>
       </div>
       <div
         className="mx-auto w-full max-w-md"
