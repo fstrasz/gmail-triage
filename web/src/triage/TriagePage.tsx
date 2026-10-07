@@ -405,6 +405,7 @@ export function TriagePage() {
   const deckCards = active
     ? [active, ...deck.cards.filter((c) => c.id !== active.id)]
     : deck.cards;
+  const activeIndex = deck.cards.findIndex((c) => c.id === active?.id);
 
   const toastNode = toast ? (
     <div
@@ -632,6 +633,11 @@ export function TriagePage() {
               cards={deckCards}
               mode={mode}
               onAction={(a) => commit(a)}
+              position={{ index: activeIndex + 1, total: deck.cards.length }}
+              onNavigate={(step) => {
+                const next = deck.cards[activeIndex + step];
+                if (next) dispatch({ type: "select", id: next.id });
+              }}
               moreOpen={moreOpen}
               onMoreOpenChange={setMoreOpen}
               feedback={toastNode}

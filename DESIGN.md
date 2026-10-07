@@ -299,8 +299,9 @@ desktop. On phones it is in the Settings header ("Legacy UI"), because the tab b
 
 **Triage layout is chosen by room as well as pointer type:**
 1. **Phone (touch, under 768px):** the swipe deck. One card (capped at 28rem) with up to two peeking
-   behind it, then feedback and Undo, then three thumb buttons plus "⋯" in thumb reach above the
-   safe-area inset, then the Hide VIP/OK pill.
+   behind it, then a line with Prev and Next at either end and feedback and Undo between them (the
+   queue position, "3 of 13", when there is no feedback), then three thumb buttons plus "⋯" in thumb
+   reach above the safe-area inset, then the Hide VIP/OK pill.
 2. **Touch at 768px and up (iPad portrait):** a tappable 240px queue sheet beside the same deck.
 3. **Fine pointer at 768px and up, or any device at 1024px and up:** the four-pane workbench. It is one
    sheet split into a sunk queue (208–288px), a sunk action column (160px) of grouped actions with key
@@ -369,6 +370,9 @@ Word-labelled and confident, on paper.
   is set apart below a dashed rule at the foot of the column.
 - **Thumb row (phone/tablet):** 48px-tall paper buttons with 12px corners and 0.9375rem bold ink-coloured
   text, plus a 56px "⋯" that opens a bottom sheet with the rest. Pressed state is sunk paper.
+- **Prev / Next (phone/tablet):** Quiet buttons (pencil word plus a Lucide chevron) that only change
+  which card is on top. They never act, so they carry no decision ink and leave no Undo. Each is
+  disabled at its end of the queue. They are the labelled control behind `j`/`k`.
 
 ### Stamp (signature)
 The notebook's mark is a decision inked onto the page. It is an uppercase 0.6875rem bold word in a 4px

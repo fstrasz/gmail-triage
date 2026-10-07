@@ -432,5 +432,44 @@ describe("TriagePage / Deck UI", () => {
   });
 });
 
+describe("Deck Prev/Next (select only)", () => {
+  beforeEach(() => {
+    loadedQueue([makeEmail("e1"), makeEmail("e2"), makeEmail("e3")]);
+  });
+
+  test("Next brings the following email to the top; Prev brings it back", () => {
+    render(<TriagePage />);
+    expect(screen.getByText("1 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next email" }));
+    expect(screen.getByText("2 of 3")).toBeInTheDocument();
+    // The top card is now e2: an action applies to it.
+    fireEvent.click(screen.getByRole("button", { name: ACTION_LABELS.ok }));
+    expect((actionMutate.mock.calls[0][0] as { id: string }).id).toBe("e2");
+  });
+
+  test("moving does not act, undo or show feedback", () => {
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Next email" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous email" }));
+    expect(screen.getByText("1 of 3")).toBeInTheDocument();
+    expect(actionMutate).not.toHaveBeenCalled();
+    expect(undoMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /undo/i })).toBeNull();
+  });
+
+  test("Prev is disabled on the first email and Next on the last", () => {
+    render(<TriagePage />);
+    expect(
+      screen.getByRole("button", { name: "Previous email" }),
+    ).toBeDisabled();
+    const next = screen.getByRole("button", { name: "Next email" });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    fireEvent.click(next);
+    expect(screen.getByText("3 of 3")).toBeInTheDocument();
+    expect(next).toBeDisabled();
+  });
+});
+
 // keep `act` referenced for potential async flushes without unused-import error
 void act;
