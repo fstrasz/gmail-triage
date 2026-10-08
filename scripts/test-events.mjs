@@ -5137,3 +5137,14 @@ test("mailbox: a failed lookup is not cached", async () => {
   assert.equal(await getMailboxAddress(gmail), "a@strasz.com");
   assert.equal(calls, 2);
 });
+
+const authPathsModulePath = url.pathToFileURL(path.join(projectDir, "app", "lib", "authPaths.js")).href;
+
+test("authPaths: defaults to ../config, honours a config-dir argument", async () => {
+  const { authPaths } = await import(authPathsModulePath);
+  const cwd = path.join(projectDir, "app");
+  assert.equal(authPaths(undefined, cwd).tokenPath, path.join(projectDir, "config", "token.json"));
+  const r = authPaths("../config-robin", cwd);
+  assert.equal(r.credPath, path.join(projectDir, "config-robin", "credentials.json"));
+  assert.equal(r.tokenPath, path.join(projectDir, "config-robin", "token.json"));
+});
