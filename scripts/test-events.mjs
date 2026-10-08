@@ -21,6 +21,9 @@ const projectDir = path.resolve(scriptDir, "..");
 const foundEventsModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "foundEvents.js"),
 ).href;
+const mailboxModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "mailbox.js"),
+).href;
 const unsubModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "unsub.js"),
 ).href;
@@ -5113,4 +5116,24 @@ test("read-triage prompt: reads OWNER_NAME from the environment at call time", a
     if (prev === undefined) delete process.env.OWNER_NAME;
     else process.env.OWNER_NAME = prev;
   }
+});
+
+test("mailbox: returns the profile address and calls getProfile once", async () => {
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
+  resetMailboxCache();
+  let calls = 0;
+  const gmail = { users: { getProfile: async () => { calls++; return { data: { emailAddress: "robin@strasz.com" } }; } } };
+  assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
+  assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
+  assert.equal(calls, 1);
+});
+
+test("mailbox: a failed lookup is not cached", async () => {
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
+  resetMailboxCache();
+  let calls = 0;
+  const gmail = { users: { getProfile: async () => { calls++; if (calls === 1) throw new Error("boom"); return { data: { emailAddress: "a@strasz.com" } }; } } };
+  await assert.rejects(getMailboxAddress(gmail), /boom/);
+  assert.equal(await getMailboxAddress(gmail), "a@strasz.com");
+  assert.equal(calls, 2);
 });
