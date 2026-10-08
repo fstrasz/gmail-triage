@@ -7,7 +7,7 @@
 // or a comparison between them isn't measuring the model, it's measuring a
 // prompt difference.
 import {
-  READ_TRIAGE_SYSTEM_PROMPT,
+  readTriageSystemPrompt,
   READ_TRIAGE_TOOL,
   READ_TRIAGE_CHUNK_SIZE,
   PROVIDER_QWEN,
@@ -63,7 +63,7 @@ async function classifyReadStateChunkLocal(
       messages: [
         {
           role: "system",
-          content: READ_TRIAGE_SYSTEM_PROMPT + LOCAL_FORMAT_HINT,
+          content: readTriageSystemPrompt() + LOCAL_FORMAT_HINT,
         },
         { role: "user", content: userPrompt },
       ],

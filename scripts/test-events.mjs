@@ -5084,3 +5084,33 @@ test("M3 web build: index.html has no inline script the /app CSP would block", (
   const inline = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>/gi)];
   assert.equal(inline.length, 0, inline.map((m) => m[0]).join("\n"));
 });
+
+test("read-triage prompt: names the configured owner, no hardcoded Frank, no gendered pronouns", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  const p = readTriageSystemPrompt("Robin");
+  assert.match(p, /You are triaging Robin's inbox/);
+  assert.match(p, /not from Robin or Strasz/);
+  assert.doesNotMatch(p, /Frank/);
+  assert.doesNotMatch(p, /\b(he|his|him)\b/i);
+});
+
+test("read-triage prompt: unset or blank owner falls back to the neutral default", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  for (const v of [undefined, "", "   "]) {
+    const p = readTriageSystemPrompt(v);
+    assert.match(p, /You are triaging the mailbox owner's inbox/, String(v));
+    assert.match(p, /\n- The mailbox owner's approval, signature, or decision is required/);
+  }
+});
+
+test("read-triage prompt: reads OWNER_NAME from the environment at call time", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  const prev = process.env.OWNER_NAME;
+  process.env.OWNER_NAME = "Frank";
+  try {
+    assert.match(readTriageSystemPrompt(), /You are triaging Frank's inbox/);
+  } finally {
+    if (prev === undefined) delete process.env.OWNER_NAME;
+    else process.env.OWNER_NAME = prev;
+  }
+});
