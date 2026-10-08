@@ -9,6 +9,7 @@ import {
   Tags,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+import { MailboxLabel } from "./MailboxLabel.tsx";
 
 const TABS: { to: string; label: string; end: boolean; icon: LucideIcon }[] = [
   { to: "/", label: "Triage", end: true, icon: Inbox },
@@ -37,6 +38,7 @@ export function AppShell() {
      */
     <div className="flex h-dvh flex-col bg-board md:flex-row">
       <main className="mt-[env(safe-area-inset-top)] flex-1 overflow-y-auto rounded-b-2xl bg-desk text-ink md:order-2 md:mt-0 md:rounded-b-none md:rounded-l-2xl">
+        <MailboxLabel />
         <Outlet />
       </main>
 

@@ -1,9 +1,9 @@
 ﻿import fs from "node:fs";
-import path from "node:path";
 import { authenticate } from "@google-cloud/local-auth";
+import { google } from "googleapis";
+import { authPaths } from "./lib/authPaths.js";
 
-const credPath = path.join(process.cwd(), "..", "config", "credentials.json");
-const tokenPath = path.join(process.cwd(), "..", "config", "token.json");
+const { credPath, tokenPath } = authPaths(process.argv[2]);
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
@@ -17,8 +17,11 @@ try {
     keyfilePath: credPath,
     scopes: SCOPES,
   });
+  const profile = await google
+    .gmail({ version: "v1", auth })
+    .users.getProfile({ userId: "me" });
   fs.writeFileSync(tokenPath, JSON.stringify(auth.credentials, null, 2));
-  console.log("Token saved successfully to config/token.json");
+  console.log(`Token for ${profile.data.emailAddress} saved to ${tokenPath}`);
 } catch (e) {
   console.error("Auth failed:", e.message);
 }

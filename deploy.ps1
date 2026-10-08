@@ -129,6 +129,7 @@ if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
     Write-Host ""
 }
 
+# config-robin is excluded so /MIR never purges Robin's state on the NAS.
 $robocopyArgs = @(
     $Source, $Dest,
     "/MIR",
@@ -139,7 +140,7 @@ $robocopyArgs = @(
     "/NP",
     "/TEE",
     "/LOG+:$Log",
-    "/XD", "node_modules", "config", ".git", ".claude",
+    "/XD", "node_modules", "config", "config-robin", ".git", ".claude",
     "/XF", "*.env", "*.json.bak", "deploy.*"
 )
 
@@ -191,7 +192,11 @@ if (-not $WhatIf) {
     Write-Host ""
     Write-Host "Recreating container on NAS..." -ForegroundColor Cyan
     $sshKey = "$env:USERPROFILE\.ssh\id_ed25519"
-    $sshCmd = 'cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose up -d --force-recreate'
+    # Robin's instance starts only once its config is seeded (see compose.yaml).
+    $robinActive = Test-Path (Join-Path $Dest "config-robin\token.json")
+    $profileArg = if ($robinActive) { " --profile robin" } else { "" }
+    Write-Host ("  Robin instance: " + $(if ($robinActive) { "active" } else { "not seeded - skipped" }))
+    $sshCmd = "cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose$profileArg up -d --force-recreate"
     ssh -i $sshKey fstrasz_admin@192.168.20.10 $sshCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Host "CONTAINER RECREATE FAILED (ssh exit $LASTEXITCODE). Check NAS manually." -ForegroundColor Red
@@ -234,6 +239,29 @@ if (-not $WhatIf) {
         } else {
             Write-Host "HEALTH PROBE FAILED: $_" -ForegroundColor Red
             exit 1
+        }
+    }
+
+    if ($robinActive) {
+        Write-Host "Probing Robin /health..." -ForegroundColor Cyan
+        try {
+            $robinHealth = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3001/health" -TimeoutSec 15 -ErrorAction Stop
+            if ($robinHealth.StatusCode -eq 200) {
+                Write-Host "  Robin /health probe OK (HTTP 200 - healthy)." -ForegroundColor Green
+            } elseif ($robinHealth.StatusCode -eq 503) {
+                Write-Host "  Robin /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+            } else {
+                Write-Host "ROBIN HEALTH PROBE FAILED: unexpected status $($robinHealth.StatusCode)." -ForegroundColor Red
+                exit 1
+            }
+        } catch {
+            $sc = $_.Exception.Response.StatusCode.value__
+            if ($sc -eq 503) {
+                Write-Host "  Robin /health probe WARN (HTTP 503 - degraded; deploy continues)." -ForegroundColor Yellow
+            } else {
+                Write-Host "ROBIN HEALTH PROBE FAILED: $_" -ForegroundColor Red
+                exit 1
+            }
         }
     }
 

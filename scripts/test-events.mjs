@@ -21,6 +21,9 @@ const projectDir = path.resolve(scriptDir, "..");
 const foundEventsModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "foundEvents.js"),
 ).href;
+const mailboxModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "mailbox.js"),
+).href;
 const unsubModulePath = url.pathToFileURL(
   path.join(projectDir, "app", "lib", "unsub.js"),
 ).href;
@@ -5083,4 +5086,65 @@ test("M3 web build: index.html has no inline script the /app CSP would block", (
   const html = fs.readFileSync(p, "utf8");
   const inline = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>/gi)];
   assert.equal(inline.length, 0, inline.map((m) => m[0]).join("\n"));
+});
+
+test("read-triage prompt: names the configured owner, no hardcoded Frank, no gendered pronouns", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  const p = readTriageSystemPrompt("Robin");
+  assert.match(p, /You are triaging Robin's inbox/);
+  assert.match(p, /not from Robin or Strasz/);
+  assert.doesNotMatch(p, /Frank/);
+  assert.doesNotMatch(p, /\b(he|his|him)\b/i);
+});
+
+test("read-triage prompt: unset or blank owner falls back to the neutral default", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  for (const v of [undefined, "", "   "]) {
+    const p = readTriageSystemPrompt(v);
+    assert.match(p, /You are triaging the mailbox owner's inbox/, String(v));
+    assert.match(p, /\n- The mailbox owner's approval, signature, or decision is required/);
+  }
+});
+
+test("read-triage prompt: reads OWNER_NAME from the environment at call time", async () => {
+  const { readTriageSystemPrompt } = await import(claudeModulePath);
+  const prev = process.env.OWNER_NAME;
+  process.env.OWNER_NAME = "Frank";
+  try {
+    assert.match(readTriageSystemPrompt(), /You are triaging Frank's inbox/);
+  } finally {
+    if (prev === undefined) delete process.env.OWNER_NAME;
+    else process.env.OWNER_NAME = prev;
+  }
+});
+
+test("mailbox: returns the profile address and calls getProfile once", async () => {
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
+  resetMailboxCache();
+  let calls = 0;
+  const gmail = { users: { getProfile: async () => { calls++; return { data: { emailAddress: "robin@strasz.com" } }; } } };
+  assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
+  assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
+  assert.equal(calls, 1);
+});
+
+test("mailbox: a failed lookup is not cached", async () => {
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
+  resetMailboxCache();
+  let calls = 0;
+  const gmail = { users: { getProfile: async () => { calls++; if (calls === 1) throw new Error("boom"); return { data: { emailAddress: "a@strasz.com" } }; } } };
+  await assert.rejects(getMailboxAddress(gmail), /boom/);
+  assert.equal(await getMailboxAddress(gmail), "a@strasz.com");
+  assert.equal(calls, 2);
+});
+
+const authPathsModulePath = url.pathToFileURL(path.join(projectDir, "app", "lib", "authPaths.js")).href;
+
+test("authPaths: defaults to ../config, honours a config-dir argument", async () => {
+  const { authPaths } = await import(authPathsModulePath);
+  const cwd = path.join(projectDir, "app");
+  assert.equal(authPaths(undefined, cwd).tokenPath, path.join(projectDir, "config", "token.json"));
+  const r = authPaths("../config-robin", cwd);
+  assert.equal(r.credPath, path.join(projectDir, "config-robin", "credentials.json"));
+  assert.equal(r.tokenPath, path.join(projectDir, "config-robin", "token.json"));
 });

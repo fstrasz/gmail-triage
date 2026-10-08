@@ -118,6 +118,7 @@ import {
   startEventsSearchScheduler,
   startScheduler,
 } from "./lib/scheduler.js";
+import { getMailboxAddress } from "./lib/mailbox.js";
 import { securityHeaders } from "./lib/securityHeaders.js";
 import {
   addEventInterest,
@@ -2353,6 +2354,17 @@ app.get("/api/review", (req, res) => {
     res.json({ ok: true, items: loadReview() });
   } catch (e) {
     triageServerError(res, e, "/api/review");
+  }
+});
+
+// Which mailbox this instance serves (one container per mailbox), so every
+// screen can show it and nobody acts on the wrong one from a bookmark.
+app.get("/api/mailbox", async (req, res) => {
+  try {
+    const gmail = await getGmailClient();
+    res.json({ ok: true, email: await getMailboxAddress(gmail) });
+  } catch (e) {
+    triageServerError(res, e, "/api/mailbox");
   }
 });
 

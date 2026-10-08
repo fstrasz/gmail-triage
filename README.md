@@ -330,6 +330,27 @@ The app has no login, so it defends itself against requests a hostile web page c
 
 ---
 
+## Second mailbox (one container per person)
+
+A second person's mailbox runs as its own container (`gmail-triage-robin` in `compose.yaml`, port 3001) from the same code, with its own state under `config-robin/`. Setup runbook:
+
+1. **Why one container per mailbox.** The app keeps all per-mailbox state (lists, settings, stats, events database, OAuth token) in files, so a separate container with a separate state directory gives full isolation without changing the app.
+2. **Google Cloud.** The OAuth project must be in the strasz.com organization. Set the OAuth consent screen to Internal: no verification is needed and refresh tokens do not expire weekly. Both instances share `credentials.json`.
+3. **Anthropic.** Use Team plan API credits: claude.ai Organization settings > Billing > API credits, and link one Console organization (one link per plan; changing it needs support). Create a workspace per person with a spend limit, and an API key in each.
+4. **Seed `config-robin/` on the NAS** (`/volume1/docker/gmail-triage/config-robin`):
+   a. `credentials.json`, copied from `config/`.
+   b. `[]` in `activity-log.json`, `blocklist.json`, `blocklist.backups.json`, `keptlist.json`, `viplist.json`, `oklist.json`, `review.json`, `scan-log.json` and `rules.json`.
+   c. `null` in `blocklist.backup.json` (a `{}` seed makes Settings show a phantom empty backup) and `{}` in `settings.json`.
+   d. `stats.json` containing `{"kept":0,"cleaned":0,"junked":0,"unsubbed":0,"vip":0,"ok":0,"daily":[]}`.
+   e. An empty `eventsdb/` directory.
+   f. `.env` with `ANTHROPIC_API_KEY=<Robin's workspace key>`, `OWNER_NAME=Robin`, and `ALLOWED_HOSTS=localhost:3000,192.168.20.10:3001,vegasnas:3001,<tailscale-ip>:3001,<magicdns>:3001` (the container-internal healthcheck is still `localhost:3000`). List every name Robin's browser will use, including the full MagicDNS name (`*.ts.net`) if Robin browses by it, since an unlisted host gets HTTP 421. The React UI is served unless `WEB_APP_ENABLED=0`. Copy any other keys from `config/.env` that are not mailbox-specific.
+5. **Add `OWNER_NAME=Frank` to `config/.env`** (back it up first).
+6. **Mint the token.** Locally create `config-robin/` with `credentials.json`, run `cd app && node auth.js ../config-robin`, sign in as Robin in the browser that opens. `auth.js` prints the account the token is for; confirm it is Robin's address before copying `config-robin/token.json` to the NAS. If it shows any other address, delete `config-robin/token.json` and re-run, choosing Robin's account (use a private/incognito window or sign out first).
+7. **Deploy.** Run `.\deploy.ps1`. It starts Robin's service only once `config-robin/token.json` exists on the NAS, and probes `:3001/health`. Open `http://vegasnas:3001/app/` and confirm the label shows Robin's address.
+8. **Monitoring.** Add `:3001/health` to the external uptime poll.
+
+---
+
 ## Deployment (optional)
 
 `deploy.ps1` syncs the app to a mapped network drive via robocopy and automatically bumps the patch version in `app/lib/pages.js` before each sync. Edit the destination path in the script to match your setup. Config files are not overwritten by the sync.
