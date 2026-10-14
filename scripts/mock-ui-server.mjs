@@ -1277,6 +1277,10 @@ function guardScope(action, fromName) {
       : "inbox only · any display name";
   return "entire mailbox · any display name";
 }
+// Mirrors app/lib/triageApi.js: Delete All confirms only above 75.
+function senderWideNeedsConfirm(action, count) {
+  return action === "delete-all" ? count > 75 : true;
+}
 const findMessage = (id) =>
   state.messages.find((m) => m.id === id) ||
   state.labeled.find((m) => m.id === id);
@@ -1575,15 +1579,16 @@ app.post("/api/triage/action", (req, res) => {
     const isDelete = action === "delete-all";
     if (!confirmed) {
       const count = senderCount(fromEmail);
-      return res.json(
-        guard({
-          count,
-          action,
-          fromName: name ?? null,
-          scope: guardScope(action, name),
-          message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
-        }),
-      );
+      if (senderWideNeedsConfirm(action, count))
+        return res.json(
+          guard({
+            count,
+            action,
+            fromName: name ?? null,
+            scope: guardScope(action, name),
+            message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+          }),
+        );
     }
     const moved = senderCount(fromEmail);
     for (const m of state.messages.filter(fromSender))

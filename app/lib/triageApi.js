@@ -92,6 +92,16 @@ export function isConfirmed(v) {
   return v === true;
 }
 
+// Delete All asks for confirmation only above this many messages (operator,
+// 2026-10-14) — a handful of mail from one sender goes straight to Trash, which
+// is recoverable for 30 days. Archive All still always confirms.
+export const DELETE_ALL_CONFIRM_THRESHOLD = 75;
+
+export function senderWideNeedsConfirm(action, count) {
+  if (action === "delete-all") return count > DELETE_ALL_CONFIRM_THRESHOLD;
+  return true;
+}
+
 // Actions whose `fromEmail` is interpolated into a Gmail search query.
 export const SENDER_QUERY_ACTIONS = new Set([
   "ok",
