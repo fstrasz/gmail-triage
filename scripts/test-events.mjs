@@ -2744,7 +2744,19 @@ test("normalizeGuard: passes action and fromName through when present", async ()
   assert.equal(guarded.guard.count, 3);
 });
 
-test("delete-all / archive-all: unconfirmed always returns the guard, confirmed proceeds", () => {
+test("senderWideNeedsConfirm: Delete All confirms only above 75; Archive All always", async () => {
+  const { senderWideNeedsConfirm, DELETE_ALL_CONFIRM_THRESHOLD } = await import(
+    triageApiModulePath
+  );
+  assert.equal(DELETE_ALL_CONFIRM_THRESHOLD, 75);
+  assert.equal(senderWideNeedsConfirm("delete-all", 2), false);
+  assert.equal(senderWideNeedsConfirm("delete-all", 75), false);
+  assert.equal(senderWideNeedsConfirm("delete-all", 76), true);
+  assert.equal(senderWideNeedsConfirm("archive-all", 0), true);
+  assert.equal(senderWideNeedsConfirm("archive-all", 2), true);
+});
+
+test("delete-all / archive-all: unconfirmed guard goes through senderWideNeedsConfirm, confirmed proceeds", () => {
   const src = fs.readFileSync(
     path.join(projectDir, "app", "triage.js"),
     "utf8",
@@ -2752,13 +2764,16 @@ test("delete-all / archive-all: unconfirmed always returns the guard, confirmed 
   const start = src.indexOf('if (action === "delete-all"');
   assert.ok(start >= 0, "delete-all block not found");
   const block = src.slice(start, src.indexOf("const moved = isDelete", start));
-  // (a) the guard is unconditional on count: no threshold comparison.
+  // (a) the threshold lives in senderWideNeedsConfirm, not inline.
   assert.ok(
     !/count\s*>/.test(block),
-    "unconfirmed delete-all must not gate the guard on a count threshold",
+    "the threshold must live in senderWideNeedsConfirm, not inline",
   );
   assert.match(block, /if \(!isConfirmed\(confirmed\)\)/);
-  assert.match(block, /return res\.json\(\s*normalizeGuard\(/);
+  assert.match(
+    block,
+    /if \(senderWideNeedsConfirm\(action, count\)\)\s*return res\.json\(\s*normalizeGuard\(/,
+  );
   assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
   // (b) confirmed falls through to the delete.
   const after = src.slice(start, start + 2000);

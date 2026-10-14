@@ -152,6 +152,7 @@ import {
   isConfirmed,
   normalizeGuard,
   SENDER_QUERY_ACTIONS,
+  senderWideNeedsConfirm,
   shapeTriageEmail,
 } from "./lib/triageApi.js";
 import { tryUnsubscribe, unsubLabel } from "./lib/unsub.js";
@@ -1961,18 +1962,19 @@ app.post("/api/triage/action", async (req, res) => {
       if (!isConfirmed(confirmed)) {
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
-        return res.json(
-          normalizeGuard({
-            ok: false,
-            guard: true,
-            count,
-            email: fromEmail,
-            action,
-            fromName: name ?? null,
-            scope: guardScope(action, name),
-            message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
-          }),
-        );
+        if (senderWideNeedsConfirm(action, count))
+          return res.json(
+            normalizeGuard({
+              ok: false,
+              guard: true,
+              count,
+              email: fromEmail,
+              action,
+              fromName: name ?? null,
+              scope: guardScope(action, name),
+              message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+            }),
+          );
       }
       const moved = isDelete
         ? await deleteAllFromSender(gmail, fromEmail)
