@@ -528,7 +528,7 @@ export function TriagePage() {
                 key={group.title}
                 className={`flex flex-col gap-1 ${
                   group.title === "All from this sender"
-                    ? "mt-auto border-t border-dashed border-rule-strong pt-3"
+                    ? "border-t border-dashed border-rule-strong pt-3"
                     : ""
                 }`}
               >
