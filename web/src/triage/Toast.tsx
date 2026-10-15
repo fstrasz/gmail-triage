@@ -1,12 +1,14 @@
 import { useEffect } from "react";
-import type { UndoDescriptor } from "../lib/api.ts";
+import type { TriageEmail, UndoDescriptor } from "../lib/api.ts";
 import { isUndoable } from "./actionMeta.ts";
 import { toastMessage } from "./toastMessage.ts";
 
 export interface ToastInfo {
   undo: UndoDescriptor;
-  /** Number of messages the bulk action archived (for honest copy). */
+  /** Number of the sender's messages the action touched (for honest copy). */
   labeled?: number;
+  /** The queue card the action was taken on, shown beside the status. */
+  card?: TriageEmail;
 }
 
 export function Toast({

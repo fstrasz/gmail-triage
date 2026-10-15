@@ -264,7 +264,7 @@ describe("TriagePage / Deck UI", () => {
       }),
     );
     const toast = screen.getByRole("status");
-    expect(within(toast).getByText(/7 archived/i)).toBeInTheDocument();
+    expect(within(toast).getByText(/7 messages archived/i)).toBeInTheDocument();
     expect(
       within(toast).getByText(/undo removes from list/i),
     ).toBeInTheDocument();
@@ -287,6 +287,62 @@ describe("TriagePage / Deck UI", () => {
       within(toast).queryByRole("button", { name: /undo/i }),
     ).not.toBeInTheDocument();
     expect(within(toast).getByText(/not reversible here/i)).toBeInTheDocument();
+  });
+
+  test("7d. unsub status reports how many of the sender's messages were moved", () => {
+    hookState.actionResult = {
+      ok: true,
+      labeled: 12,
+      undo: stubUndo("unsub"),
+    };
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("menuitem", {
+        name: ACTION_LABELS.unsub,
+      }),
+    );
+    expect(
+      within(screen.getByRole("status")).getByText(
+        /12 messages moved to \.DelPend and marked read/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("7e. status shows the acted-on card, stays up, and clears on the next action", () => {
+    vi.useFakeTimers();
+    try {
+      hookState.actionResult = {
+        ok: true,
+        labeled: 1,
+        undo: stubUndo("archive"),
+      };
+      render(<TriagePage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      );
+      const status = screen.getByRole("status");
+      expect(within(status).getByText("Name e1")).toBeInTheDocument();
+      expect(within(status).getByText("Subject e1")).toBeInTheDocument();
+
+      // No auto-dismiss.
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByRole("status")).toBeInTheDocument();
+
+      // The next action clears it (a guard result sets no new status).
+      hookState.actionResult = {
+        ok: false,
+        guard: { count: 250, message: "250 emails will be archived" },
+      };
+      fireEvent.click(
+        screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("8. committing an action writes the new top card sender + subject into the aria-live region (DECK-2)", () => {
