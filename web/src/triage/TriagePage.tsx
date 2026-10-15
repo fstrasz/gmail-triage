@@ -187,7 +187,11 @@ export function TriagePage() {
         // FIX E — a successful action proves the Gmail connection is live again;
         // clear any stale Reconnect banner.
         setAuthError(false);
-        setToast({ undo: result.undo, labeled: result.labeled ?? labeled });
+        setToast({
+          undo: result.undo,
+          labeled: result.labeled ?? labeled,
+          card,
+        });
         // FIX G — announce ONLY on the committed-success path, reading the new top
         // post-dispatch (the effect below). A guard/auth result never announces.
         pendingAnnounce.current = committed;
@@ -227,6 +231,8 @@ export function TriagePage() {
       const card = confirmed ? pending.current?.card : active;
       if (!card) return;
       committing.current = true;
+      // The previous action's status stays up until the next action.
+      setToast(null);
 
       // Dispatch exactly ONE `act` per user gesture for the ACTIVE card (by id, so
       // it works regardless of position). The reducer removes it, keeps the cursor
@@ -291,13 +297,6 @@ export function TriagePage() {
     setGuard(null);
     pending.current = null;
   }
-
-  // Auto-dismiss the inline header toast after 6 s.
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // ---- Keyboard shortcuts ---------------------------------------------------
   // Attach at document level; cleaned up on unmount. Only fires when no modal
@@ -407,12 +406,36 @@ export function TriagePage() {
     : deck.cards;
   const activeIndex = deck.cards.findIndex((c) => c.id === active?.id);
 
+  // A queue card's content — shared by the queue rows and the status, which
+  // shows the card the last action was taken on.
+  const cardContent = (card: TriageEmail) => (
+    <>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-sm font-semibold">
+          {card.fromName ?? card.fromEmail ?? "Unknown"}
+        </span>
+        <span className="tabular shrink-0 text-[0.6875rem] text-muted">
+          {shortDate(card.date)}
+        </span>
+      </span>
+      <span className="flex items-center justify-between gap-2">
+        <span className="truncate text-xs">{card.subject}</span>
+        <TierStamp tier={card.tier} />
+      </span>
+    </>
+  );
+
   const toastNode = toast ? (
     <div
       role="status"
       aria-live="polite"
       className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm"
     >
+      {toast.card && (
+        <div className="flex w-60 min-w-0 flex-col rounded-lg bg-paper px-2.5 py-2 text-left text-ink ring-1 ring-rule-strong">
+          {cardContent(toast.card)}
+        </div>
+      )}
       <Stamp
         key={`${toast.undo.id}-${toast.undo.action}`}
         tone={ACTION_TONE[toast.undo.action]}
@@ -461,18 +484,7 @@ export function TriagePage() {
                 : "text-graphite hover:bg-paper/60"
             }`}
           >
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-sm font-semibold">
-                {card.fromName ?? card.fromEmail ?? "Unknown"}
-              </span>
-              <span className="tabular shrink-0 text-[0.6875rem] text-muted">
-                {shortDate(card.date)}
-              </span>
-            </span>
-            <span className="flex items-center justify-between gap-2">
-              <span className="truncate text-xs">{card.subject}</span>
-              <TierStamp tier={card.tier} />
-            </span>
+            {cardContent(card)}
           </button>
         </li>
       );

@@ -1615,7 +1615,12 @@ app.post("/api/triage/action", (req, res) => {
     for (const m of targets)
       m.state = action === "archive" ? "archived" : "trashed";
     appendLog({ type: "triage", action, msgId: id });
-    return res.json({ ok: true, undo: { ...undoBase, addedToList: false } });
+    // Mirrors app/triage.js: a thread archive reports no count.
+    return res.json({
+      ok: true,
+      ...(action === "archive" && threadId ? {} : { labeled: 1 }),
+      undo: { ...undoBase, addedToList: false },
+    });
   }
 
   // review
@@ -1646,6 +1651,7 @@ app.post("/api/triage/action", (req, res) => {
   if (msg) msg.state = "review"; // For_Review is excluded from the queue query
   return res.json({
     ok: true,
+    labeled: 1,
     analysis,
     undo: { ...undoBase, addedToList: false },
   });

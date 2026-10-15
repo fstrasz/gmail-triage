@@ -135,8 +135,12 @@ describe("TriagePage / real React-Query interleave", () => {
     });
 
     // On confirmed-success e1 is removed and stays removed (e2 is now the top).
+    // The only remaining copy of e1 is the status card, which shows the card
+    // the action was taken on.
     await screen.findByText("Subject e2");
-    expect(screen.queryByText("Subject e1")).not.toBeInTheDocument();
+    const e1Copies = screen.queryAllByText("Subject e1");
+    expect(e1Copies).toHaveLength(1);
+    expect(screen.getByRole("status")).toContainElement(e1Copies[0]);
 
     // DECK-2: the confirmed-success path ALSO announces, reading the correct
     // new top (e2), not a stale closure value.

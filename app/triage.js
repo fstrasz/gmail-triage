@@ -2027,16 +2027,26 @@ app.post("/api/triage/action", async (req, res) => {
     }
 
     if (action === "archive") {
+      // A thread archive's message count is not known here, so `labeled` is
+      // reported only for the single-message path.
       if (threadId) await archiveThread(gmail, threadId);
       else await archiveMessage(gmail, id);
       appendLog({ type: "triage", action, msgId: id });
-      return res.json({ ok: true, undo: { ...undoBase, addedToList: false } });
+      return res.json({
+        ok: true,
+        ...(threadId ? {} : { labeled: 1 }),
+        undo: { ...undoBase, addedToList: false },
+      });
     }
 
     if (action === "delete") {
       await trashMessage(gmail, id);
       appendLog({ type: "triage", action, msgId: id });
-      return res.json({ ok: true, undo: { ...undoBase, addedToList: false } });
+      return res.json({
+        ok: true,
+        labeled: 1,
+        undo: { ...undoBase, addedToList: false },
+      });
     }
 
     if (action === "review") {
@@ -2074,6 +2084,7 @@ app.post("/api/triage/action", async (req, res) => {
       });
       return res.json({
         ok: true,
+        labeled: 1,
         analysis,
         undo: { ...undoBase, addedToList: false },
       });
