@@ -10,11 +10,16 @@ import { swipeAction, TAP_GROUPS } from "./swipeMap.ts";
 const DIRS: Dir[] = ["right", "left", "up", "down"];
 
 // Opens the message in Gmail (the app on a phone that hands it the link) to
-// reply or forward. The account is named in the path so a device signed in to
-// several accounts opens this instance's mailbox; u/0 until the address loads.
+// reply or forward. The account is chosen with ?authuser= so a device signed in
+// to several accounts opens this instance's mailbox; u/0 until the address
+// loads. Not /u/<address>/ -- iPhone Gmail web answers that with
+// "Temporary Error (404)" (operator-tested 2026-10-20).
 function OpenInGmail({ email }: { email: TriageEmail }) {
   const mailbox = useMailboxAddress();
-  const href = `https://mail.google.com/mail/u/${mailbox ?? "0"}/#all/${email.threadId ?? email.id}`;
+  const id = email.threadId ?? email.id;
+  const href = mailbox
+    ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(mailbox)}#all/${id}`
+    : `https://mail.google.com/mail/u/0/#all/${id}`;
   return (
     <a
       href={href}
