@@ -175,7 +175,7 @@ describe("Desktop keyboard path", () => {
 });
 
 describe("Mobile thumb zone", () => {
-  test("Undo renders after the Deck card and before the action buttons; Hide toggle after them", () => {
+  test("Hide toggle sits in the top line; Undo renders before the action buttons", () => {
     setDesktop(false);
     render(<TriagePage />);
     fireEvent.keyDown(document, { key: "ArrowRight" }); // commit -> toast
@@ -186,7 +186,8 @@ describe("Mobile thumb zone", () => {
     });
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
     expect(undo.compareDocumentPosition(action) & FOLLOWING).toBeTruthy();
-    expect(action.compareDocumentPosition(toggle) & FOLLOWING).toBeTruthy();
+    expect(toggle.compareDocumentPosition(undo) & FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("banner").contains(toggle)).toBe(true);
     expect(screen.getByRole("banner").contains(undo)).toBe(false);
   });
 });

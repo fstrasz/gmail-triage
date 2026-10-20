@@ -135,12 +135,10 @@ describe("TriagePage / real React-Query interleave", () => {
     });
 
     // On confirmed-success e1 is removed and stays removed (e2 is now the top).
-    // The only remaining copy of e1 is the status card, which shows the card
-    // the action was taken on.
+    // The touch toast carries no card copy, so no copy of e1 remains.
     await screen.findByText("Subject e2");
-    const e1Copies = screen.queryAllByText("Subject e1");
-    expect(e1Copies).toHaveLength(1);
-    expect(screen.getByRole("status")).toContainElement(e1Copies[0]);
+    expect(screen.queryAllByText("Subject e1")).toHaveLength(0);
+    expect(screen.getByRole("status")).toBeInTheDocument();
 
     // DECK-2: the confirmed-success path ALSO announces, reading the correct
     // new top (e2), not a stale closure value.
