@@ -3,7 +3,7 @@ import type { TriageAction } from "../lib/api.ts";
 export type Mode = "hidden" | "shown";
 export type Dir = "left" | "right" | "up" | "down";
 
-// All eleven actions in canonical order (canonical order).
+// All eleven actions in canonical order.
 // delete-all/archive-all (sender-wide, no swipe assigned — too destructive for
 // an accidental gesture) sit right after delete, matching their desktop
 // placement "under Delete".

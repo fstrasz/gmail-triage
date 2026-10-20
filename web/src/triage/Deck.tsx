@@ -28,7 +28,8 @@ function dragDir(
 }
 
 // Touch deck: the top card swipes, every action has a visible button in
-// thumb reach, and the card's swipe legend is tappable too. (Mouse-driven layouts use the workbench instead.)
+// thumb reach, and the card's swipe legend is tappable too. (Mouse-driven
+// layouts use the workbench instead.)
 export function Deck({
   cards,
   mode,
