@@ -180,7 +180,7 @@ describe("Mobile thumb zone", () => {
     render(<TriagePage />);
     fireEvent.keyDown(document, { key: "ArrowRight" }); // commit -> toast
     const undo = screen.getByRole("button", { name: "Undo last action" });
-    const action = screen.getByRole("button", { name: "More actions" });
+    const action = screen.getByRole("button", { name: "Archive" });
     const toggle = screen.getByRole("button", {
       name: "Hide VIP/OK listed senders",
     });

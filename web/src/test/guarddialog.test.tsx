@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { GuardDialog } from "../triage/GuardDialog.tsx";
-import { MoreSheet } from "../triage/MoreSheet.tsx";
 
 function renderGuard(guard: Parameters<typeof GuardDialog>[0]["guard"]) {
   render(<GuardDialog guard={guard} onConfirm={vi.fn()} onCancel={vi.fn()} />);
@@ -40,27 +39,5 @@ describe("GuardDialog", () => {
     expect(screen.getByText("Confirm bulk action")).toBeTruthy();
     const btn = screen.getByRole("button", { name: "Confirm" });
     expect(btn.className).toContain("bg-junk");
-  });
-});
-
-describe("MoreSheet", () => {
-  test("sender-wide actions come last under their own label", () => {
-    render(
-      <MoreSheet
-        actions={["delete-all", "archive-all", "review"]}
-        open
-        onOpenChange={vi.fn()}
-        onPick={vi.fn()}
-      />,
-    );
-    const label = screen.getByText("All from this sender");
-    const review = screen.getByRole("menuitem", { name: "Review" });
-    const del = screen.getByRole("menuitem", { name: "Delete All" });
-    const arc = screen.getByRole("menuitem", { name: "Archive All" });
-    const after = (a: Node, b: Node) =>
-      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(after(review, label)).toBe(true);
-    expect(after(label, del)).toBe(true);
-    expect(after(del, arc)).toBe(true);
   });
 });

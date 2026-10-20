@@ -114,7 +114,6 @@ export function TriagePage() {
   const [authError, setAuthError] = useState(false);
   const [announce, setAnnounce] = useState("");
   // Lifted from Deck so the keyboard handler can read whether More sheet is open.
-  const [moreOpen, setMoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // Focus target after a queue click, so arrow keys work without a button
   // holding focus.
@@ -311,10 +310,9 @@ export function TriagePage() {
       if (target instanceof HTMLElement && target.isContentEditable) return;
 
       // Single-in-flight guard: ignore while an action mutation is pending, or
-      // while a modal (guard dialog or More sheet) is blocking interaction.
+      // while a modal (guard dialog) is blocking interaction.
       if (action.isPending) return;
       if (guard !== null) return;
-      if (moreOpen) return;
       if (shortcutsOpen) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -369,7 +367,7 @@ export function TriagePage() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-    // Exhaustive: mode/guard/moreOpen/toast/action.isPending are read directly
+    // Exhaustive: mode/guard/toast/action.isPending are read directly
     // in handleKeyDown above; `commit`/`onUndo` are the stable callbacks it
     // calls, and each rebuilds when ITS real dependencies change (including
     // the active/selected card for `commit` — see its useCallback above). So
@@ -378,7 +376,6 @@ export function TriagePage() {
     mode,
     action.isPending,
     guard,
-    moreOpen,
     shortcutsOpen,
     keyboardShortcuts,
     deck.cards,
@@ -693,8 +690,6 @@ export function TriagePage() {
                 const next = deck.cards[activeIndex + step];
                 if (next) dispatch({ type: "select", id: next.id });
               }}
-              moreOpen={moreOpen}
-              onMoreOpenChange={setMoreOpen}
               feedback={deckToast}
             />
           </div>

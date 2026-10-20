@@ -223,9 +223,9 @@ describe("Keyboard shortcuts", () => {
 
   test("8b. arrow-focus guard (FIX F): arrow keys are ignored when focus is on a control", () => {
     const { getByRole } = render(<TriagePage />);
-    // Focus a button row control (e.g. the "More actions" button) and fire an
+    // Focus a button row control (e.g. the "Archive" button) and fire an
     // arrow keydown FROM it. The handler must not steal it into a triage action.
-    const more = getByRole("button", { name: /more actions/i });
+    const more = getByRole("button", { name: "Archive" });
     more.focus();
     fireEvent.keyDown(more, { key: "ArrowRight" });
     expect(actionMutate).not.toHaveBeenCalled();

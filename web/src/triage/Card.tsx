@@ -6,7 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import type { TriageEmail } from "../lib/api.ts";
+import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { getBodyUrl } from "../lib/api.ts";
 import { shortDate } from "../lib/format.ts";
 import { Stamp } from "../shell/Stamp.tsx";
@@ -38,7 +38,16 @@ export function TierStamp({ tier }: { tier: TriageEmail["tier"] }) {
   return null;
 }
 
-export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
+export function Card({
+  email,
+  mode,
+  onAction,
+}: {
+  email: TriageEmail;
+  mode: Mode;
+  /** When set (top card only), legend entries are tappable. */
+  onAction?: (a: TriageAction) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -109,8 +118,8 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
         {DIRS.map((d) => {
           const action = swipeAction(mode, d);
           const Icon = DIR_ICON[d];
-          return (
-            <li key={d} className="flex items-center gap-1.5 text-muted">
+          const content = (
+            <>
               <Icon
                 aria-hidden
                 size={14}
@@ -120,6 +129,22 @@ export function Card({ email, mode }: { email: TriageEmail; mode: Mode }) {
               <span className={`font-semibold ${ACTION_COLOR[action]}`}>
                 {ACTION_LABEL[action]}
               </span>
+            </>
+          );
+          return (
+            <li key={d} className="text-muted">
+              {onAction ? (
+                <button
+                  type="button"
+                  aria-label={ACTION_LABEL[action]}
+                  className="flex min-h-9 w-full items-center gap-1.5 rounded-md text-left active:bg-sunk"
+                  onClick={() => onAction(action)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <span className="flex items-center gap-1.5">{content}</span>
+              )}
             </li>
           );
         })}

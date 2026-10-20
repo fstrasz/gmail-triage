@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { TriageEmail } from "../lib/api.ts";
 import { deckReducer } from "../triage/deckReducer.ts";
-import { BUTTONS, MORE, swipeAction } from "../triage/swipeMap.ts";
+import { swipeAction, TAP_GROUPS } from "../triage/swipeMap.ts";
 
 // ---------------------------------------------------------------------------
 // swipeMap — verbatim from task brief
@@ -26,14 +26,10 @@ test("hidden", () => {
   expect(swipeAction("hidden", "left")).toBe("junk");
   expect(swipeAction("hidden", "up")).toBe("vip");
   expect(swipeAction("hidden", "down")).toBe("delete");
-  // Operator-chosen tap row; ⋯ holds only the actions no button/swipe covers.
-  expect(BUTTONS.hidden).toEqual(["ok", "archive", "review"]);
-  expect(MORE.hidden).toEqual([
-    "vip-clean",
-    "unsub",
-    "delete-all",
-    "archive-all",
-  ]);
+  expect(TAP_GROUPS.hidden).toEqual({
+    message: ["ok", "archive", "review", "unsub"],
+    sender: ["vip-clean", "archive-all", "delete-all"],
+  });
 });
 
 test("shown", () => {
@@ -41,43 +37,22 @@ test("shown", () => {
   expect(swipeAction("shown", "left")).toBe("junk");
   expect(swipeAction("shown", "up")).toBe("ok");
   expect(swipeAction("shown", "down")).toBe("review");
-  expect(BUTTONS.shown).toEqual(["vip", "vip-clean", "unsub"]);
-  expect(MORE.shown).toEqual([
-    "ok",
-    "ok-clean",
-    "junk",
-    "archive",
-    "delete",
-    "delete-all",
-    "archive-all",
-    "review",
-  ]);
+  expect(TAP_GROUPS.shown).toEqual({
+    message: ["vip", "unsub", "delete"],
+    sender: ["ok-clean", "vip-clean", "archive-all", "delete-all"],
+  });
 });
 
-test("a11y parity: every action reachable via button ∪ swipe ∪ More (DECK-3)", () => {
+test("a11y parity: tap groups hold exactly the actions no swipe covers (DECK-3)", () => {
   for (const m of ["hidden", "shown"] as const) {
     const swipes = (["left", "right", "up", "down"] as const).map((d) =>
       swipeAction(m, d),
     );
-    expect(new Set([...BUTTONS[m], ...swipes, ...MORE[m]])).toEqual(
-      new Set(ALL9),
-    );
-  }
-});
-
-test("hidden ⋯ holds exactly the actions no button or swipe covers (DECK-3)", () => {
-  const swipes = (["left", "right", "up", "down"] as const).map((d) =>
-    swipeAction("hidden", d),
-  );
-  expect(MORE.hidden).toEqual([
-    "vip-clean",
-    "unsub",
-    "delete-all",
-    "archive-all",
-  ]);
-  for (const a of MORE.hidden) {
-    expect(BUTTONS.hidden).not.toContain(a);
-    expect(swipes).not.toContain(a);
+    const taps = [...TAP_GROUPS[m].message, ...TAP_GROUPS[m].sender];
+    // No action is both tapped and swiped; together they are all 11.
+    expect(taps.filter((a) => swipes.includes(a))).toEqual([]);
+    expect(new Set([...taps, ...swipes])).toEqual(new Set(ALL9));
+    expect(taps.length + swipes.length).toBe(ALL9.length);
   }
 });
 

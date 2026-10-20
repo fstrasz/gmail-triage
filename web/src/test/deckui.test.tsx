@@ -151,38 +151,47 @@ describe("TriagePage / Deck UI", () => {
     expect(payload.id).toBe("e1");
   });
 
-  test("3. action surface (DECK-3, hidden): OK/Archive/Review are buttons, VIP&Clean/Unsub in More, the 4 swipe actions on the card legend", () => {
+  test("3. action surface (DECK-3, hidden): every action is a visible button; the 4 swipe actions are tappable legend buttons", () => {
     render(<TriagePage />);
 
-    // Button row = the three tap actions.
-    for (const a of ["ok", "archive", "review"]) {
+    // Tap buttons: message group + "All from sender" group.
+    for (const a of [
+      "ok",
+      "archive",
+      "review",
+      "unsub",
+      "vip-clean",
+      "archive-all",
+      "delete-all",
+    ]) {
       expect(
         screen.queryByRole("button", { name: ACTION_LABELS[a] }),
       ).not.toBeNull();
     }
-    // The four swipe actions are intentionally NOT tap buttons (swipe/keyboard only).
-    for (const a of ["ok-clean", "vip", "junk", "delete"]) {
-      expect(
-        screen.queryByRole("button", { name: ACTION_LABELS[a] }),
-      ).toBeNull();
-    }
-    // ...but they ARE surfaced on the top card's swipe legend (DECK-1), so every
-    // action stays discoverable (button ∪ swipe-legend ∪ More = all 9).
+    // The four swipe actions are tappable buttons on the top card's legend.
     const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
     for (const a of ["ok-clean", "vip", "junk", "delete"]) {
-      expect(within(legend).getByText(ACTION_LABELS[a])).toBeInTheDocument();
+      expect(
+        within(legend).getByRole("button", { name: ACTION_LABELS[a] }),
+      ).toBeInTheDocument();
     }
-    // The ⋯ sheet holds exactly the two leftover actions.
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const dialog = screen.getByRole("dialog");
-    expect(
-      within(dialog).queryByRole("menuitem", {
-        name: ACTION_LABELS["vip-clean"],
-      }),
-    ).not.toBeNull();
-    expect(
-      within(dialog).queryByRole("menuitem", { name: ACTION_LABELS.unsub }),
-    ).not.toBeNull();
+    // No overflow menu on the touch deck.
+    expect(screen.queryByRole("button", { name: /more actions/i })).toBeNull();
+  });
+
+  test("3b. tapping the Junk legend button commits junk for the top card", () => {
+    render(<TriagePage />);
+    const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
+    fireEvent.click(
+      within(legend).getByRole("button", { name: ACTION_LABELS.junk }),
+    );
+    expect(actionMutate).toHaveBeenCalledTimes(1);
+    const payload = actionMutate.mock.calls[0][0] as {
+      action: string;
+      id: string;
+    };
+    expect(payload.action).toBe("junk");
+    expect(payload.id).toBe("e1");
   });
 
   test("4. a guard result opens GuardDialog; confirming re-calls the action with confirmed:true", () => {
@@ -267,13 +276,8 @@ describe("TriagePage / Deck UI", () => {
       undo: stubUndo("vip-clean"),
     };
     render(<TriagePage />);
-    // vip-clean lives in the More sheet (hidden mode); ok-clean/junk are swipe-only.
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const dialog = screen.getByRole("dialog");
     fireEvent.click(
-      within(dialog).getByRole("menuitem", {
-        name: ACTION_LABELS["vip-clean"],
-      }),
+      screen.getByRole("button", { name: ACTION_LABELS["vip-clean"] }),
     );
     const toast = screen.getByRole("status");
     expect(within(toast).getByText(/7 messages archived/i)).toBeInTheDocument();
@@ -285,12 +289,7 @@ describe("TriagePage / Deck UI", () => {
   test('7c. honest unsub copy (FIX H3): toast does NOT claim "undo available" and renders NO Undo button', () => {
     hookState.actionResult = { ok: true, undo: stubUndo("unsub") };
     render(<TriagePage />);
-    // Unsub now lives in the More sheet (hidden mode).
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.click(
-      within(dialog).getByRole("menuitem", { name: ACTION_LABELS.unsub }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: ACTION_LABELS.unsub }));
     const toast = screen.getByRole("status");
     expect(
       within(toast).queryByText(/undo available/i),
@@ -308,12 +307,7 @@ describe("TriagePage / Deck UI", () => {
       undo: stubUndo("unsub"),
     };
     render(<TriagePage />);
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("menuitem", {
-        name: ACTION_LABELS.unsub,
-      }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: ACTION_LABELS.unsub }));
     expect(
       within(screen.getByRole("status")).getByText(
         /12 messages moved to \.DelPend and marked read/i,
@@ -339,7 +333,9 @@ describe("TriagePage / Deck UI", () => {
       ).toBeInTheDocument();
       // Overlap regression: feedback never replaces the Prev/N of M/Next row.
       expect(screen.getByText(/^\d+ of \d+$/)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Next email" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Next email" }),
+      ).toBeInTheDocument();
 
       // No auto-dismiss.
       act(() => {
