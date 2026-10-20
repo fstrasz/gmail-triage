@@ -37,7 +37,6 @@ export function Deck({
   moreOpen,
   onMoreOpenChange,
   feedback,
-  footer,
   position,
   onNavigate,
 }: {
@@ -50,10 +49,8 @@ export function Deck({
   onNavigate: (step: -1 | 1) => void;
   moreOpen: boolean;
   onMoreOpenChange: (open: boolean) => void;
-  /** Action feedback + Undo, rendered above the action row. */
+  /** Action feedback + Undo, overlaid on the bottom of the card area. */
   feedback?: ReactNode;
-  /** Rendered under the action row (Hide VIP/OK toggle). */
-  footer?: ReactNode;
 }) {
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -165,10 +162,13 @@ export function Deck({
         )}
       </div>
 
-      {/* Thumb zone: Prev/Next flank feedback + Undo (or the queue position
-          when there is no feedback) directly above the action row, the mode
-          toggle below it. Moving only selects; it never acts. */}
-      <div className="mx-auto mt-auto flex min-h-11 w-full max-w-md items-center gap-2 pt-3">
+      {/* Thumb zone: Prev / position / Next directly above the action row.
+          Moving only selects; it never acts. Feedback + Undo overlay the
+          bottom of the card area so they never share this row. */}
+      <div className="relative mx-auto mt-auto flex min-h-11 w-full max-w-md items-center gap-2 pt-3">
+        {feedback && (
+          <div className="absolute inset-x-0 bottom-full mb-1">{feedback}</div>
+        )}
         <button
           type="button"
           aria-label="Previous email"
@@ -180,11 +180,9 @@ export function Deck({
           Prev
         </button>
         <div className="flex min-w-0 flex-1 justify-center">
-          {feedback ?? (
-            <span className="text-xs tabular-nums text-muted">
-              {position.index} of {position.total}
-            </span>
-          )}
+          <span className="text-xs tabular-nums text-muted">
+            {position.index} of {position.total}
+          </span>
         </div>
         <button
           type="button"
@@ -225,7 +223,6 @@ export function Deck({
             <MoreHorizontal aria-hidden size={22} />
           </button>
         </div>
-        {footer && <div className="mt-3 flex justify-center">{footer}</div>}
       </div>
 
       <MoreSheet

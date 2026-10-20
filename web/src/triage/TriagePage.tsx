@@ -395,8 +395,8 @@ export function TriagePage() {
     return <ReconnectGmail />;
   }
 
-  // Touch layout with a deck: feedback/Undo and the Hide toggle live in the
-  // deck's thumb zone instead of the header.
+  // Touch layout with a deck: feedback/Undo overlay the deck and the header is
+  // a compact "N left" + Hide toggle line.
   const inDeck = !desktop && !queue.isPending && deck.cards.length > 0;
 
   // The deck always shows the active card on top, so a queue tap on a tablet
@@ -457,6 +457,41 @@ export function TriagePage() {
     </div>
   ) : null;
 
+  // Touch: one line, no card copy — it overlays the deck's bottom edge.
+  const deckToast = toast ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center justify-center gap-2 rounded-lg bg-paper px-2.5 py-1.5 text-sm ring-1 ring-rule-strong"
+    >
+      <Stamp
+        key={`${toast.undo.id}-${toast.undo.action}`}
+        tone={ACTION_TONE[toast.undo.action]}
+        animate
+      >
+        {ACTION_LABEL[toast.undo.action]}
+      </Stamp>
+      <span className="min-w-0 truncate text-graphite">
+        {toastMessage(toast)}
+      </span>
+      {isUndoable(toast.undo.action) && (
+        <>
+          <span aria-hidden className="text-muted">
+            ·
+          </span>
+          <button
+            type="button"
+            aria-label="Undo last action"
+            className={`shrink-0 ${linkAction}`}
+            onClick={() => onUndo(toast.undo)}
+          >
+            Undo
+          </button>
+        </>
+      )}
+    </div>
+  ) : null;
+
   const hideToggle = (
     <button
       type="button"
@@ -502,21 +537,29 @@ export function TriagePage() {
           handleResult's `undo`) stays visible and is not lost. */}
       {authError && <ReconnectGmail banner />}
 
-      <header className="mb-3 flex min-h-11 items-center gap-3">
-        <h1 className="shrink-0 text-xl font-semibold text-ink">
-          Triage{" "}
-          {queue.data && (
-            <span className="tabular font-medium text-muted">
-              {queue.data.counts.left}
-            </span>
-          )}
-        </h1>
-        {/* Inline feedback — centered between title and chip */}
-        <div className="flex min-w-0 flex-1 justify-center">
-          {!inDeck && toastNode}
-        </div>
-        {!inDeck && hideToggle}
-      </header>
+      {inDeck ? (
+        <header className="flex min-h-11 items-center justify-between gap-3">
+          <h1 className="sr-only">Triage</h1>
+          <span className="tabular text-sm text-muted">
+            {queue.data?.counts.left} left
+          </span>
+          {hideToggle}
+        </header>
+      ) : (
+        <header className="mb-3 flex min-h-11 items-center gap-3">
+          <h1 className="shrink-0 text-xl font-semibold text-ink">
+            Triage{" "}
+            {queue.data && (
+              <span className="tabular font-medium text-muted">
+                {queue.data.counts.left}
+              </span>
+            )}
+          </h1>
+          {/* Inline feedback — centered between title and chip */}
+          <div className="flex min-w-0 flex-1 justify-center">{toastNode}</div>
+          {hideToggle}
+        </header>
+      )}
 
       {queue.isPending ? (
         <DeckSkeleton />
@@ -652,8 +695,7 @@ export function TriagePage() {
               }}
               moreOpen={moreOpen}
               onMoreOpenChange={setMoreOpen}
-              feedback={toastNode}
-              footer={hideToggle}
+              feedback={deckToast}
             />
           </div>
         </div>

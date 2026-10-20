@@ -121,6 +121,18 @@ const ACTION_LABELS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 describe("TriagePage / Deck UI", () => {
+  test("0. touch top line shows the server total left and the Hide chip", () => {
+    loadedQueue([makeEmail("e1"), makeEmail("e2")], 57);
+    render(<TriagePage />);
+    expect(screen.getByText("57 left")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Hide VIP/OK listed senders" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Triage" })).toHaveClass(
+      "sr-only",
+    );
+  });
+
   test("1. filter chip is pressed (hidden mode) by default", () => {
     render(<TriagePage />);
     const chip = screen.getByRole("button", { name: /hide.*(vip|ok|listed)/i });
@@ -309,7 +321,7 @@ describe("TriagePage / Deck UI", () => {
     ).toBeInTheDocument();
   });
 
-  test("7e. status shows the acted-on card, stays up, and clears on the next action", () => {
+  test("7e. status stays up and clears on the next action; position stays visible beside it", () => {
     vi.useFakeTimers();
     try {
       hookState.actionResult = {
@@ -322,8 +334,12 @@ describe("TriagePage / Deck UI", () => {
         screen.getByRole("button", { name: ACTION_LABELS.archive }),
       );
       const status = screen.getByRole("status");
-      expect(within(status).getByText("Name e1")).toBeInTheDocument();
-      expect(within(status).getByText("Subject e1")).toBeInTheDocument();
+      expect(
+        within(status).getByRole("button", { name: "Undo last action" }),
+      ).toBeInTheDocument();
+      // Overlap regression: feedback never replaces the Prev/N of M/Next row.
+      expect(screen.getByText(/^\d+ of \d+$/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Next email" })).toBeInTheDocument();
 
       // No auto-dismiss.
       act(() => {
