@@ -1104,12 +1104,8 @@ test("upsertFoundEvents: ignored event blocks re-add of same key", async () => {
   process.chdir(tmpDir);
   try {
     const url = "https://mail.google.com/mail/u/0/#all/19abc123def456";
-    const {
-      upsertFoundEvents,
-      loadFoundEvents,
-      saveFoundEvents,
-      closeEventsDb,
-    } = await import(foundEventsModulePath + "?t=" + Date.now());
+    const { upsertFoundEvents, loadFoundEvents, saveFoundEvents, closeEventsDb } =
+      await import(foundEventsModulePath + "?t=" + Date.now());
     saveFoundEvents([
       {
         id: "1",
@@ -1794,9 +1790,7 @@ test("decodeSnippet: decodes the entities Gmail puts in snippets", async () => {
   const { decodeSnippet } = await import(gmailModulePath);
   // Real snippet from production (2026-10-20), rendered literally by React.
   assert.equal(
-    decodeSnippet(
-      "Sellton.ai isn&#39;t that it can write emails. It&#39;s how",
-    ),
+    decodeSnippet("Sellton.ai isn&#39;t that it can write emails. It&#39;s how"),
     "Sellton.ai isn't that it can write emails. It's how",
   );
   assert.equal(
@@ -1840,10 +1834,7 @@ test("shapeTriageEmail: snippet is entity-decoded for the React app", async () =
   const { shapeTriageEmail } = await import(
     triageApiModulePath + "?t=" + Date.now() + Math.random()
   );
-  assert.equal(
-    shapeTriageEmail({ id: "m", snippet: "we&#39;d" }).snippet,
-    "we'd",
-  );
+  assert.equal(shapeTriageEmail({ id: "m", snippet: "we&#39;d" }).snippet, "we'd");
 });
 
 // ─── mapWithConcurrency: bounded parallel mapper ─────────────────────────────
@@ -2930,11 +2921,7 @@ test("name-fragmentation: 3 distinct names fires the transition, 2 does not", as
     const vip = senderList("viplist.json");
     const ok = senderList("oklist.json");
 
-    assert.equal(
-      vip.add("a@x.com", "Name One"),
-      false,
-      "1st distinct name: no fire",
-    );
+    assert.equal(vip.add("a@x.com", "Name One"), false, "1st distinct name: no fire");
     assert.equal(
       ok.add("a@x.com", "Name Two"),
       false,
@@ -3725,38 +3712,10 @@ test("classifyReadState: an unrecognised decision value is excluded from the res
   const { classifyReadState } = await import(claudeModulePath);
   const mockClient = readTriageMockClient({
     decisions: [
-      {
-        id: "m1",
-        decision: "maybe",
-        reason: "",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
-      {
-        id: "m2",
-        decision: "READ",
-        reason: "",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
-      {
-        id: "m3",
-        decision: "",
-        reason: "",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
-      {
-        id: "m4",
-        decision: "read",
-        reason: "confidently read",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
+      { id: "m1", decision: "maybe", reason: "", amounts: [], dates: [], uncertain: false },
+      { id: "m2", decision: "READ", reason: "", amounts: [], dates: [], uncertain: false },
+      { id: "m3", decision: "", reason: "", amounts: [], dates: [], uncertain: false },
+      { id: "m4", decision: "read", reason: "confidently read", amounts: [], dates: [], uncertain: false },
     ],
   });
   const messages = ["m1", "m2", "m3", "m4"].map((id) => ({
@@ -3790,9 +3749,9 @@ function readTriageAutoMockClient({ failChunkIndex } = {}) {
         if (callIndex === failChunkIndex) {
           throw new Error("simulated chunk failure");
         }
-        const ids = [
-          ...args.messages[0].content.matchAll(/\[MESSAGE id=(\S+)\]/g),
-        ].map((m) => m[1]);
+        const ids = [...args.messages[0].content.matchAll(/\[MESSAGE id=(\S+)\]/g)].map(
+          (m) => m[1],
+        );
         const decisions = ids.map((id) => ({
           id,
           decision: "read",
@@ -3802,13 +3761,7 @@ function readTriageAutoMockClient({ failChunkIndex } = {}) {
           uncertain: false,
         }));
         return {
-          content: [
-            {
-              type: "tool_use",
-              name: "record_read_state",
-              input: { decisions },
-            },
-          ],
+          content: [{ type: "tool_use", name: "record_read_state", input: { decisions } }],
         };
       },
     },
@@ -3829,14 +3782,10 @@ function makeReadTriageStubMessages(count) {
 test("classifyReadState: batches over the chunk size into multiple calls, each within the limit", async () => {
   const { classifyReadState } = await import(claudeModulePath);
   const mockClient = readTriageAutoMockClient();
-  const out = await classifyReadState(
-    makeReadTriageStubMessages(60),
-    mockClient,
-  );
+  const out = await classifyReadState(makeReadTriageStubMessages(60), mockClient);
   assert.equal(mockClient._calls.length, 3);
   for (const call of mockClient._calls) {
-    const count = (call.messages[0].content.match(/\[MESSAGE id=/g) || [])
-      .length;
+    const count = (call.messages[0].content.match(/\[MESSAGE id=/g) || []).length;
     assert.ok(count <= 25, `chunk exceeded 25 messages (${count})`);
   }
   assert.equal(out.decisions.length, 60);
@@ -3846,20 +3795,14 @@ test("classifyReadState: batches over the chunk size into multiple calls, each w
 test("classifyReadState: a failing chunk does not abort the remaining chunks; its messages come back in failedIds", async () => {
   const { classifyReadState } = await import(claudeModulePath);
   const mockClient = readTriageAutoMockClient({ failChunkIndex: 1 });
-  const out = await classifyReadState(
-    makeReadTriageStubMessages(60),
-    mockClient,
-  );
+  const out = await classifyReadState(makeReadTriageStubMessages(60), mockClient);
   assert.equal(mockClient._calls.length, 3, "all three chunks were attempted");
   const expectedFailedIds = Array.from({ length: 25 }, (_, i) => `m${i + 25}`);
   assert.deepEqual(out.failedIds.sort(), expectedFailedIds.sort());
   assert.equal(out.decisions.length, 35);
   const decidedIds = new Set(out.decisions.map((d) => d.id));
   for (const id of expectedFailedIds) {
-    assert.ok(
-      !decidedIds.has(id),
-      `${id} from the failed chunk must not have a decision`,
-    );
+    assert.ok(!decidedIds.has(id), `${id} from the failed chunk must not have a decision`);
   }
 });
 
@@ -3878,9 +3821,7 @@ function readTriageMockGmail(messagesById) {
       messages: {
         list: async () => {
           calls.push("list");
-          return {
-            data: { messages: Object.keys(messagesById).map((id) => ({ id })) },
-          };
+          return { data: { messages: Object.keys(messagesById).map((id) => ({ id })) } };
         },
         get: async ({ id }) => {
           calls.push("get:" + id);
@@ -3897,9 +3838,7 @@ function readTriageMockGmail(messagesById) {
                   { name: "Date", value: m.date },
                 ],
                 body: {
-                  data: Buffer.from(m.bodyText || "", "utf-8").toString(
-                    "base64",
-                  ),
+                  data: Buffer.from(m.bodyText || "", "utf-8").toString("base64"),
                 },
               },
             },
@@ -3928,29 +3867,18 @@ function readTriageMockGmail(messagesById) {
 // The pass now issues two KINDS of batchModify: marker-label adds and the
 // UNREAD clear. Tests that care about clearing must not accidentally assert
 // against a label call, and vice versa.
-const clearCalls = (gmail) => gmail._batchCalls.filter((b) => b.removeLabelIds);
+const clearCalls = (gmail) =>
+  gmail._batchCalls.filter((b) => b.removeLabelIds);
 const labelCalls = (gmail) => gmail._batchCalls.filter((b) => b.addLabelIds);
 
 test("triageReadState: a confidently-read message clears UNREAD with the exact batchModify payload", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "news@example.com",
-      subject: "Weekly Digest",
-      date: "2026-08-20",
-      bodyText: "roundup",
-    },
+    m1: { from: "news@example.com", subject: "Weekly Digest", date: "2026-08-20", bodyText: "roundup" },
   });
   const anthropicClient = readTriageMockClient({
     decisions: [
-      {
-        id: "m1",
-        decision: "read",
-        reason: "newsletter, no action",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
+      { id: "m1", decision: "read", reason: "newsletter, no action", amounts: [], dates: [], uncertain: false },
     ],
   });
   let recorded = null;
@@ -3976,37 +3904,13 @@ test("triageReadState: a confidently-read message clears UNREAD with the exact b
 test("triageReadState: a message the classifier marks unread is never sent to batchModify", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "news@example.com",
-      subject: "Weekly Digest",
-      date: "2026-08-20",
-      bodyText: "roundup",
-    },
-    m2: {
-      from: "billing@example.com",
-      subject: "Invoice due",
-      date: "2026-08-20",
-      bodyText: "pay $450",
-    },
+    m1: { from: "news@example.com", subject: "Weekly Digest", date: "2026-08-20", bodyText: "roundup" },
+    m2: { from: "billing@example.com", subject: "Invoice due", date: "2026-08-20", bodyText: "pay $450" },
   });
   const anthropicClient = readTriageMockClient({
     decisions: [
-      {
-        id: "m1",
-        decision: "read",
-        reason: "newsletter, no action",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
-      {
-        id: "m2",
-        decision: "unread",
-        reason: "invoice due, manual payment",
-        amounts: ["$450"],
-        dates: [],
-        uncertain: false,
-      },
+      { id: "m1", decision: "read", reason: "newsletter, no action", amounts: [], dates: [], uncertain: false },
+      { id: "m2", decision: "unread", reason: "invoice due, manual payment", amounts: ["$450"], dates: [], uncertain: false },
     ],
   });
   const result = await triageReadState(gmail, {
@@ -4114,12 +4018,7 @@ test("triageReadState: zero candidates makes zero classifier calls and zero batc
 test("triageReadState: a message omitted from the classifier result stays unread (fail-safe)", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "vendor@example.com",
-      subject: "Hi",
-      date: "2026-08-20",
-      bodyText: "hello",
-    },
+    m1: { from: "vendor@example.com", subject: "Hi", date: "2026-08-20", bodyText: "hello" },
   });
   const anthropicClient = readTriageMockClient({ decisions: [] });
   const result = await triageReadState(gmail, {
@@ -4133,46 +4032,25 @@ test("triageReadState: a message omitted from the classifier result stays unread
   assert.equal(gmail._batchCalls.length, 0);
   assert.equal(result.cleared, 0);
   assert.deepEqual(result.kept, [
-    {
-      from: "vendor@example.com",
-      subject: "Hi",
-      reason: "",
-      amounts: [],
-      dates: [],
-      uncertain: false,
-    },
+    { from: "vendor@example.com", subject: "Hi", reason: "", amounts: [], dates: [], uncertain: false },
   ]);
 });
 
 test("triageReadState: a 'read' decision marked uncertain stays unread", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "vendor@example.com",
-      subject: "Renewal",
-      date: "2026-08-20",
-      bodyText: "close call",
-    },
+    m1: { from: "vendor@example.com", subject: "Renewal", date: "2026-08-20", bodyText: "close call" },
   });
   const anthropicClient = readTriageMockClient({
     decisions: [
-      {
-        id: "m1",
-        decision: "read",
-        reason: "close call",
-        amounts: [],
-        dates: [],
-        uncertain: true,
-      },
+      { id: "m1", decision: "read", reason: "close call", amounts: [], dates: [], uncertain: true },
     ],
   });
   const result = await triageReadState(gmail, {
     anthropicClient,
     getSettings: () => ({ readTriageEnabled: true }),
     recordClear: () => {
-      throw new Error(
-        "recordClear must not be called when the only decision is uncertain",
-      );
+      throw new Error("recordClear must not be called when the only decision is uncertain");
     },
     recordCooldown: () => {},
   });
@@ -4189,12 +4067,7 @@ test("triageReadState: a 'read' decision marked uncertain stays unread", async (
 test("triageReadState: readTriageEnabled false does nothing — no Gmail calls, no classifier call", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "vendor@example.com",
-      subject: "Hi",
-      date: "2026-08-20",
-      bodyText: "hello",
-    },
+    m1: { from: "vendor@example.com", subject: "Hi", date: "2026-08-20", bodyText: "hello" },
   });
   const anthropicClient = readTriageMockClient({ decisions: [] });
   const result = await triageReadState(gmail, {
@@ -4212,25 +4085,13 @@ test("triageReadState: readTriageEnabled false does nothing — no Gmail calls, 
 test("triageReadState: an unrecognised decision value stays unread (fail-safe, readTriage.js layer, independent of the claude.js filter)", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "vendor@example.com",
-      subject: "Hi",
-      date: "2026-08-20",
-      bodyText: "hello",
-    },
+    m1: { from: "vendor@example.com", subject: "Hi", date: "2026-08-20", bodyText: "hello" },
   });
   // Bypasses classifyReadState's own filter entirely, so this pins
   // readTriage.js's own `d.decision === "read"` check in isolation.
   const classify = async () => ({
     decisions: [
-      {
-        id: "m1",
-        decision: "maybe",
-        reason: "ambiguous",
-        amounts: [],
-        dates: [],
-        uncertain: false,
-      },
+      { id: "m1", decision: "maybe", reason: "ambiguous", amounts: [], dates: [], uncertain: false },
     ],
     failedIds: [],
   });
@@ -4270,10 +4131,7 @@ test("triageReadState: a failing classifier chunk leaves only its own messages u
   const clearedIds = clearCalls(gmail).flatMap((b) => b.ids);
   assert.equal(clearedIds.length, 35);
   for (let i = 25; i < 50; i++) {
-    assert.ok(
-      !clearedIds.includes(`m${i}`),
-      `m${i} from the failed chunk must not clear`,
-    );
+    assert.ok(!clearedIds.includes(`m${i}`), `m${i} from the failed chunk must not clear`);
   }
   // The failed chunk got no answer from anything, so it must NOT be marked —
   // marking it would exclude it from future runs without it ever being
@@ -4299,31 +4157,12 @@ test("triageReadState: a failing classifier chunk leaves only its own messages u
 test("triageReadState: a message still within its cooldown window is excluded from candidate selection", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "nur@strasz.com",
-      subject: "Deadline reminder",
-      date: "d",
-      bodyText: "keep forever",
-    },
-    m2: {
-      from: "news@example.com",
-      subject: "Newsletter",
-      date: "d",
-      bodyText: "roundup",
-    },
+    m1: { from: "nur@strasz.com", subject: "Deadline reminder", date: "d", bodyText: "keep forever" },
+    m2: { from: "news@example.com", subject: "Newsletter", date: "d", bodyText: "roundup" },
   });
   const result = await triageReadState(gmail, {
     anthropicClient: readTriageMockClient({
-      decisions: [
-        {
-          id: "m2",
-          decision: "read",
-          reason: "newsletter",
-          amounts: [],
-          dates: [],
-          uncertain: false,
-        },
-      ],
+      decisions: [{ id: "m2", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
     }),
     getSettings: () => ({
       readTriageEnabled: true,
@@ -4333,26 +4172,15 @@ test("triageReadState: a message still within its cooldown window is excluded fr
     recordCooldown: () => {},
   });
   const gets = gmail._calls.filter((c) => c.startsWith("get:"));
-  assert.deepEqual(
-    gets,
-    ["get:m2"],
-    "m1 is in cooldown and must not be re-hydrated/re-classified",
-  );
+  assert.deepEqual(gets, ["get:m2"], "m1 is in cooldown and must not be re-hydrated/re-classified");
   assert.equal(result.coolingDown, 1);
 });
 
 test("triageReadState: an expired cooldown entry no longer excludes the candidate", async () => {
-  const {
-    triageReadState,
-    READ_TRIAGE_FAILURE_COOLDOWN_HOURS: READ_TRIAGE_COOLDOWN_HOURS,
-  } = await import(readTriageModulePath);
+  const { triageReadState, READ_TRIAGE_FAILURE_COOLDOWN_HOURS: READ_TRIAGE_COOLDOWN_HOURS } =
+    await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "billing@example.com",
-      subject: "Invoice due",
-      date: "d",
-      bodyText: "pay $450",
-    },
+    m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
   });
   const expiredTimestamp = new Date(
     Date.now() - (READ_TRIAGE_COOLDOWN_HOURS + 1) * 3600000,
@@ -4367,11 +4195,7 @@ test("triageReadState: an expired cooldown entry no longer excludes the candidat
     recordCooldown: () => {},
   });
   const gets = gmail._calls.filter((c) => c.startsWith("get:"));
-  assert.deepEqual(
-    gets,
-    ["get:m1"],
-    "an expired cooldown entry must not suppress re-examination",
-  );
+  assert.deepEqual(gets, ["get:m1"], "an expired cooldown entry must not suppress re-examination");
 });
 
 test("triageReadState: a reviewed-but-kept message is marked, NOT cooled down", async () => {
@@ -4379,26 +4203,12 @@ test("triageReadState: a reviewed-but-kept message is marked, NOT cooled down", 
   // re-billed forever; a cooldown would only delay that by its window.
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "billing@example.com",
-      subject: "Invoice due",
-      date: "d",
-      bodyText: "pay $450",
-    },
+    m1: { from: "billing@example.com", subject: "Invoice due", date: "d", bodyText: "pay $450" },
   });
   let savedCooldown = null;
   await triageReadState(gmail, {
     anthropicClient: readTriageMockClient({
-      decisions: [
-        {
-          id: "m1",
-          decision: "unread",
-          reason: "invoice due",
-          amounts: ["$450"],
-          dates: [],
-          uncertain: false,
-        },
-      ],
+      decisions: [{ id: "m1", decision: "unread", reason: "invoice due", amounts: ["$450"], dates: [], uncertain: false }],
     }),
     getSettings: () => ({ readTriageEnabled: true, readTriageCooldown: {} }),
     recordClear: () => {},
@@ -4420,12 +4230,7 @@ test("triageReadState: a message NOTHING could classify is cooled down and NOT m
   // oldest-first queue and blocking every later run.
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "vendor@example.com",
-      subject: "Hi",
-      date: "d",
-      bodyText: "hello",
-    },
+    m1: { from: "vendor@example.com", subject: "Hi", date: "d", bodyText: "hello" },
   });
   let savedCooldown = null;
   await triageReadState(gmail, {
@@ -4434,11 +4239,7 @@ test("triageReadState: a message NOTHING could classify is cooled down and NOT m
     recordClear: () => {},
     recordCooldown: (map) => (savedCooldown = map),
   });
-  assert.deepEqual(
-    labelCalls(gmail),
-    [],
-    "an unreviewed message must not be marked",
-  );
+  assert.deepEqual(labelCalls(gmail), [], "an unreviewed message must not be marked");
   assert.deepEqual(clearCalls(gmail), []);
   assert.ok(savedCooldown.m1, "a failed message must be throttled");
   assert.ok(!Number.isNaN(new Date(savedCooldown.m1).getTime()));
@@ -4447,34 +4248,18 @@ test("triageReadState: a message NOTHING could classify is cooled down and NOT m
 test("triageReadState: a message that clears this run is removed from the cooldown map", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "news@example.com",
-      subject: "Digest",
-      date: "d",
-      bodyText: "roundup",
-    },
+    m1: { from: "news@example.com", subject: "Digest", date: "d", bodyText: "roundup" },
   });
   let savedCooldown = null;
   await triageReadState(gmail, {
     anthropicClient: readTriageMockClient({
-      decisions: [
-        {
-          id: "m1",
-          decision: "read",
-          reason: "newsletter",
-          amounts: [],
-          dates: [],
-          uncertain: false,
-        },
-      ],
+      decisions: [{ id: "m1", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
     }),
     getSettings: () => ({
       // m1 was previously recorded (e.g. from an uncertain run) but clears
       // this run, so its cooldown entry is now stale and must be dropped.
       readTriageEnabled: true,
-      readTriageCooldown: {
-        m1: new Date(Date.now() - 999 * 3600000).toISOString(),
-      },
+      readTriageCooldown: { m1: new Date(Date.now() - 999 * 3600000).toISOString() },
     }),
     recordClear: () => {},
     recordCooldown: (map) => (savedCooldown = map),
@@ -4485,26 +4270,12 @@ test("triageReadState: a message that clears this run is removed from the cooldo
 test("triageReadState: a cooldown entry for a message no longer in the candidate pool is pruned", async () => {
   const { triageReadState } = await import(readTriageModulePath);
   const gmail = readTriageMockGmail({
-    m1: {
-      from: "news@example.com",
-      subject: "Digest",
-      date: "d",
-      bodyText: "roundup",
-    },
+    m1: { from: "news@example.com", subject: "Digest", date: "d", bodyText: "roundup" },
   });
   let savedCooldown = null;
   await triageReadState(gmail, {
     anthropicClient: readTriageMockClient({
-      decisions: [
-        {
-          id: "m1",
-          decision: "read",
-          reason: "newsletter",
-          amounts: [],
-          dates: [],
-          uncertain: false,
-        },
-      ],
+      decisions: [{ id: "m1", decision: "read", reason: "newsletter", amounts: [], dates: [], uncertain: false }],
     }),
     getSettings: () => ({
       readTriageEnabled: true,
@@ -4559,14 +4330,7 @@ function ollamaToolResponse(decisions, extra = {}) {
 }
 
 const hybridMessages = [
-  {
-    id: "m1",
-    from: "a@b.com",
-    subject: "s",
-    date: "d",
-    snippet: "",
-    body: "x",
-  },
+  { id: "m1", from: "a@b.com", subject: "s", date: "d", snippet: "", body: "x" },
 ];
 
 test("classifyReadStateHybrid: local disabled ⇒ delegates entirely to Claude, no Ollama call", async () => {
@@ -4577,10 +4341,7 @@ test("classifyReadStateHybrid: local disabled ⇒ delegates entirely to Claude, 
       getSettings: () => ({ readTriageLocalModelEnabled: false }),
       classifyCloud: async () => {
         cloudCalled++;
-        return {
-          decisions: [{ id: "m1", decision: "read", provider: "haiku" }],
-          failedIds: [],
-        };
+        return { decisions: [{ id: "m1", decision: "read", provider: "haiku" }], failedIds: [] };
       },
     });
     assert.equal(calls.length, 0, "must not call Ollama when disabled");
@@ -4594,11 +4355,7 @@ test("classifyReadStateHybrid: local succeeds ⇒ Claude is never called and dec
   process.env.OLLAMA_HOST = "test-host";
   let cloudCalled = 0;
   await withStubbedOllama(
-    [
-      ollamaToolResponse([
-        { id: "m1", decision: "read", reason: "newsletter" },
-      ]),
-    ],
+    [ollamaToolResponse([{ id: "m1", decision: "read", reason: "newsletter" }])],
     async (calls) => {
       const out = await classifyReadStateHybrid(hybridMessages, null, {
         getSettings: () => ({
@@ -4611,11 +4368,7 @@ test("classifyReadStateHybrid: local succeeds ⇒ Claude is never called and dec
         },
       });
       assert.equal(calls.length, 1);
-      assert.equal(
-        cloudCalled,
-        0,
-        "no Claude spend when the local model works",
-      );
+      assert.equal(cloudCalled, 0, "no Claude spend when the local model works");
       assert.equal(out.decisions[0].provider, "qwen");
     },
   );
@@ -4675,11 +4428,7 @@ test("classifyReadStateHybrid: local truncates (done_reason=length) ⇒ falls ba
           return { decisions: [], failedIds: ["m1"] };
         },
       });
-      assert.equal(
-        cloudCalled,
-        1,
-        "a truncated response must fall back, not return empty",
-      );
+      assert.equal(cloudCalled, 1, "a truncated response must fall back, not return empty");
     },
   );
   delete process.env.OLLAMA_HOST;
@@ -4841,20 +4590,15 @@ const pagesModulePath = url.pathToFileURL(
 
 // Extract every inline <script> body (no src) from an HTML string.
 function inlineScripts(html) {
-  return [
-    ...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
-  ].map((m) => m[1]);
+  return [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(
+    (m) => m[1],
+  );
 }
 
 test("H1 jsStr: JSON-encodes and neutralises </script> and line separators", async () => {
   const { jsStr } = await import(htmlModulePath);
   const LS = String.fromCharCode(0x2028);
-  for (const v of [
-    "a'b",
-    "</script><script>alert(1)</script>",
-    "x" + LS + "y",
-    'q"\\',
-  ]) {
+  for (const v of ["a'b", "</script><script>alert(1)</script>", "x" + LS + "y", 'q"\\']) {
     const out = jsStr(v);
     assert.ok(!out.includes("<"), out);
     assert.ok(!out.includes(LS), "raw U+2028 must be escaped");
@@ -4872,9 +4616,7 @@ test("H1 senderPage: a hostile email cannot break out of the inline script", asy
   assert.ok(!script.toLowerCase().includes("</script"), script.slice(0, 200));
   // No injected <script> element: the only scripts are the ones the page emits.
   const html = shell("x", body, script);
-  assert.ok(
-    !inlineScripts(html).some((sc) => sc.trim().startsWith("alert(1)")),
-  );
+  assert.ok(!inlineScripts(html).some((sc) => sc.trim().startsWith("alert(1)")));
   // And the value still reaches the page intact.
   const m = script.match(/var pageFromEmail=(.*?);\n/);
   assert.equal(JSON.parse(m[1]), evil);
@@ -4907,10 +4649,7 @@ test("H2 /api/preview: served with a sandbox CSP and no-referrer", async () => {
   await withApp(async (base) => {
     const r = await fetch(`${base}/api/preview/abc123`);
     await r.text();
-    assert.equal(
-      r.headers.get("content-security-policy"),
-      "sandbox allow-popups",
-    );
+    assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups");
     assert.equal(r.headers.get("referrer-policy"), "no-referrer");
   });
 });
@@ -4918,23 +4657,14 @@ test("H2 /api/preview: served with a sandbox CSP and no-referrer", async () => {
 test("H2 old-UI iframes are all sandboxed without allow-same-origin", async () => {
   const { reviewPage } = await import(pagesModulePath);
   const { body } = reviewPage([
-    {
-      id: "m1",
-      status: "pending",
-      subject: "s",
-      from: "a@b.com",
-      analysis: {},
-    },
+    { id: "m1", status: "pending", subject: "s", from: "a@b.com", analysis: {} },
   ]);
   const iframes = body.match(/<iframe\b[^>]*>/g) || [];
   assert.ok(iframes.length >= 1);
   for (const f of iframes) {
     assert.match(f, /sandbox="allow-popups"/);
   }
-  const src = fs.readFileSync(
-    path.join(projectDir, "app", "lib", "pages.js"),
-    "utf8",
-  );
+  const src = fs.readFileSync(path.join(projectDir, "app", "lib", "pages.js"), "utf8");
   const all = src.match(/<iframe\b[^>]*>/g) || [];
   assert.ok(all.length >= 4);
   for (const f of all) {
@@ -4959,8 +4689,7 @@ test("H3 parseAllowedHosts: opt-in, comma-separated, lowercased", async () => {
 test("H3 checkRequest: cross-site POSTs are rejected, same-origin and header-less pass", async () => {
   const { checkRequest } = await import(originGuardModulePath);
   const H = "vegasnas:3000";
-  const post = (headers) =>
-    checkRequest({ method: "POST", headers: { host: H, ...headers } });
+  const post = (headers) => checkRequest({ method: "POST", headers: { host: H, ...headers } });
   // Cross-site auto-submitted form (the CSRF case)
   assert.equal(post({ "sec-fetch-site": "cross-site" })?.status, 403);
   assert.equal(post({ "sec-fetch-site": "same-site" })?.status, 403);
@@ -4971,18 +4700,12 @@ test("H3 checkRequest: cross-site POSTs are rejected, same-origin and header-les
   assert.equal(post({ origin: "null" })?.status, 403); // sandboxed/opaque origin
   assert.equal(post({ origin: "http://vegasnas:3001" })?.status, 403); // port differs
   // Legit
-  assert.equal(
-    post({ origin: "http://VEGASNAS:3000", "sec-fetch-site": "same-origin" }),
-    null,
-  );
+  assert.equal(post({ origin: "http://VEGASNAS:3000", "sec-fetch-site": "same-origin" }), null);
   assert.equal(post({ "sec-fetch-site": "none" }), null);
   assert.equal(post({}), null); // curl / healthcheck
   // Safe methods are not origin-checked
   assert.equal(
-    checkRequest({
-      method: "GET",
-      headers: { host: H, "sec-fetch-site": "cross-site" },
-    }),
+    checkRequest({ method: "GET", headers: { host: H, "sec-fetch-site": "cross-site" } }),
     null,
   );
 });
@@ -4992,32 +4715,20 @@ test("H3 checkRequest: ALLOWED_HOSTS rejects unknown Host with 421 and admits li
   const allow = ["localhost:3000", "vegasnas:3000"];
   // DNS rebinding: attacker's name in Host, even on a GET
   assert.equal(
-    checkRequest(
-      { method: "GET", headers: { host: "rebind.evil.example:3000" } },
-      allow,
-    )?.status,
+    checkRequest({ method: "GET", headers: { host: "rebind.evil.example:3000" } }, allow)?.status,
     421,
   );
-  assert.equal(
-    checkRequest({ method: "GET", headers: { host: "LOCALHOST:3000" } }, allow),
-    null,
-  );
+  assert.equal(checkRequest({ method: "GET", headers: { host: "LOCALHOST:3000" } }, allow), null);
   // Origin listed in the allowlist passes even when it differs from Host
   assert.equal(
     checkRequest(
-      {
-        method: "POST",
-        headers: { host: "localhost:3000", origin: "http://vegasnas:3000" },
-      },
+      { method: "POST", headers: { host: "localhost:3000", origin: "http://vegasnas:3000" } },
       allow,
     ),
     null,
   );
   // Unset allowlist: any Host passes
-  assert.equal(
-    checkRequest({ method: "GET", headers: { host: "anything:1" } }, null),
-    null,
-  );
+  assert.equal(checkRequest({ method: "GET", headers: { host: "anything:1" } }, null), null);
 });
 
 test("H3 originGuard logs once when the Host allowlist is off", async () => {
@@ -5053,10 +4764,7 @@ test("H3 isConfirmed: only JSON boolean true skips the bulk guard", async () => 
     assert.equal(isConfirmed(v), false, `confirmed=${JSON.stringify(v)}`);
   }
   // Every guard site in triage.js goes through isConfirmed (no bare truthiness test).
-  const src = fs.readFileSync(
-    path.join(projectDir, "app", "triage.js"),
-    "utf8",
-  );
+  const src = fs.readFileSync(path.join(projectDir, "app", "triage.js"), "utf8");
   assert.equal(/!\s*confirmed\b/.test(src), false);
 });
 
@@ -5091,10 +4799,7 @@ test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no long
         body: JSON.stringify(body),
       });
     const evil = 'x@y.com" OR in:anywhere "';
-    let r = await post("/api/triage/action", {
-      action: "delete-all",
-      fromEmail: evil,
-    });
+    let r = await post("/api/triage/action", { action: "delete-all", fromEmail: evil });
     assert.equal(r.status, 400);
     r = await post("/api/junk", { fromEmail: evil });
     assert.equal(r.status, 400);
@@ -5102,10 +4807,7 @@ test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no long
     assert.equal(r.status, 400);
     r = await fetch(`${base}/sender?email=${encodeURIComponent(evil)}`);
     assert.equal(r.status, 400);
-    r = await post("/api/lists/add", {
-      list: "blocklist",
-      email: "a@b.com OR in:all",
-    });
+    r = await post("/api/lists/add", { list: "blocklist", email: "a@b.com OR in:all" });
     assert.equal(r.status, 400);
     r = await fetch(`${base}/reset`);
     assert.equal(r.status, 404);
@@ -5149,44 +4851,23 @@ test("H4 sanitizeUrl: blocks 0.0.0.0, trailing-dot names, mapped IPv6, ULA, CGNA
   // Still public
   assert.equal(sanitizeUrl("http://100.63.255.255/"), "http://100.63.255.255/");
   assert.equal(sanitizeUrl("http://100.128.0.1/"), "http://100.128.0.1/");
-  assert.equal(
-    sanitizeUrl("http://[2606:4700::1111]/"),
-    "http://[2606:4700::1111]/",
-  );
+  assert.equal(sanitizeUrl("http://[2606:4700::1111]/"), "http://[2606:4700::1111]/");
   assert.equal(sanitizeUrl("https://example.com./u"), "https://example.com./u");
 });
 
 test("H4 isBlockedIp: classifies resolved addresses", async () => {
   const { isBlockedIp } = await import(unsubModulePath);
-  for (const b of [
-    "127.0.0.1",
-    "10.1.1.1",
-    "100.100.100.100",
-    "::1",
-    "::ffff:192.168.1.1",
-    "fd12:3456::1",
-    "fe80::1%eth0",
-    "garbage",
-    "",
-  ]) {
+  for (const b of ["127.0.0.1", "10.1.1.1", "100.100.100.100", "::1", "::ffff:192.168.1.1", "fd12:3456::1", "fe80::1%eth0", "garbage", ""]) {
     assert.equal(isBlockedIp(b), true, b);
   }
-  for (const ok of [
-    "93.184.216.34",
-    "8.8.8.8",
-    "2606:4700:4700::1111",
-    "::ffff:8.8.8.8",
-  ]) {
+  for (const ok of ["93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "::ffff:8.8.8.8"]) {
     assert.equal(isBlockedIp(ok), false, ok);
   }
 });
 
 const fakeLookup = (table) => async (host) => {
   if (!(host in table)) throw new Error("ENOTFOUND");
-  return table[host].map((address) => ({
-    address,
-    family: address.includes(":") ? 6 : 4,
-  }));
+  return table[host].map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
 };
 
 test("H4 assertPublicHost: rejects a name if ANY resolved address is private", async () => {
@@ -5200,18 +4881,8 @@ test("H4 assertPublicHost: rejects a name if ANY resolved address is private", a
   });
   await assertPublicHost("https://public.example/u", lookup);
   await assertPublicHost("https://public.example./u", lookup); // trailing dot stripped
-  for (const h of [
-    "rebind.example",
-    "nas.example",
-    "tail.example",
-    "v6.example",
-    "missing.example",
-  ]) {
-    await assert.rejects(
-      assertPublicHost(`https://${h}/u`, lookup),
-      /blocked/,
-      h,
-    );
+  for (const h of ["rebind.example", "nas.example", "tail.example", "v6.example", "missing.example"]) {
+    await assert.rejects(assertPublicHost(`https://${h}/u`, lookup), /blocked/, h);
   }
 });
 
@@ -5234,23 +4905,14 @@ test("H4 fetchWithSsrfGuardedRedirects: DNS-checks the first URL and every redir
       : { status: 200, ok: true, headers: new Headers() };
   };
   await assert.rejects(
-    fetchWithSsrfGuardedRedirects("https://public.example/u", {}, 5, {
-      lookup,
-      fetchImpl,
-    }),
+    fetchWithSsrfGuardedRedirects("https://public.example/u", {}, 5, { lookup, fetchImpl }),
     /blocked-private-address/,
   );
-  assert.deepEqual(fetched, [
-    "https://public.example/u",
-    "https://hop.example/x",
-  ]);
+  assert.deepEqual(fetched, ["https://public.example/u", "https://hop.example/x"]);
   // A name resolving privately is never fetched at all.
   fetched.length = 0;
   await assert.rejects(
-    fetchWithSsrfGuardedRedirects("https://internal.example/", {}, 5, {
-      lookup,
-      fetchImpl,
-    }),
+    fetchWithSsrfGuardedRedirects("https://internal.example/", {}, 5, { lookup, fetchImpl }),
   );
   assert.equal(fetched.length, 0);
 });
@@ -5258,35 +4920,23 @@ test("H4 fetchWithSsrfGuardedRedirects: DNS-checks the first URL and every redir
 test("H4 tryUnsubscribe: a hostname resolving to a private IP is not fetched", async () => {
   const { tryUnsubscribe } = await import(unsubModulePath);
   let fetched = 0;
-  const r = await tryUnsubscribe(
-    null,
-    "<https://evil.example/unsub>",
-    "",
-    "a@b.com",
-    {
-      lookup: fakeLookup({ "evil.example": ["169.254.169.254"] }),
-      fetchImpl: async () => {
-        fetched++;
-        return { status: 200, ok: true, headers: new Headers() };
-      },
+  const r = await tryUnsubscribe(null, "<https://evil.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "evil.example": ["169.254.169.254"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
     },
-  );
+  });
   assert.equal(fetched, 0);
   assert.equal(r.result, "auto-failed→open-tab");
   // Control: the same plumbing does fetch a name that resolves publicly.
-  const ok = await tryUnsubscribe(
-    null,
-    "<https://good.example/unsub>",
-    "",
-    "a@b.com",
-    {
-      lookup: fakeLookup({ "good.example": ["93.184.216.34"] }),
-      fetchImpl: async () => {
-        fetched++;
-        return { status: 200, ok: true, headers: new Headers() };
-      },
+  const ok = await tryUnsubscribe(null, "<https://good.example/unsub>", "", "a@b.com", {
+    lookup: fakeLookup({ "good.example": ["93.184.216.34"] }),
+    fetchImpl: async () => {
+      fetched++;
+      return { status: 200, ok: true, headers: new Headers() };
     },
-  );
+  });
   assert.equal(fetched, 1);
   assert.equal(ok.result, "http-get");
 });
@@ -5351,10 +5001,7 @@ test("M2 jsAttr / safeHref: attribute-safe JS strings and http(s)-only links", a
   assert.equal(safeHref("javascript:alert(1)"), "");
   assert.equal(safeHref(" data:text/html,x"), "");
   assert.equal(safeHref(null), "");
-  assert.equal(
-    safeHref('https://x.example/?a=1&b="2"'),
-    "https://x.example/?a=1&amp;b=&quot;2&quot;",
-  );
+  assert.equal(safeHref('https://x.example/?a=1&b="2"'), "https://x.example/?a=1&amp;b=&quot;2&quot;");
 });
 
 test("M2 triageEmailRow: hostile From/subject/unsubscribe header stay inert", async () => {
@@ -5399,9 +5046,7 @@ test("M2 eventsPage: event fields are escaped and non-http links are dropped", a
 });
 
 test("M2 list pages: stored names/emails/reasons are escaped", async () => {
-  const { blocklistPage, viplistPage, oklistPage, statsPage } = await import(
-    pagesModulePath
-  );
+  const { blocklistPage, viplistPage, oklistPage, statsPage } = await import(pagesModulePath);
   const entry = {
     email: `x@y.com"><svg onload=alert(1)>`,
     name: "<img src=x onerror=alert(2)>",
@@ -5440,22 +5085,13 @@ test("M2 app: error responses do not leak internal error detail", async () => {
 test("M2 triagePage: a From header cannot close the page-data JSON script", async () => {
   const { triagePage } = await import(pagesModulePath);
   const out = triagePage(
-    [
-      {
-        id: "m1",
-        threadId: "t1",
-        from: `x</script><script>alert(1)</script> <a@b.com>`,
-        subject: "s",
-      },
-    ],
+    [{ id: "m1", threadId: "t1", from: `x</script><script>alert(1)</script> <a@b.com>`, subject: "s" }],
     [],
     {},
     [],
   );
   const html = typeof out === "string" ? out : out.body + out.script;
-  const m = html.match(
-    /<script type="application\/json" id="page-data">([\s\S]*?)<\/script>/,
-  );
+  const m = html.match(/<script type="application\/json" id="page-data">([\s\S]*?)<\/script>/);
   assert.ok(m, "page-data block present");
   const data = JSON.parse(m[1]);
   assert.ok(data.seenSenders[0].includes("</script>")); // value preserved
@@ -5467,9 +5103,7 @@ const securityHeadersModulePath = url.pathToFileURL(
 ).href;
 
 test("M3 securityHeadersFor: base policy everywhere, full CSP only under /app", async () => {
-  const { securityHeadersFor, APP_CSP, BASE_CSP } = await import(
-    securityHeadersModulePath
-  );
+  const { securityHeadersFor, APP_CSP, BASE_CSP } = await import(securityHeadersModulePath);
   for (const p of ["/", "/triage", "/api/lists", "/application", "/apps/x"]) {
     const h = securityHeadersFor(p);
     assert.equal(h["Content-Security-Policy"], BASE_CSP, p);
@@ -5477,10 +5111,7 @@ test("M3 securityHeadersFor: base policy everywhere, full CSP only under /app", 
     assert.equal(h["Referrer-Policy"], "no-referrer");
     assert.equal(h["X-Frame-Options"], "SAMEORIGIN");
   }
-  assert.ok(
-    !BASE_CSP.includes("script-src"),
-    "old UI relies on inline scripts",
-  );
+  assert.ok(!BASE_CSP.includes("script-src"), "old UI relies on inline scripts");
   for (const p of ["/app", "/app/", "/app/assets/index.js", "/app/triage"]) {
     assert.equal(securityHeadersFor(p)["Content-Security-Policy"], APP_CSP, p);
   }
@@ -5495,15 +5126,9 @@ test("M3 app: headers on every response; email-body sandbox CSP not clobbered", 
     assert.equal(r.headers.get("x-content-type-options"), "nosniff");
     assert.equal(r.headers.get("x-frame-options"), "SAMEORIGIN");
     assert.equal(r.headers.get("referrer-policy"), "no-referrer");
-    assert.match(
-      r.headers.get("content-security-policy"),
-      /frame-ancestors 'self'/,
-    );
+    assert.match(r.headers.get("content-security-policy"), /frame-ancestors 'self'/);
     // Rejected by the origin guard: still carries the headers.
-    r = await fetch(`${base}/api/lists/add`, {
-      method: "POST",
-      headers: { Origin: "https://evil.example" },
-    });
+    r = await fetch(`${base}/api/lists/add`, { method: "POST", headers: { Origin: "https://evil.example" } });
     await r.text();
     assert.equal(r.status, 403);
     assert.equal(r.headers.get("x-content-type-options"), "nosniff");
@@ -5511,21 +5136,14 @@ test("M3 app: headers on every response; email-body sandbox CSP not clobbered", 
     for (const p of ["/api/triage/body", "/api/preview/abc"]) {
       r = await fetch(`${base}${p}`);
       await r.text();
-      assert.equal(
-        r.headers.get("content-security-policy"),
-        "sandbox allow-popups",
-        p,
-      );
+      assert.equal(r.headers.get("content-security-policy"), "sandbox allow-popups", p);
     }
     // The React shell, when a build is present (not in CI's backend job).
     if (fs.existsSync(path.join(projectDir, "web", "dist", "index.html"))) {
       r = await fetch(`${base}/app/`);
       await r.text();
       assert.equal(r.status, 200);
-      assert.match(
-        r.headers.get("content-security-policy"),
-        /default-src 'self'; script-src 'self'/,
-      );
+      assert.match(r.headers.get("content-security-policy"), /default-src 'self'; script-src 'self'/);
     }
   });
 });
@@ -5552,10 +5170,7 @@ test("read-triage prompt: unset or blank owner falls back to the neutral default
   for (const v of [undefined, "", "   "]) {
     const p = readTriageSystemPrompt(v);
     assert.match(p, /You are triaging the mailbox owner's inbox/, String(v));
-    assert.match(
-      p,
-      /\n- The mailbox owner's approval, signature, or decision is required/,
-    );
+    assert.match(p, /\n- The mailbox owner's approval, signature, or decision is required/);
   }
 });
 
@@ -5572,62 +5187,32 @@ test("read-triage prompt: reads OWNER_NAME from the environment at call time", a
 });
 
 test("mailbox: returns the profile address and calls getProfile once", async () => {
-  const { getMailboxAddress, resetMailboxCache } = await import(
-    mailboxModulePath
-  );
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
   resetMailboxCache();
   let calls = 0;
-  const gmail = {
-    users: {
-      getProfile: async () => {
-        calls++;
-        return { data: { emailAddress: "robin@strasz.com" } };
-      },
-    },
-  };
+  const gmail = { users: { getProfile: async () => { calls++; return { data: { emailAddress: "robin@strasz.com" } }; } } };
   assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
   assert.equal(await getMailboxAddress(gmail), "robin@strasz.com");
   assert.equal(calls, 1);
 });
 
 test("mailbox: a failed lookup is not cached", async () => {
-  const { getMailboxAddress, resetMailboxCache } = await import(
-    mailboxModulePath
-  );
+  const { getMailboxAddress, resetMailboxCache } = await import(mailboxModulePath);
   resetMailboxCache();
   let calls = 0;
-  const gmail = {
-    users: {
-      getProfile: async () => {
-        calls++;
-        if (calls === 1) throw new Error("boom");
-        return { data: { emailAddress: "a@strasz.com" } };
-      },
-    },
-  };
+  const gmail = { users: { getProfile: async () => { calls++; if (calls === 1) throw new Error("boom"); return { data: { emailAddress: "a@strasz.com" } }; } } };
   await assert.rejects(getMailboxAddress(gmail), /boom/);
   assert.equal(await getMailboxAddress(gmail), "a@strasz.com");
   assert.equal(calls, 2);
 });
 
-const authPathsModulePath = url.pathToFileURL(
-  path.join(projectDir, "app", "lib", "authPaths.js"),
-).href;
+const authPathsModulePath = url.pathToFileURL(path.join(projectDir, "app", "lib", "authPaths.js")).href;
 
 test("authPaths: defaults to ../config, honours a config-dir argument", async () => {
   const { authPaths } = await import(authPathsModulePath);
   const cwd = path.join(projectDir, "app");
-  assert.equal(
-    authPaths(undefined, cwd).tokenPath,
-    path.join(projectDir, "config", "token.json"),
-  );
+  assert.equal(authPaths(undefined, cwd).tokenPath, path.join(projectDir, "config", "token.json"));
   const r = authPaths("../config-robin", cwd);
-  assert.equal(
-    r.credPath,
-    path.join(projectDir, "config-robin", "credentials.json"),
-  );
-  assert.equal(
-    r.tokenPath,
-    path.join(projectDir, "config-robin", "token.json"),
-  );
+  assert.equal(r.credPath, path.join(projectDir, "config-robin", "credentials.json"));
+  assert.equal(r.tokenPath, path.join(projectDir, "config-robin", "token.json"));
 });
