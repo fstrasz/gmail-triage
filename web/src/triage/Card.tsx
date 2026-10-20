@@ -14,13 +14,15 @@ import { Reader } from "./Reader.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction } from "./swipeMap.ts";
 
-const DIRS: Dir[] = ["up", "left", "right", "down"];
-/** Cross layout: each direction sits on its own arm of a 3x3 grid. */
+const DIRS: Dir[] = ["left", "up", "right", "down"];
+/** Left / up / right on one row, down beneath up. The middle column is sized
+ *  to its widest label and both cells start-align, so the up and down arrows
+ *  sit in the same vertical line. */
 const DIR_CELL: Record<Dir, string> = {
-  up: "col-start-2 row-start-1 justify-center",
-  left: "col-start-1 row-start-2 justify-start",
-  right: "col-start-3 row-start-2 justify-end",
-  down: "col-start-2 row-start-3 justify-center",
+  left: "col-start-1 row-start-1 justify-start",
+  up: "col-start-2 row-start-1 justify-start",
+  right: "col-start-3 row-start-1 justify-end",
+  down: "col-start-2 row-start-2 justify-start",
 };
 const DIR_ICON: Record<Dir, LucideIcon> = {
   right: ArrowRight,
@@ -111,7 +113,7 @@ export function Card({
       {/* DECK-1: persistent on-card legend of the current mode's four swipe directions. */}
       <ul
         aria-label="Swipe legend"
-        className="grid grid-cols-3 grid-rows-3 gap-x-2 border-t border-dashed border-rule-strong pt-3 text-xs"
+        className="grid grid-cols-[1fr_auto_1fr] grid-rows-2 gap-x-2 border-t border-dashed border-rule-strong pt-3 text-xs"
       >
         {DIRS.map((d) => {
           const action = swipeAction(mode, d);
