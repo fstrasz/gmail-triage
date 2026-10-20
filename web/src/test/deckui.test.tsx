@@ -254,7 +254,9 @@ describe("TriagePage / Deck UI", () => {
     });
     await waitFor(() =>
       expect(link.getAttribute("href")).toBe(
-        "https://mail.google.com/mail/u/robin@strasz.com/#all/t1",
+        // ?authuser=, not /u/<address>/: iPhone Gmail web answered the
+        // address-in-path form with "Temporary Error (404)" (2026-10-20).
+        "https://mail.google.com/mail/?authuser=robin%40strasz.com#all/t1",
       ),
     );
     expect(link.getAttribute("target")).toBe("_blank");
