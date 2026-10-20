@@ -1,13 +1,12 @@
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { Stamp } from "../shell/Stamp.tsx";
-import { btnQuiet } from "../shell/ui.ts";
+import { btnQuiet, label } from "../shell/ui.ts";
 import { ACTION_COLOR, ACTION_LABEL, ACTION_TONE } from "./actionMeta.ts";
 import { Card } from "./Card.tsx";
-import { MoreSheet } from "./MoreSheet.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
-import { BUTTONS, MORE, swipeAction } from "./swipeMap.ts";
+import { swipeAction, TAP_GROUPS } from "./swipeMap.ts";
 
 const SWIPE_THRESHOLD = 80; // px before release commits a swipe
 
@@ -28,14 +27,13 @@ function dragDir(
   return dy > 0 ? "down" : "up";
 }
 
-// Touch deck: the top card swipes, the primary buttons sit in thumb reach, and
-// ⋯ opens everything else. (Mouse-driven layouts use the workbench instead.)
+// Touch deck: the top card swipes, every action has a visible button in
+// thumb reach, and the card's swipe legend is tappable too. (Mouse-driven
+// layouts use the workbench instead.)
 export function Deck({
   cards,
   mode,
   onAction,
-  moreOpen,
-  onMoreOpenChange,
   feedback,
   position,
   onNavigate,
@@ -47,8 +45,6 @@ export function Deck({
   position: { index: number; total: number };
   /** Select the previous/next email without acting on the current one. */
   onNavigate: (step: -1 | 1) => void;
-  moreOpen: boolean;
-  onMoreOpenChange: (open: boolean) => void;
   /** Action feedback + Undo, overlaid on the bottom of the card area. */
   feedback?: ReactNode;
 }) {
@@ -83,6 +79,28 @@ export function Deck({
     setDrag(null);
     if (dir) onAction(swipeAction(mode, dir));
   }
+
+  const actionRow = (actions: TriageAction[]) => (
+    <div
+      className="grid gap-1.5"
+      style={{
+        gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))`,
+      }}
+    >
+      {actions.map((a) => (
+        <button
+          key={a}
+          type="button"
+          aria-label={ACTION_LABEL[a]}
+          disabled={!top}
+          className={`min-h-12 rounded-xl border border-rule-strong bg-paper px-1.5 text-[0.8125rem] font-bold leading-tight active:bg-sunk disabled:opacity-40 ${ACTION_COLOR[a]}`}
+          onClick={() => onAction(a)}
+        >
+          {ACTION_LABEL[a]}
+        </button>
+      ))}
+    </div>
+  );
 
   const reduced = prefersReducedMotion();
   const dragStyle =
@@ -143,7 +161,7 @@ export function Deck({
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           >
-            <Card email={top} mode={mode} />
+            <Card email={top} mode={mode} onAction={onAction} />
             {previewAction && (
               <div
                 aria-hidden
@@ -199,38 +217,16 @@ export function Deck({
         className="mx-auto w-full max-w-md"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {/* Primary actions for this mode + the More trigger. */}
-        <div className="flex items-stretch gap-2">
-          {BUTTONS[mode].map((a) => (
-            <button
-              key={a}
-              type="button"
-              aria-label={ACTION_LABEL[a]}
-              disabled={!top}
-              className={`min-h-12 flex-1 rounded-xl border border-rule-strong bg-paper px-3 text-[0.9375rem] font-bold active:bg-sunk disabled:opacity-40 ${ACTION_COLOR[a]}`}
-              onClick={() => onAction(a)}
-            >
-              {ACTION_LABEL[a]}
-            </button>
-          ))}
-          <button
-            type="button"
-            aria-label="More actions"
-            disabled={!top}
-            className="inline-flex min-h-12 min-w-14 items-center justify-center rounded-xl border border-rule-strong bg-paper text-ink active:bg-sunk disabled:opacity-40"
-            onClick={() => onMoreOpenChange(true)}
+        <div className="flex flex-col gap-1.5">
+          {actionRow(TAP_GROUPS[mode].message)}
+          <p
+            className={`border-t border-dashed border-rule-strong pt-1.5 ${label}`}
           >
-            <MoreHorizontal aria-hidden size={22} />
-          </button>
+            All from sender
+          </p>
+          {actionRow(TAP_GROUPS[mode].sender)}
         </div>
       </div>
-
-      <MoreSheet
-        actions={MORE[mode]}
-        open={moreOpen}
-        onOpenChange={onMoreOpenChange}
-        onPick={onAction}
-      />
     </div>
   );
 }

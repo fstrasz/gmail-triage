@@ -3,7 +3,7 @@ import type { TriageAction } from "../lib/api.ts";
 export type Mode = "hidden" | "shown";
 export type Dir = "left" | "right" | "up" | "down";
 
-// All eleven actions in canonical order (order matters for MORE derivation).
+// All eleven actions in canonical order.
 // delete-all/archive-all (sender-wide, no swipe assigned — too destructive for
 // an accidental gesture) sit right after delete, matching their desktop
 // placement "under Delete".
@@ -31,24 +31,20 @@ export function swipeAction(mode: Mode, dir: Dir): TriageAction {
   return SWIPE_MAP[mode][dir];
 }
 
-// Primary buttons visible per mode (3 each)
-export const BUTTONS: Record<Mode, TriageAction[]> = {
-  hidden: ["ok", "archive", "review"], // operator-chosen tap row; swipes cover OK&Clean/Junk/VIP/Delete
-  shown: ["vip", "vip-clean", "unsub"],
-};
-
-// Actions reachable by a swipe gesture in a given mode (the four directions).
-const swipeCovered = (m: Mode): TriageAction[] =>
-  (["left", "right", "up", "down"] as Dir[]).map((d) => SWIPE_MAP[m][d]);
-
-// MORE = the `⋯` overflow tap menu.
-//  - hidden: ONLY actions not already covered by a button OR a swipe (VIP & Clean,
-//    Unsub) — the menu never duplicates a gesture, so it stays a lean 2 items.
-//  - shown: unchanged — full overflow of everything not in the button row.
-// Every action stays reachable via button ∪ swipe ∪ MORE in each mode (DECK-3).
-export const MORE: Record<Mode, TriageAction[]> = {
-  hidden: ALL9.filter(
-    (a) => !BUTTONS.hidden.includes(a) && !swipeCovered("hidden").includes(a),
-  ),
-  shown: ALL9.filter((a) => !BUTTONS.shown.includes(a)),
+// Tap buttons per mode: every action NOT covered by a swipe, so nothing is
+// hidden behind an overflow menu (DECK-3). The swipe actions are also tappable
+// via the on-card legend, so no action is gesture-only. `sender` actions act on
+// all of the sender's mail and render as their own labelled group.
+export const TAP_GROUPS: Record<
+  Mode,
+  { message: TriageAction[]; sender: TriageAction[] }
+> = {
+  hidden: {
+    message: ["ok", "archive", "review", "unsub"],
+    sender: ["vip-clean", "archive-all", "delete-all"],
+  },
+  shown: {
+    message: ["vip", "unsub", "delete"],
+    sender: ["ok-clean", "vip-clean", "archive-all", "delete-all"],
+  },
 };

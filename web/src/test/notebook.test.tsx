@@ -92,9 +92,7 @@ describe("touch tablet (iPad portrait) layout", () => {
     render(<TriagePage />);
 
     // Touch deck controls (not the workbench column) are present…
-    expect(
-      screen.getByRole("button", { name: /more actions/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
     // …alongside a real, tappable queue.
     const row = screen.getByRole("button", { name: /Name e2/ });
     fireEvent.click(row);
