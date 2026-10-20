@@ -1,29 +1,38 @@
 import { useEffect, useState } from "react";
 
-// One container per mailbox: show which one this is on every screen.
-export function MailboxLabel() {
+// The address of the mailbox this instance acts on, or null until known (or if
+// the lookup fails).
+export function useMailboxAddress(): string | null {
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     // fetch is called inside try so a missing/throwing fetch (jsdom) can never
-    // escape; any failure just leaves the label hidden.
+    // escape; any failure just leaves the address unknown.
     (async () => {
       try {
         const r = await fetch("/api/mailbox");
         const d = r.ok ? await r.json() : null;
-        if (live && d?.ok && typeof d.email === "string") {
-          setEmail(d.email);
-          document.title = `Gmail Triage · ${d.email}`;
-        }
+        if (live && d?.ok && typeof d.email === "string") setEmail(d.email);
       } catch {
-        // label stays hidden
+        // address stays unknown
       }
     })();
     return () => {
       live = false;
     };
   }, []);
+
+  return email;
+}
+
+// One container per mailbox: show which one this is on every screen.
+export function MailboxLabel() {
+  const email = useMailboxAddress();
+
+  useEffect(() => {
+    if (email) document.title = `Gmail Triage · ${email}`;
+  }, [email]);
 
   if (!email) return null;
   return (

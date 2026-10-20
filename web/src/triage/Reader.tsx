@@ -1,12 +1,33 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ExternalLink } from "lucide-react";
 import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { getBodyUrl } from "../lib/api.ts";
+import { useMailboxAddress } from "../shell/MailboxLabel.tsx";
 import { ACTION_COLOR, ACTION_LABEL } from "./actionMeta.ts";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction, TAP_GROUPS } from "./swipeMap.ts";
 
 const DIRS: Dir[] = ["right", "left", "up", "down"];
+
+// Opens the message in Gmail (the app on a phone that hands it the link) to
+// reply or forward. The account is named in the path so a device signed in to
+// several accounts opens this instance's mailbox; u/0 until the address loads.
+function OpenInGmail({ email }: { email: TriageEmail }) {
+  const mailbox = useMailboxAddress();
+  const href = `https://mail.google.com/mail/u/${mailbox ?? "0"}/#all/${email.threadId ?? email.id}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Open in Gmail to reply or forward"
+      className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-ink active:bg-sunk"
+    >
+      Gmail
+      <ExternalLink aria-hidden size={16} />
+    </a>
+  );
+}
 
 // Full-screen message reader for the touch deck. Reading usually ends in a
 // decision, so every action the card offers is at the bottom; taking one closes
@@ -53,7 +74,7 @@ export function Reader({
               <ChevronLeft aria-hidden size={20} />
               Back
             </Dialog.Close>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
                 {email.fromName ?? email.fromEmail ?? "Unknown sender"}
               </p>
@@ -61,6 +82,7 @@ export function Reader({
                 {email.subject || "(no subject)"}
               </Dialog.Title>
             </div>
+            <OpenInGmail email={email} />
           </div>
 
           {/* Body — sandboxed iframe ONLY (FIX H4, XSS). Never dangerouslySetInnerHTML. */}
