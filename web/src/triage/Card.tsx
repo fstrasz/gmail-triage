@@ -7,10 +7,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { TriageAction, TriageEmail } from "../lib/api.ts";
-import { getBodyUrl } from "../lib/api.ts";
 import { shortDate } from "../lib/format.ts";
 import { Stamp } from "../shell/Stamp.tsx";
 import { ACTION_COLOR, ACTION_LABEL } from "./actionMeta.ts";
+import { Reader } from "./Reader.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction } from "./swipeMap.ts";
 
@@ -45,10 +45,11 @@ export function Card({
 }: {
   email: TriageEmail;
   mode: Mode;
-  /** When set (top card only), legend entries are tappable. */
+  /** When set (top card only), legend entries are tappable and Show message
+   *  opens the full-screen reader with every action. */
   onAction?: (a: TriageAction) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [reading, setReading] = useState(false);
 
   return (
     <div className="flex h-full min-h-72 flex-col rounded-2xl border border-rule bg-paper p-4 text-ink sm:p-5">
@@ -76,30 +77,18 @@ export function Card({
       <p className="mt-4 text-[0.9375rem] font-semibold leading-snug">
         {email.subject || "(no subject)"}
       </p>
-      {!expanded && (
-        <p className="mt-1.5 line-clamp-4 text-sm leading-relaxed text-graphite">
-          {email.snippet}
-        </p>
-      )}
-
-      {/* Body — sandboxed iframe ONLY (FIX H4, XSS). Never dangerouslySetInnerHTML. */}
-      {expanded && (
-        <iframe
-          title="Email body"
-          sandbox="allow-popups"
-          src={getBodyUrl(email.id)}
-          className="mt-3 h-64 w-full flex-1 rounded-lg border border-rule bg-white"
-        />
-      )}
+      <p className="mt-1.5 line-clamp-4 text-sm leading-relaxed text-graphite">
+        {email.snippet}
+      </p>
 
       <div className="mt-auto flex items-center justify-between gap-3 pt-3 text-sm">
         <button
           type="button"
-          aria-label={expanded ? "Hide email body" : "Show email body"}
+          aria-label="Show email body"
           className="inline-flex min-h-11 items-center font-semibold text-ink underline decoration-rule-strong underline-offset-[3px]"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => setReading(true)}
         >
-          {expanded ? "Hide message" : "Show message"}
+          Show message
         </button>
         <a
           href={senderHref(email)}
@@ -149,6 +138,16 @@ export function Card({
           );
         })}
       </ul>
+
+      {onAction && (
+        <Reader
+          email={email}
+          mode={mode}
+          open={reading}
+          onOpenChange={setReading}
+          onAction={onAction}
+        />
+      )}
     </div>
   );
 }

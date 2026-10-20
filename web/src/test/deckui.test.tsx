@@ -191,6 +191,56 @@ describe("TriagePage / Deck UI", () => {
     expect(payload.id).toBe("e1");
   });
 
+  test("3c. Show message opens a full-screen reader with the body and every action; acting closes it", () => {
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Show email body" }));
+    const reader = screen.getByRole("dialog");
+    expect(within(reader).getByTitle("Email body")).toBeInTheDocument();
+    for (const a of [
+      "ok-clean",
+      "unsub",
+      "vip",
+      "delete-all",
+      "ok",
+      "vip-clean",
+      "archive-all",
+    ]) {
+      expect(
+        within(reader).getByRole("button", { name: ACTION_LABELS[a] }),
+      ).toBeInTheDocument();
+    }
+    fireEvent.click(
+      within(reader).getByRole("button", { name: ACTION_LABELS["delete-all"] }),
+    );
+    const payload = actionMutate.mock.calls.at(-1)![0] as {
+      action: string;
+      id: string;
+    };
+    expect(payload).toMatchObject({ action: "delete-all", id: "e1" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("3d. keys pressed in the reader do not act on the card underneath; Back closes it", () => {
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Show email body" }));
+    const reader = screen.getByRole("dialog");
+    fireEvent.keyDown(reader, { key: "ArrowRight" });
+    fireEvent.keyDown(reader, { key: "e" });
+    expect(actionMutate).not.toHaveBeenCalled();
+    fireEvent.click(within(reader).getByRole("button", { name: "Close message" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("3e. a drag inside the reader does not swipe the card underneath", () => {
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Show email body" }));
+    const title = within(screen.getByRole("dialog")).getByRole("heading");
+    fireEvent.pointerDown(title, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(title, { clientX: 300, clientY: 100 });
+    fireEvent.pointerUp(title, { clientX: 300, clientY: 100 });
+    expect(actionMutate).not.toHaveBeenCalled();
+  });
+
   test("4. a guard result opens GuardDialog; confirming re-calls the action with confirmed:true", () => {
     hookState.actionResult = {
       ok: false,
@@ -369,7 +419,11 @@ describe("TriagePage / Deck UI", () => {
 
   test("9. body renders ONLY as a sandboxed iframe (no dangerouslySetInnerHTML), with View all from sender link", () => {
     render(<TriagePage />);
-    // Expand the body.
+    // Read the sender link first: the open reader is modal, so it hides the card.
+    const senderLink = screen.getByRole("link", {
+      name: /view all from .*sender/i,
+    });
+    // Open the body.
     fireEvent.click(
       screen.getByRole("button", { name: /show (email )?body|expand/i }),
     );
@@ -377,9 +431,6 @@ describe("TriagePage / Deck UI", () => {
     expect(iframe).not.toBeNull();
     expect(iframe!.getAttribute("sandbox")).toBe("allow-popups");
     expect(iframe!.getAttribute("src")).toContain("/api/triage/body?id=e1");
-    const senderLink = screen.getByRole("link", {
-      name: /view all from .*sender/i,
-    });
     expect(senderLink).toBeInTheDocument();
     // FIX D — the link must hit the live /sender route contract (?email=&name=),
     // not the broken ?q= that always redirects home.

@@ -1182,8 +1182,11 @@ async function buildPreviewDocument(gmail, id, { noMeta = false } = {}) {
       "</div><div><strong>Date:</strong> " +
       g("Date").replace(/</g, "&lt;") +
       "</div></div>";
+  // Images are capped at the frame's width: a fixed width="600" banner otherwise
+  // pushes a newsletter wider than a phone (measured on an AARP mailing, 450px
+  // in a 360px frame).
   return (
-    "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #ddd5c7;padding-bottom:12px;margin-bottom:16px;color:#6b6155;font-size:.85rem}.meta strong{color:#231d16}</style></head><body>" +
+    "<!DOCTYPE html><html><head><meta charset='UTF-8'/><base target='_blank'/><style>img{max-width:100%!important;height:auto!important}body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}.meta{border-bottom:1px solid #ddd5c7;padding-bottom:12px;margin-bottom:16px;color:#6b6155;font-size:.85rem}.meta strong{color:#231d16}</style></head><body>" +
     meta +
     body +
     "</body></html>"
