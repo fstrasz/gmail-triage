@@ -1,8 +1,10 @@
 # deploy.ps1 -- Sync gmail-triage project to network live location
-# Usage: .\deploy.ps1 [-WhatIf]
+# Usage: .\deploy.ps1 [-WhatIf] [-Redeploy]
+#   -Redeploy  allow deploying the version that is already live (a re-sync)
 
 param(
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    [switch]$Redeploy
 )
 
 $Source = $PSScriptRoot
@@ -24,6 +26,43 @@ if (-not (Test-Path $Dest)) {
     exit 1
 }
 
+# -- Deploy exactly what is committed -----------------------------------------
+# The deploy builds and copies the working tree. On 2026-10-20 it shipped another
+# session's uncommitted edits from this shared checkout, so refuse to run with
+# tracked changes outstanding.
+$dirty = git -C $Source status --porcelain --untracked-files=no
+if ($dirty) {
+    Write-Host "UNCOMMITTED CHANGES -- these would be deployed:" -ForegroundColor Red
+    $dirty | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Write-Host "Commit or discard them (or deploy from a clean worktree of main)." -ForegroundColor Yellow
+    exit 1
+}
+
+# -- Version is bumped in the PR, not here ------------------------------------
+# This script used to bump APP_VERSION and commit it on local main after the
+# merge, which needed a separate release PR per deploy. Now the feature PR bumps
+# it (npm run bump), and deploying a version that is already live is refused
+# unless -Redeploy says the re-sync is intentional.
+$pagesContent = Get-Content "$Source\app\lib\pages.js" -Raw
+if ($pagesContent -notmatch 'const APP_VERSION = "(v[^"]+)"') {
+    Write-Host "ERROR: Could not find APP_VERSION in app\lib\pages.js." -ForegroundColor Red
+    exit 1
+}
+$localVersion = $Matches[1]
+$liveVersion = $null
+try {
+    $liveVersion = (Invoke-RestMethod "http://192.168.20.10:3000/health" -TimeoutSec 15).version
+} catch {
+    Write-Host "  WARNING: could not read the live version ($_). Continuing." -ForegroundColor Yellow
+}
+Write-Host "  Version: $localVersion (live: $(if ($liveVersion) { $liveVersion } else { 'unknown' }))" -ForegroundColor Cyan
+if ($liveVersion -eq $localVersion -and -not $Redeploy) {
+    Write-Host "$localVersion is already live. Bump APP_VERSION in the PR (npm run bump)," -ForegroundColor Red
+    Write-Host "or pass -Redeploy to re-sync the same version on purpose." -ForegroundColor Red
+    exit 1
+}
+Write-Host ""
+
 # -- Run test suite before deploying ------------------------------------------
 Write-Host "Running test suite..." -ForegroundColor Cyan
 if ($WhatIf) {
@@ -32,7 +71,7 @@ if ($WhatIf) {
     & node "$Source\scripts\test-events.mjs"
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "TESTS FAILED (exit $LASTEXITCODE). Aborting deploy before version bump." -ForegroundColor Red
+        Write-Host "TESTS FAILED (exit $LASTEXITCODE). Aborting deploy." -ForegroundColor Red
         Write-Host "Run 'npm test' to see failures and fix before retrying." -ForegroundColor Yellow
         exit $LASTEXITCODE
     }
@@ -97,37 +136,6 @@ if ($WhatIf) {
     Write-Host ""
 }
 
-# -- Auto-increment version in pages.js and commit locally (no push) -----------
-$pagesFile = "$Source\app\lib\pages.js"
-$content = Get-Content $pagesFile -Raw
-if ($content -match 'const APP_VERSION = "v(\d+)\.(\d+)\.(\d+)"') {
-    $major = $Matches[1]
-    $minor = $Matches[2]
-    $patch = [int]$Matches[3] + 1
-    $newVersion = "v${major}.${minor}.$( '{0:D2}' -f $patch )"
-
-    if (-not $WhatIf) {
-        $newContent = $content -replace 'const APP_VERSION = "v[^"]+"', "const APP_VERSION = `"$newVersion`""
-        Set-Content $pagesFile $newContent -NoNewline
-
-        $commitMsg = "Bump version to $newVersion`n`nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
-        git -C $Source add app/lib/pages.js | Out-Null
-        git -C $Source commit -m $commitMsg | Out-Null
-
-        Write-Host "  Version: $newVersion" -ForegroundColor Cyan
-
-        if ($patch % 10 -eq 0) {
-            Write-Host ""
-            Write-Host "  REMINDER: $newVersion is a milestone -- consider tagging a stable GitHub release." -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "  Version: would bump to $newVersion (dry run)" -ForegroundColor Yellow
-    }
-    Write-Host ""
-} else {
-    Write-Host "  WARNING: Could not find APP_VERSION in pages.js -- skipping version bump." -ForegroundColor Yellow
-    Write-Host ""
-}
 
 # config-robin is excluded so /MIR never purges Robin's state on the NAS.
 $robocopyArgs = @(

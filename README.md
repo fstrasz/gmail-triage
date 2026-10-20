@@ -284,7 +284,7 @@ gmail-triage/
 │   └── compare-read-triage-models.mjs  # EXPERIMENTAL — dry-run comparison of Claude vs. local Ollama models on real inbox data; never mutates Gmail
 ├── Dockerfile
 ├── compose.yaml
-└── deploy.ps1             # Sync to NAS via robocopy; auto-bumps version
+└── deploy.ps1             # Sync to NAS via robocopy (version is bumped in the PR)
 ```
 
 ---
@@ -353,11 +353,14 @@ A second person's mailbox runs as its own container (`gmail-triage-robin` in `co
 
 ## Deployment (optional)
 
-`deploy.ps1` syncs the app to a mapped network drive via robocopy and automatically bumps the patch version in `app/lib/pages.js` before each sync. Edit the destination path in the script to match your setup. Config files are not overwritten by the sync.
+`deploy.ps1` syncs the app to a mapped network drive via robocopy. Edit the destination path in the script to match your setup. Config files are not overwritten by the sync.
+
+The version is bumped in the change itself, not by the deploy: run `npm run bump` (patch +1 in `app/lib/pages.js`) in the branch before opening the PR. The deploy commits nothing, refuses to run with uncommitted changes to tracked files (it builds and copies the working tree), and refuses to deploy a version that is already live unless told to.
 
 ```powershell
-.\deploy.ps1          # deploy (bumps version, syncs files)
-.\deploy.ps1 -WhatIf  # dry run (shows what would change, no files written)
+.\deploy.ps1            # deploy (refuses if this version is already live)
+.\deploy.ps1 -Redeploy  # re-sync the version that is already live, on purpose
+.\deploy.ps1 -WhatIf    # dry run (shows what would change, no files written)
 ```
 
 ## Health Check
