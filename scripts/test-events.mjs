@@ -1784,6 +1784,59 @@ test("extractName: bare address returns the address (no name to extract)", async
   assert.equal(extractName("frank@example.com"), "frank@example.com");
 });
 
+// ─── decodeSnippet: Gmail returns `snippet` HTML-escaped ─────────────────────
+
+test("decodeSnippet: decodes the entities Gmail puts in snippets", async () => {
+  const { decodeSnippet } = await import(gmailModulePath);
+  // Real snippet from production (2026-10-20), rendered literally by React.
+  assert.equal(
+    decodeSnippet("Sellton.ai isn&#39;t that it can write emails. It&#39;s how"),
+    "Sellton.ai isn't that it can write emails. It's how",
+  );
+  assert.equal(
+    decodeSnippet("&quot;Q&amp;A&quot; &lt;today&gt; &#x2014; &#8212;"),
+    '"Q&A" <today> — —',
+  );
+});
+
+test("decodeSnippet: single pass — an escaped entity is not decoded twice", async () => {
+  const { decodeSnippet } = await import(gmailModulePath);
+  // The sender literally wrote "&#39;"; Gmail escaped its ampersand.
+  assert.equal(decodeSnippet("type &amp;#39; here"), "type &#39; here");
+  assert.equal(decodeSnippet(undefined), "");
+});
+
+test("fetchLabeledEmails: snippet is entity-decoded for the Labeled screen", async () => {
+  const { fetchLabeledEmails } = await import(gmailModulePath);
+  const gmail = {
+    users: {
+      labels: {
+        list: async () => ({ data: { labels: [{ id: "L1", name: "..VIP" }] } }),
+      },
+      messages: {
+        list: async () => ({ data: { messages: [{ id: "m1" }] } }),
+        get: async () => ({
+          data: {
+            id: "m1",
+            labelIds: [],
+            snippet: "it&#39;s here",
+            payload: { headers: [] },
+          },
+        }),
+      },
+    },
+  };
+  const [item] = await fetchLabeledEmails(gmail, "..VIP");
+  assert.equal(item.snippet, "it's here");
+});
+
+test("shapeTriageEmail: snippet is entity-decoded for the React app", async () => {
+  const { shapeTriageEmail } = await import(
+    triageApiModulePath + "?t=" + Date.now() + Math.random()
+  );
+  assert.equal(shapeTriageEmail({ id: "m", snippet: "we&#39;d" }).snippet, "we'd");
+});
+
 // ─── mapWithConcurrency: bounded parallel mapper ─────────────────────────────
 
 test("mapWithConcurrency: runs all items, preserves order", async () => {

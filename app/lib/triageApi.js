@@ -1,5 +1,5 @@
 import { isBlocked } from "./blocklist.js";
-import { extractEmail, extractName } from "./gmail.js";
+import { decodeSnippet, extractEmail, extractName } from "./gmail.js";
 import { isListedSender } from "./listedSender.js";
 
 export function shapeTriageEmail(e) {
@@ -11,7 +11,7 @@ export function shapeTriageEmail(e) {
     fromEmail,
     fromName,
     subject: e.subject || "",
-    snippet: e.snippet || "",
+    snippet: decodeSnippet(e.snippet),
     date: e.date || "",
     tier: e.tier ?? null,
     ruleLabels: e.ruleLabels || [],
