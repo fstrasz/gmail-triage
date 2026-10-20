@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ActionResult, TriageEmail, UndoDescriptor } from "../lib/api.ts";
 
@@ -229,6 +236,29 @@ describe("TriagePage / Deck UI", () => {
     expect(actionMutate).not.toHaveBeenCalled();
     fireEvent.click(within(reader).getByRole("button", { name: "Close message" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("3f. the reader links to the message in Gmail, in this instance's account", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: true, email: "robin@strasz.com" })),
+      ),
+    );
+    loadedQueue([makeEmail("e1", { threadId: "t1" })], 1);
+    render(<TriagePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Show email body" }));
+    const link = within(screen.getByRole("dialog")).getByRole("link", {
+      name: /open in gmail/i,
+    });
+    await waitFor(() =>
+      expect(link.getAttribute("href")).toBe(
+        "https://mail.google.com/mail/u/robin@strasz.com/#all/t1",
+      ),
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    vi.unstubAllGlobals();
   });
 
   test("3e. a drag inside the reader does not swipe the card underneath", () => {
