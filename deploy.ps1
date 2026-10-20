@@ -207,17 +207,29 @@ if (-not $WhatIf) {
     # Give the container a moment to start serving before probing.
     Start-Sleep -Seconds 5
 
+    # The first probe after a recreate has twice (2026-10-15, 2026-10-20) hit the
+    # containers mid-start and failed with "The underlying connection was closed",
+    # while a manual re-probe seconds later was healthy. Retry connection-level
+    # failures only; a 200 with the wrong content still fails at once.
     Write-Host "Probing /app/..." -ForegroundColor Cyan
-    try {
-        $probe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/app/" -TimeoutSec 15 -ErrorAction Stop
-        if ($probe.StatusCode -eq 200 -and $probe.Content -match 'Triage') {
-            Write-Host "  /app/ probe OK (HTTP $($probe.StatusCode), content contains 'Triage')." -ForegroundColor Green
-        } else {
-            Write-Host "PROBE FAILED: status=$($probe.StatusCode), content did not contain 'Triage'." -ForegroundColor Red
-            exit 1
+    $probe = $null
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        try {
+            $probe = Invoke-WebRequest -UseBasicParsing "http://192.168.20.10:3000/app/" -TimeoutSec 15 -ErrorAction Stop
+            break
+        } catch {
+            if ($attempt -eq 6) {
+                Write-Host "PROBE FAILED after $attempt attempts: $_" -ForegroundColor Red
+                exit 1
+            }
+            Write-Host "  /app/ not answering yet (attempt $attempt): $_ - retrying in 5s" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
         }
-    } catch {
-        Write-Host "PROBE FAILED: $_" -ForegroundColor Red
+    }
+    if ($probe.StatusCode -eq 200 -and $probe.Content -match 'Triage') {
+        Write-Host "  /app/ probe OK (HTTP $($probe.StatusCode), content contains 'Triage')." -ForegroundColor Green
+    } else {
+        Write-Host "PROBE FAILED: status=$($probe.StatusCode), content did not contain 'Triage'." -ForegroundColor Red
         exit 1
     }
 
