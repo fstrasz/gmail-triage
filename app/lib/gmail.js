@@ -35,6 +35,25 @@ export function extractName(from) {
   const m = from.match(/^(.+?)\s*</);
   return m ? m[1].replace(/"/g, "").trim() : from;
 }
+// Gmail's `snippet` is HTML-escaped (an apostrophe arrives as &#39;), and React
+// renders text literally. One pass, so an escaped "&amp;#39;" stays "&#39;".
+const SNIPPET_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+export function decodeSnippet(s) {
+  return (s || "").replace(
+    /&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos|nbsp));/gi,
+    (_, dec, hex, name) =>
+      dec || hex
+        ? String.fromCodePoint(Number.parseInt(dec ?? hex, dec ? 10 : 16))
+        : SNIPPET_ENTITIES[name.toLowerCase()],
+  );
+}
 // A sender value interpolated into a Gmail search must be a single token: an
 // address or an @domain wildcard. Whitespace, quotes, parentheses or braces would
 // let a value close the quoted `from:"…"` term and add operators (e.g. `OR in:all`)
@@ -568,7 +587,7 @@ export async function fetchLabeledEmails(gmail, labelName, maxResults = 200) {
       subject: g("Subject"),
       from: g("From"),
       date: g("Date"),
-      snippet: d.data.snippet,
+      snippet: decodeSnippet(d.data.snippet),
       isRead: !lbls.includes("UNREAD"),
     };
   });
