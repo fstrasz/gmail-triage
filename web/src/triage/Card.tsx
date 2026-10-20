@@ -14,7 +14,14 @@ import { Reader } from "./Reader.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { swipeAction } from "./swipeMap.ts";
 
-const DIRS: Dir[] = ["right", "left", "up", "down"];
+const DIRS: Dir[] = ["up", "left", "right", "down"];
+/** Cross layout: each direction sits on its own arm of a 3x3 grid. */
+const DIR_CELL: Record<Dir, string> = {
+  up: "col-start-2 row-start-1 justify-center",
+  left: "col-start-1 row-start-2 justify-start",
+  right: "col-start-3 row-start-2 justify-end",
+  down: "col-start-2 row-start-3 justify-center",
+};
 const DIR_ICON: Record<Dir, LucideIcon> = {
   right: ArrowRight,
   left: ArrowLeft,
@@ -60,7 +67,9 @@ export function Card({
             {email.fromName ?? email.fromEmail ?? "Unknown sender"}
           </p>
           {email.fromEmail && (
-            <p className="truncate text-xs text-muted">{email.fromEmail}</p>
+            <p className="truncate text-sm font-medium text-graphite">
+              {email.fromEmail}
+            </p>
           )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -102,37 +111,51 @@ export function Card({
       {/* DECK-1: persistent on-card legend of the current mode's four swipe directions. */}
       <ul
         aria-label="Swipe legend"
-        className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-dashed border-rule-strong pt-3 text-xs"
+        className="grid grid-cols-3 grid-rows-3 gap-x-2 border-t border-dashed border-rule-strong pt-3 text-xs"
       >
         {DIRS.map((d) => {
           const action = swipeAction(mode, d);
           const Icon = DIR_ICON[d];
-          const content = (
-            <>
-              <Icon
-                aria-hidden
-                size={14}
-                strokeWidth={2}
-                className="text-ink"
-              />
-              <span className={`font-semibold ${ACTION_COLOR[action]}`}>
-                {ACTION_LABEL[action]}
-              </span>
-            </>
+          const icon = (
+            <Icon
+              aria-hidden
+              size={14}
+              strokeWidth={2}
+              className="shrink-0 text-ink"
+            />
           );
+          const label = (
+            <span className={`font-semibold ${ACTION_COLOR[action]}`}>
+              {ACTION_LABEL[action]}
+            </span>
+          );
+          // Arrow sits on the outer side of each arm, pointing away from centre.
+          const content =
+            d === "right" ? (
+              <>
+                {label}
+                {icon}
+              </>
+            ) : (
+              <>
+                {icon}
+                {label}
+              </>
+            );
+          const cell = `flex min-h-9 w-full items-center gap-1.5 whitespace-nowrap ${DIR_CELL[d]}`;
           return (
-            <li key={d} className="text-muted">
+            <li key={d} className={`flex text-muted ${DIR_CELL[d]}`}>
               {onAction ? (
                 <button
                   type="button"
                   aria-label={ACTION_LABEL[action]}
-                  className="flex min-h-9 w-full items-center gap-1.5 rounded-md text-left active:bg-sunk"
+                  className={`${cell} rounded-md active:bg-sunk`}
                   onClick={() => onAction(action)}
                 >
                   {content}
                 </button>
               ) : (
-                <span className="flex items-center gap-1.5">{content}</span>
+                <span className={cell}>{content}</span>
               )}
             </li>
           );
