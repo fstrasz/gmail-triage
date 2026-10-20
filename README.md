@@ -55,9 +55,9 @@
   | `r` | Review |
   | `u` | Undo the last action |
   | `?` | Show all shortcuts |
-  | Arrow keys | Same as the swipe directions shown on the card |
+  | Arrow keys | Hide VIP/OK on: → OK & Clean, ← Junk, ↑ VIP, ↓ Delete. Off: → Archive, ← Junk, ↑ OK, ↓ Review |
 
-  Each action button shows its key. Delete All, Archive All, the Clean actions and Unsubscribe deliberately have no key; use the buttons. On iPhone, the result of the last action and its **Undo** appear just above the action buttons, within thumb reach. Every action is a visible button there — no overflow menu: the actions for this message in one row, the actions on all of the sender's mail (the Clean actions, Archive All, Delete All) in a second row, and the four swipe actions as tappable entries in the card's swipe legend.
+  Each action button shows its key. Delete All, Archive All, the Clean actions and Unsubscribe deliberately have no key; use the buttons. On iPhone, the result of the last action and its **Undo** appear just above the action buttons, within thumb reach. Every action is a visible button there — no overflow menu — and the four swipe actions are also tappable entries in the card's swipe legend. With Hide VIP/OK on (unlisted senders), the card swipes → OK & Clean, ← Unsub, ↑ VIP, ↓ Delete All, and one button row holds OK, VIP & Clean and Archive All; Junk, Delete, Archive and Review are not offered there. With it off, one row holds this message's actions and a second row the actions on all of the sender's mail.
 
 - **Auto-unsubscribe** — Reads `List-Unsubscribe` / `List-Unsubscribe-Post` headers and attempts removal in order: RFC 8058 one-click POST, HTTP GET, unsubscribe email via Gmail API, open URL in browser tab. Falls back to a pre-filled Gmail compose window if no header is present.
 

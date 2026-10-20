@@ -41,7 +41,7 @@ import type { GuardInfo } from "./GuardDialog.tsx";
 import { GuardDialog } from "./GuardDialog.tsx";
 import { ACTION_KEY, ShortcutsDialog } from "./ShortcutsDialog.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
-import { swipeAction } from "./swipeMap.ts";
+import { arrowAction } from "./swipeMap.ts";
 import type { ToastInfo } from "./Toast.tsx";
 import { toastMessage } from "./toastMessage.ts";
 
@@ -349,7 +349,7 @@ export function TriagePage() {
           return;
         }
         e.preventDefault();
-        commit(swipeAction(mode, dir));
+        commit(arrowAction(mode, dir));
         return;
       }
 

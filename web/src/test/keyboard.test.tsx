@@ -100,10 +100,10 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("Keyboard shortcuts", () => {
-  test("1. ArrowRight in hidden mode commits ok-clean (reuses swipeAction hidden+right)", () => {
+  test("1. ArrowRight in hidden mode commits ok-clean (arrowAction hidden+right)", () => {
     render(<TriagePage />);
 
-    // Default mode is 'hidden'. swipeAction('hidden','right') === 'ok-clean'
+    // Default mode is 'hidden'. arrowAction('hidden','right') === 'ok-clean'
     fireEvent.keyDown(document, { key: "ArrowRight" });
 
     expect(actionMutate).toHaveBeenCalledTimes(1);
@@ -115,7 +115,7 @@ describe("Keyboard shortcuts", () => {
     expect(payload.id).toBe("e1");
   });
 
-  test("2. ArrowLeft in hidden mode commits junk (swipeAction hidden+left)", () => {
+  test("2. ArrowLeft in hidden mode commits junk (arrowAction hidden+left)", () => {
     render(<TriagePage />);
 
     fireEvent.keyDown(document, { key: "ArrowLeft" });
@@ -128,7 +128,7 @@ describe("Keyboard shortcuts", () => {
     expect(payload.action).toBe("junk");
   });
 
-  test("3. ArrowUp in hidden mode commits vip (swipeAction hidden+up)", () => {
+  test("3. ArrowUp in hidden mode commits vip (arrowAction hidden+up)", () => {
     render(<TriagePage />);
 
     fireEvent.keyDown(document, { key: "ArrowUp" });
@@ -141,7 +141,7 @@ describe("Keyboard shortcuts", () => {
     expect(payload.action).toBe("vip");
   });
 
-  test("4. ArrowDown in hidden mode commits delete (swipeAction hidden+down)", () => {
+  test("4. ArrowDown in hidden mode commits delete (arrowAction hidden+down)", () => {
     render(<TriagePage />);
 
     fireEvent.keyDown(document, { key: "ArrowDown" });
@@ -225,7 +225,7 @@ describe("Keyboard shortcuts", () => {
     const { getByRole } = render(<TriagePage />);
     // Focus a button row control (e.g. the "Archive" button) and fire an
     // arrow keydown FROM it. The handler must not steal it into a triage action.
-    const more = getByRole("button", { name: "Archive" });
+    const more = getByRole("button", { name: "OK" });
     more.focus();
     fireEvent.keyDown(more, { key: "ArrowRight" });
     expect(actionMutate).not.toHaveBeenCalled();

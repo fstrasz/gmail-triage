@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { TriageEmail } from "../lib/api.ts";
 import { deckReducer } from "../triage/deckReducer.ts";
-import { swipeAction, TAP_GROUPS } from "../triage/swipeMap.ts";
+import { arrowAction, swipeAction, TAP_GROUPS } from "../triage/swipeMap.ts";
 
 // ---------------------------------------------------------------------------
 // swipeMap — verbatim from task brief
@@ -23,13 +23,25 @@ const ALL9 = [
 
 test("hidden", () => {
   expect(swipeAction("hidden", "right")).toBe("ok-clean");
-  expect(swipeAction("hidden", "left")).toBe("junk");
+  expect(swipeAction("hidden", "left")).toBe("unsub");
   expect(swipeAction("hidden", "up")).toBe("vip");
-  expect(swipeAction("hidden", "down")).toBe("delete");
+  expect(swipeAction("hidden", "down")).toBe("delete-all");
   expect(TAP_GROUPS.hidden).toEqual({
-    message: ["ok", "archive", "review", "unsub"],
-    sender: ["vip-clean", "archive-all", "delete-all"],
+    message: ["ok", "vip-clean", "archive-all"],
+    sender: [],
   });
+});
+
+test("arrow keys keep the per-message mapping; Delete All and Unsub have no key", () => {
+  expect(arrowAction("hidden", "right")).toBe("ok-clean");
+  expect(arrowAction("hidden", "left")).toBe("junk");
+  expect(arrowAction("hidden", "up")).toBe("vip");
+  expect(arrowAction("hidden", "down")).toBe("delete");
+  for (const m of ["hidden", "shown"] as const) {
+    for (const d of ["left", "right", "up", "down"] as const) {
+      expect(["delete-all", "unsub"]).not.toContain(arrowAction(m, d));
+    }
+  }
 });
 
 test("shown", () => {
@@ -49,10 +61,13 @@ test("a11y parity: tap groups hold exactly the actions no swipe covers (DECK-3)"
       swipeAction(m, d),
     );
     const taps = [...TAP_GROUPS[m].message, ...TAP_GROUPS[m].sender];
-    // No action is both tapped and swiped; together they are all 11.
+    // No action is both tapped and swiped; together they are every action the
+    // mode offers on touch. Hidden mode deliberately omits these four
+    // (operator direction, 2026-10-20); desktop still offers them.
+    const omitted = m === "hidden" ? ["junk", "delete", "archive", "review"] : [];
     expect(taps.filter((a) => swipes.includes(a))).toEqual([]);
-    expect(new Set([...taps, ...swipes])).toEqual(new Set(ALL9));
-    expect(taps.length + swipes.length).toBe(ALL9.length);
+    expect(new Set([...taps, ...swipes, ...omitted])).toEqual(new Set(ALL9));
+    expect(taps.length + swipes.length + omitted.length).toBe(ALL9.length);
   }
 });
 

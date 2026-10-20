@@ -92,13 +92,13 @@ describe("touch tablet (iPad portrait) layout", () => {
     render(<TriagePage />);
 
     // Touch deck controls (not the workbench column) are present…
-    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "OK" })).toBeInTheDocument();
     // …alongside a real, tappable queue.
     const row = screen.getByRole("button", { name: /Name e2/ });
     fireEvent.click(row);
     expect(row.getAttribute("aria-current")).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const payload = actionMutate.mock.calls.at(-1)?.[0] as { id: string };
     expect(payload.id).toBe("e2");
   });
@@ -122,7 +122,7 @@ describe("touch tablet (iPad portrait) layout", () => {
       isError: false,
     };
     render(<TriagePage />);
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const status = screen.getByRole("status");
     expect(within(status).getByText("Archive")).toBeInTheDocument();
   });
