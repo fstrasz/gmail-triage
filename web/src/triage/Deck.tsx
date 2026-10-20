@@ -219,12 +219,16 @@ export function Deck({
       >
         <div className="flex flex-col gap-1.5">
           {actionRow(TAP_GROUPS[mode].message)}
-          <p
-            className={`border-t border-dashed border-rule-strong pt-1.5 ${label}`}
-          >
-            All from sender
-          </p>
-          {actionRow(TAP_GROUPS[mode].sender)}
+          {TAP_GROUPS[mode].sender.length > 0 && (
+            <>
+              <p
+                className={`border-t border-dashed border-rule-strong pt-1.5 ${label}`}
+              >
+                All from sender
+              </p>
+              {actionRow(TAP_GROUPS[mode].sender)}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -154,43 +154,40 @@ describe("TriagePage / Deck UI", () => {
   test("3. action surface (DECK-3, hidden): every action is a visible button; the 4 swipe actions are tappable legend buttons", () => {
     render(<TriagePage />);
 
-    // Tap buttons: message group + "All from sender" group.
-    for (const a of [
-      "ok",
-      "archive",
-      "review",
-      "unsub",
-      "vip-clean",
-      "archive-all",
-      "delete-all",
-    ]) {
+    // One row of tap buttons; no "All from sender" row in hidden mode.
+    for (const a of ["ok", "vip-clean", "archive-all"]) {
       expect(
         screen.queryByRole("button", { name: ACTION_LABELS[a] }),
       ).not.toBeNull();
     }
+    expect(screen.queryByText("All from sender", { selector: "p" })).toBeNull();
     // The four swipe actions are tappable buttons on the top card's legend.
     const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
-    for (const a of ["ok-clean", "vip", "junk", "delete"]) {
+    for (const a of ["ok-clean", "vip", "unsub", "delete-all"]) {
       expect(
         within(legend).getByRole("button", { name: ACTION_LABELS[a] }),
       ).toBeInTheDocument();
+    }
+    // Not offered on the hidden-mode touch deck (operator direction).
+    for (const a of ["junk", "delete", "archive", "review"]) {
+      expect(screen.queryByRole("button", { name: ACTION_LABELS[a] })).toBeNull();
     }
     // No overflow menu on the touch deck.
     expect(screen.queryByRole("button", { name: /more actions/i })).toBeNull();
   });
 
-  test("3b. tapping the Junk legend button commits junk for the top card", () => {
+  test("3b. tapping the Delete All legend button commits delete-all for the top card", () => {
     render(<TriagePage />);
     const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
     fireEvent.click(
-      within(legend).getByRole("button", { name: ACTION_LABELS.junk }),
+      within(legend).getByRole("button", { name: ACTION_LABELS["delete-all"] }),
     );
     expect(actionMutate).toHaveBeenCalledTimes(1);
     const payload = actionMutate.mock.calls[0][0] as {
       action: string;
       id: string;
     };
-    expect(payload.action).toBe("junk");
+    expect(payload.action).toBe("delete-all");
     expect(payload.id).toBe("e1");
   });
 
@@ -203,7 +200,7 @@ describe("TriagePage / Deck UI", () => {
 
     // Trigger an action (Archive is in the hidden-mode button row).
     fireEvent.click(
-      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      screen.getByRole("button", { name: ACTION_LABELS.ok }),
     );
 
     // GuardDialog visible with count/message.
@@ -220,14 +217,14 @@ describe("TriagePage / Deck UI", () => {
       action: string;
     };
     expect(last.confirmed).toBe(true);
-    expect(last.action).toBe("archive");
+    expect(last.action).toBe("ok");
   });
 
   test('5. an {error:"gmail_auth"} result renders the Reconnect Gmail state (distinct from empty)', () => {
     hookState.actionResult = { ok: false, error: "gmail_auth" };
     render(<TriagePage />);
     fireEvent.click(
-      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      screen.getByRole("button", { name: ACTION_LABELS.ok }),
     );
     expect(screen.getByText(/reconnect gmail/i)).toBeInTheDocument();
     expect(screen.queryByText(/inbox triaged/i)).not.toBeInTheDocument();
@@ -261,7 +258,7 @@ describe("TriagePage / Deck UI", () => {
     hookState.actionResult = { ok: true, undo: desc };
     render(<TriagePage />);
     fireEvent.click(
-      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      screen.getByRole("button", { name: ACTION_LABELS.ok }),
     );
     const toast = screen.getByRole("status");
     fireEvent.click(within(toast).getByRole("button", { name: /undo/i }));
@@ -325,7 +322,7 @@ describe("TriagePage / Deck UI", () => {
       };
       render(<TriagePage />);
       fireEvent.click(
-        screen.getByRole("button", { name: ACTION_LABELS.archive }),
+        screen.getByRole("button", { name: ACTION_LABELS.ok }),
       );
       const status = screen.getByRole("status");
       expect(
@@ -349,7 +346,7 @@ describe("TriagePage / Deck UI", () => {
         guard: { count: 250, message: "250 emails will be archived" },
       };
       fireEvent.click(
-        screen.getByRole("button", { name: ACTION_LABELS.archive }),
+        screen.getByRole("button", { name: ACTION_LABELS.ok }),
       );
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     } finally {
@@ -361,7 +358,7 @@ describe("TriagePage / Deck UI", () => {
     loadedQueue([makeEmail("e1"), makeEmail("e2")], 2);
     render(<TriagePage />);
     fireEvent.click(
-      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      screen.getByRole("button", { name: ACTION_LABELS.ok }),
     );
     const live = document.querySelector('[aria-live="polite"]');
     expect(live).not.toBeNull();
@@ -492,7 +489,7 @@ describe("TriagePage / Deck UI", () => {
     };
     render(<TriagePage />);
     fireEvent.click(
-      screen.getByRole("button", { name: ACTION_LABELS.archive }),
+      screen.getByRole("button", { name: ACTION_LABELS.ok }),
     );
     expect(
       screen.getByText(/entire mailbox · any display name/i),

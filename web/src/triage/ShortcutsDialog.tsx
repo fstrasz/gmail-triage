@@ -8,7 +8,7 @@ import {
 } from "../shell/ui.ts";
 import { ACTION_LABEL, DIR_ARROW } from "./actionMeta.ts";
 import type { Dir, Mode } from "./swipeMap.ts";
-import { swipeAction } from "./swipeMap.ts";
+import { arrowAction } from "./swipeMap.ts";
 
 // Letter shortcuts (desktop). Single source for the key handler, the column
 // hints and this dialog.
@@ -41,7 +41,7 @@ export function ShortcutsDialog({
     ["?", "Show this list"],
     ...DIRS.map((d): [string, string] => [
       DIR_ARROW[d],
-      ACTION_LABEL[swipeAction(mode, d)],
+      ACTION_LABEL[arrowAction(mode, d)],
     ]),
   ];
   return (

@@ -97,7 +97,7 @@ describe("TriagePage / real React-Query interleave", () => {
     await screen.findByText("Subject e1");
 
     // Archive is in the hidden-mode button row.
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
 
     // Resolve the action with a guard AFTER onMutate's optimistic cache filter
     // has already fired (and the `load` effect has re-run, clearing removed[]).
@@ -130,7 +130,7 @@ describe("TriagePage / real React-Query interleave", () => {
         id: string;
       };
       expect(last.confirmed).toBe(true);
-      expect(last.action).toBe("archive");
+      expect(last.action).toBe("ok");
       expect(last.id).toBe("e1");
     });
 
@@ -159,7 +159,7 @@ describe("TriagePage / real React-Query interleave", () => {
     renderWithClient(<TriagePage />);
     await screen.findByText("Subject e1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
     d.resolve({ ok: false, error: "gmail_auth" });
 
     // Distinct Reconnect state shows (not the empty "Inbox triaged").
