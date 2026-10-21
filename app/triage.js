@@ -23,6 +23,7 @@ import {
   sortGroupKeysByLocationOrder,
 } from "./lib/eventSearch.js";
 import {
+  activeEvents,
   ignoreFoundEvent,
   loadFoundEvents,
   pruneInvalidEmailEvents,
@@ -1598,10 +1599,7 @@ app.post("/events/send-email", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await pruneInvalidEmailEvents(gmail);
-    const today = new Date().toISOString().slice(0, 10);
-    const active = loadFoundEvents().filter(
-      (e) => !e.ignored && (!e.date || e.date >= today),
-    );
+    const active = activeEvents(loadFoundEvents());
     await sendEventsEmail(gmail, active, loadSettings());
   } catch (e) {
     console.error("events send-email error:", e.message);
@@ -2279,10 +2277,7 @@ app.post("/api/rules/delete", (req, res) => {
 app.get("/api/events", (req, res) => {
   try {
     const settings = loadSettings();
-    const today = new Date().toISOString().slice(0, 10);
-    const active = loadFoundEvents()
-      .filter((e) => !e.ignored && (!e.date || e.date >= today))
-      .sort((a, b) => {
+    const active = activeEvents(loadFoundEvents()).sort((a, b) => {
         if (!a.date && !b.date) return 0;
         if (!a.date) return 1;
         if (!b.date) return -1;
@@ -2341,10 +2336,7 @@ app.post("/api/events/send-email", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     await pruneInvalidEmailEvents(gmail);
-    const today = new Date().toISOString().slice(0, 10);
-    const active = loadFoundEvents().filter(
-      (e) => !e.ignored && (!e.date || e.date >= today),
-    );
+    const active = activeEvents(loadFoundEvents());
     await sendEventsEmail(gmail, active, loadSettings());
     res.json({ ok: true });
   } catch (e) {

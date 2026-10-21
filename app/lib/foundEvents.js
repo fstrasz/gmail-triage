@@ -149,6 +149,16 @@ export function saveFoundEvents(events) {
   }
 }
 
+// Events still worth sending: not ignored, and dated today or later (TBD kept).
+// Every events-email path must go through this — the search run once emailed
+// its raw results unfiltered, so yesterday's events showed up in today's email.
+export function activeEvents(
+  events,
+  today = new Date().toISOString().slice(0, 10),
+) {
+  return events.filter((e) => !e.ignored && (!e.date || e.date >= today));
+}
+
 // Build the dedup key for an event. Email-source events from the SAME newsletter
 // share the same Gmail message URL — using url alone would drop 15 of 16 events
 // from a multi-event digest. Web events keep url as the key (canonical event page).
