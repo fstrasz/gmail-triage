@@ -1,0 +1,142 @@
+[
+  {
+    "name": "archive covers its own message",
+    "job": { "action": "archive", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m1", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "archive does not cover another message from the same sender",
+    "job": { "action": "archive", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "delete does not cover another message from the same sender",
+    "job": { "action": "delete", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": true,
+    "covered": false
+  },
+  {
+    "name": "review covers its own message",
+    "job": { "action": "review", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m1", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "ok covers its own message",
+    "job": { "action": "ok", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m1", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "ok does not cover other mail from the sender when hide-listed is off",
+    "job": { "action": "ok", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "ok covers other mail from the sender when hide-listed is on",
+    "job": { "action": "ok", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": true,
+    "covered": true
+  },
+  {
+    "name": "vip hide-listed does not cover a different display name",
+    "job": { "action": "vip", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice Corp", "tier": null },
+    "hideListed": true,
+    "covered": false
+  },
+  {
+    "name": "ok-clean covers other untiered mail from the sender",
+    "job": { "action": "ok-clean", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "ok-clean does not cover a VIP card",
+    "job": { "action": "ok-clean", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": "..VIP" },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "vip-clean covers the clicked VIP card by its msgId",
+    "job": { "action": "vip-clean", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m1", "fromEmail": "a@x.com", "fromName": "Alice", "tier": "..VIP" },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "vip-clean covers other OK-tier mail from the sender",
+    "job": { "action": "vip-clean", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": "..OK" },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "junk covers the same sender and name",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "junk does not cover a different display name",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice Corp", "tier": null },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "junk does not cover a different address",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "b@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "junk with a null name covers a different display name",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": null },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice Corp", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "unsub covers the same sender and name",
+    "job": { "action": "unsub", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "delete-all covers the same address under any display name",
+    "job": { "action": "delete-all", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice Corp", "tier": "..VIP" },
+    "hideListed": false,
+    "covered": true
+  },
+  {
+    "name": "archive-all does not cover a different address",
+    "job": { "action": "archive-all", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "b@x.com", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": false
+  },
+  {
+    "name": "email comparison is case-insensitive",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "Alice@X.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "alice@x.COM", "fromName": "Alice", "tier": null },
+    "hideListed": false,
+    "covered": true
+  }
+]

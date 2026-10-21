@@ -5639,3 +5639,23 @@ test("executor tests leave no stats.json / activity-log.json in the repo root", 
     );
   }
 });
+
+test("queueScope matches every fixture case", async () => {
+  const { jobCoversMessage } = await import(
+    url.pathToFileURL(path.join(projectDir, "app", "lib", "queueScope.js")).href
+  );
+  const cases = JSON.parse(
+    fs.readFileSync(
+      path.join(projectDir, "web", "src", "test", "fixtures", "queueScope.json"),
+      "utf8",
+    ),
+  );
+  assert.ok(cases.length >= 15);
+  for (const c of cases) {
+    assert.equal(
+      jobCoversMessage(c.job, c.msg, { hideListed: c.hideListed }),
+      c.covered,
+      c.name,
+    );
+  }
+});
