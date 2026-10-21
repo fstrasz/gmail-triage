@@ -127,11 +127,13 @@ import {
   clearLastReadTriage,
   clearScannedEmailIds,
   clearWebSearchLastRunAt,
+  getBulkGuardEnabled,
   getBulkGuardThreshold,
   getNameFragmentationThreshold,
   loadSettings,
   removeEventInterest,
   removeLocation,
+  setBulkGuardEnabled,
   setBulkGuardThreshold,
   setDailySummary,
   setDailySummaryDebug,
@@ -809,7 +811,7 @@ app.post("/api/tier", async (req, res) => {
       : isOklisted(fromEmail, fromName || null);
     let labeled = 0;
     if (!alreadyListed) {
-      if (!isConfirmed(confirmed)) {
+      if (getBulkGuardEnabled() && !isConfirmed(confirmed)) {
         const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -864,7 +866,7 @@ app.post("/api/ok-clean", async (req, res) => {
   try {
     const gmail = await getGmailClient();
     // Guard checks the bulk .DelPend operation on other emails from sender
-    if (!isConfirmed(confirmed)) {
+    if (getBulkGuardEnabled() && !isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -911,7 +913,7 @@ app.post("/api/vip-clean", async (req, res) => {
   if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!isConfirmed(confirmed)) {
+    if (getBulkGuardEnabled() && !isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -955,7 +957,7 @@ app.post("/api/junk", async (req, res) => {
   if (rejectUnsafeSender(res, fromEmail)) return;
   try {
     const gmail = await getGmailClient();
-    if (!isConfirmed(confirmed)) {
+    if (getBulkGuardEnabled() && !isConfirmed(confirmed)) {
       const q = `from:"${fromEmail}" -in:sent -in:trash`;
       const count = await countMatchingEmails(gmail, q);
       if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD)) {
@@ -2403,6 +2405,7 @@ app.get("/api/settings", (req, res) => {
       backups: { single, named },
       stats: loadStats(),
       bulkGuardThreshold: getBulkGuardThreshold(BULK_GUARD_THRESHOLD),
+      bulkGuardEnabled: getBulkGuardEnabled(),
     });
   } catch (e) {
     triageServerError(res, e, "/api/settings");
@@ -2471,6 +2474,19 @@ app.post("/api/settings/bulk-guard-threshold", (req, res) => {
     });
   } catch (e) {
     triageServerError(res, e, "/api/settings/bulk-guard-threshold");
+  }
+});
+app.post("/api/settings/bulk-guard-enabled", (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== "boolean")
+    return res
+      .status(400)
+      .json({ ok: false, error: "enabled must be a boolean" });
+  try {
+    setBulkGuardEnabled(enabled);
+    res.json({ ok: true, enabled });
+  } catch (e) {
+    triageServerError(res, e, "/api/settings/bulk-guard-enabled");
   }
 });
 app.post("/api/settings/locations/add", (req, res) => {

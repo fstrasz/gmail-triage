@@ -1740,6 +1740,59 @@ test("setBulkGuardThreshold: zero / negative / NaN / non-number clears the key (
   }
 });
 
+// ─── bulkGuardEnabled: per-mailbox switch, absent = on ──────────────────────
+test("getBulkGuardEnabled defaults to true", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync("settings.json", "{}");
+    const { getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getBulkGuardEnabled(), true);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("setBulkGuardEnabled(false) persists", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setBulkGuardEnabled, getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    setBulkGuardEnabled(false);
+    assert.equal(getBulkGuardEnabled(), false);
+    assert.match(
+      fs.readFileSync("settings.json", "utf8"),
+      /"bulkGuardEnabled": false/,
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("getBulkGuardEnabled treats a non-boolean as true", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync("settings.json", JSON.stringify({ bulkGuardEnabled: "no" }));
+    const { getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getBulkGuardEnabled(), true);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── extractEmail / extractName: RFC 5322-ish parsing ────────────────────────
 
 test('extractEmail: "Name <addr>" form returns lowercased addr', async () => {
@@ -4811,6 +4864,19 @@ test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no long
     assert.equal(r.status, 400);
     r = await fetch(`${base}/reset`);
     assert.equal(r.status, 404);
+  });
+});
+
+test("POST /api/settings/bulk-guard-enabled rejects a non-boolean with 400", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/settings/bulk-guard-enabled`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: "x" }),
+    });
+    assert.equal(r.status, 400);
+    const j = await r.json();
+    assert.equal(j.ok, false);
   });
 });
 
