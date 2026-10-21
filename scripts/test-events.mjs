@@ -3017,23 +3017,32 @@ test("delete-all / archive-all: unconfirmed guard goes through senderWideNeedsCo
     path.join(projectDir, "app", "triage.js"),
     "utf8",
   );
-  const start = src.indexOf('if (action === "delete-all"');
-  assert.ok(start >= 0, "delete-all block not found");
-  const block = src.slice(start, src.indexOf("const moved = isDelete", start));
+  // The guard stays in the route; the route block runs from its delete-all marker to
+  // the executor call that every confirmed action falls through to.
+  const start = src.indexOf('(action === "delete-all" || action === "archive-all")');
+  assert.ok(start >= 0, "delete-all guard block not found");
+  const end = src.indexOf("await executeTriageAction(", start);
+  assert.ok(end > start, "route must hand the action to executeTriageAction");
+  const block = src.slice(start, end);
   // (a) the threshold lives in senderWideNeedsConfirm, not inline.
   assert.ok(
     !/count\s*>/.test(block),
     "the threshold must live in senderWideNeedsConfirm, not inline",
   );
-  assert.match(block, /if \(!isConfirmed\(confirmed\)\)/);
+  assert.match(block, /!isConfirmed\(confirmed\)/);
   assert.match(
     block,
     /if \(senderWideNeedsConfirm\(action, count\)\)\s*return res\.json\(\s*normalizeGuard\(/,
   );
   assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
-  // (b) confirmed falls through to the delete.
-  const after = src.slice(start, start + 2000);
-  assert.match(after, /deleteAllFromSender\(gmail, fromEmail\)/);
+  // (b) confirmed falls through to the delete, now performed by the executor
+  // (which may pass a trailing onProgress argument).
+  const exec = fs.readFileSync(
+    path.join(projectDir, "app", "lib", "triageExecutors.js"),
+    "utf8",
+  );
+  assert.match(exec, /deleteAllFromSender\(gmail, fromEmail(?:, onProgress)?\)/);
+  assert.match(exec, /archiveAllFromSender\(gmail, fromEmail(?:, onProgress)?\)/);
 });
 
 test("guardScope: Clean names the display name it is restricted to", async () => {
@@ -5431,4 +5440,202 @@ test("authPaths: defaults to ../config, honours a config-dir argument", async ()
   const r = authPaths("../config-robin", cwd);
   assert.equal(r.credPath, path.join(projectDir, "config-robin", "credentials.json"));
   assert.equal(r.tokenPath, path.join(projectDir, "config-robin", "token.json"));
+});
+
+// ─── triageExecutors: per-action Gmail work extracted from the route ──────────
+const triageExecutorsModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "triageExecutors.js"),
+).href;
+// Recorded at load (suite start): stats.json / activity-log.json must not leak into
+// the repo root from executor tests running in a temp cwd (F36 class).
+const rootLeakFiles = ["stats.json", "activity-log.json"];
+const rootLeakBefore = Object.fromEntries(
+  rootLeakFiles.map((f) => [f, fs.existsSync(path.join(projectDir, f))]),
+);
+
+function executorMockGmail({ listed = [], deleted = false } = {}) {
+  const batches = [];
+  const modifies = [];
+  const untrashed = [];
+  return {
+    _batches: batches,
+    _modifies: modifies,
+    _untrashed: untrashed,
+    users: {
+      labels: {
+        list: async () => ({
+          data: {
+            labels: [
+              { name: "..OK", id: "LBL_OK" },
+              { name: ".DelPend", id: "LBL_DEL" },
+            ],
+          },
+        }),
+      },
+      messages: {
+        list: async () => ({ data: { messages: listed.map((id) => ({ id })) } }),
+        batchModify: async (p) => {
+          batches.push(p.requestBody);
+        },
+        modify: async (p) => {
+          modifies.push(p);
+        },
+        untrash: async (p) => {
+          untrashed.push(p.id);
+        },
+      },
+    },
+  };
+}
+
+async function inTempCwd(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-exec-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    return await fn(dir);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("executeTriageAction ok adds to oklist and labels ..OK", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { ensureLabel } = await import(gmailModulePath);
+  const { isOklisted } = await import(oklistModulePath);
+  await inTempCwd(async (dir) => {
+    const g = executorMockGmail({ listed: ["m1", "m2"] });
+    const okId = await ensureLabel(g, "..OK");
+    const out = await executeTriageAction(g, {
+      action: "ok",
+      msgId: "m1",
+      threadId: null,
+      fromEmail: "sender@example.com",
+      fromName: null,
+    });
+    assert.equal(out.labeled, 2);
+    assert.deepEqual(g._batches[0], {
+      ids: ["m1", "m2"],
+      addLabelIds: [okId],
+      removeLabelIds: [],
+    });
+    assert.equal(out.undo.addedToList, true);
+    assert.equal(out.undo.listName, "ok");
+    assert.equal(out.undo.id, "m1");
+    assert.equal(isOklisted("sender@example.com", null), true);
+    assert.deepEqual(g._modifies[0].requestBody, { removeLabelIds: ["UNREAD"] });
+    // stats / activity log landed in the temp cwd, not the repo root
+    assert.ok(fs.existsSync(path.join(dir, "activity-log.json")));
+    assert.ok(fs.existsSync(path.join(dir, "stats.json")));
+  });
+});
+
+test("executeTriageAction delete trashes only msgId", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  await inTempCwd(async () => {
+    const g = executorMockGmail();
+    const events = [];
+    const out = await executeTriageAction(
+      g,
+      {
+        action: "delete",
+        msgId: "m9",
+        fromEmail: "sender@example.com",
+        fromName: null,
+      },
+      { onProgress: (e) => events.push(e) },
+    );
+    assert.deepEqual(g._batches, [
+      { ids: ["m9"], addLabelIds: ["TRASH"], removeLabelIds: ["INBOX", "UNREAD"] },
+    ]);
+    assert.equal(out.labeled, 1);
+    assert.equal(out.undo.addedToList, false);
+    assert.deepEqual(events, [{ total: 1 }, { processed: 1 }]);
+  });
+});
+
+test("executeTriageAction unsub with unsubDone skips tryUnsubscribe", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { isBlocked } = await import(blocklistModulePath);
+  await inTempCwd(async () => {
+    const origFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls++;
+      throw new Error("tryUnsubscribe must not run when unsubDone");
+    };
+    try {
+      const g = executorMockGmail({ listed: ["m5"] });
+      let marked = 0;
+      const out = await executeTriageAction(
+        g,
+        {
+          action: "unsub",
+          msgId: "m4",
+          fromEmail: "news@example.com",
+          fromName: null,
+          unsubUrl: "<https://example.com/unsub>",
+          unsubPost: "List-Unsubscribe=One-Click",
+          unsubDone: true,
+        },
+        { markUnsubDone: () => marked++ },
+      );
+      assert.equal(fetchCalls, 0);
+      assert.equal(marked, 0);
+      assert.equal(out.result.unsubResult, "skipped-recovered");
+      assert.ok(!out.result.openTab);
+      assert.ok(!out.result.openTabUrl);
+      // the blockSender sweep still ran
+      assert.deepEqual(g._batches[0].ids, ["m5"]);
+      assert.deepEqual(g._batches[0].addLabelIds, ["LBL_DEL"]);
+      assert.ok(isBlocked("news@example.com", null));
+      assert.equal(out.labeled, 1);
+
+      // not recovered: tryUnsubscribe runs (no header -> compose, no network), then marks
+      const g2 = executorMockGmail();
+      const out2 = await executeTriageAction(
+        g2,
+        {
+          action: "unsub",
+          msgId: "m6",
+          fromEmail: "news@example.com",
+          fromName: null,
+          unsubUrl: "",
+          unsubDone: false,
+        },
+        { markUnsubDone: () => marked++ },
+      );
+      assert.equal(marked, 1);
+      assert.equal(out2.result.unsubResult, "no-header→compose");
+      assert.equal(out2.result.openTab, true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+});
+
+test("applyTriageUndo delete untrashes the message", async () => {
+  const { applyTriageUndo } = await import(triageExecutorsModulePath);
+  const g = executorMockGmail();
+  await applyTriageUndo(g, {
+    action: "delete",
+    id: "m9",
+    fromEmail: "sender@example.com",
+    fromName: null,
+    addedToList: false,
+  });
+  assert.deepEqual(g._untrashed, ["m9"]);
+  assert.deepEqual(g._batches, [{ ids: ["m9"], addLabelIds: ["INBOX"] }]);
+});
+
+test("executor tests leave no stats.json / activity-log.json in the repo root", () => {
+  for (const f of rootLeakFiles) {
+    if (rootLeakBefore[f]) continue;
+    assert.equal(
+      fs.existsSync(path.join(projectDir, f)),
+      false,
+      `${f} appeared in the repo root during the suite`,
+    );
+  }
 });
