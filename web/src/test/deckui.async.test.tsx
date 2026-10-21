@@ -400,6 +400,9 @@ describe("TriagePage / non-blocking action queue", () => {
     // the cache still holds the stale copy of b1. The deck must refetch, and
     // b1 must stay hidden until that fresh data (without b1) has landed.
     const truth = deferred<ReturnType<typeof queueOf>>();
+    // Server truth from here on (b1's job is done), for this fetch and any
+    // later refill.
+    api.getQueue.mockResolvedValue(queueOf(filler()));
     api.getQueue.mockReturnValueOnce(truth.promise);
     api.getQueueStatus.mockResolvedValue(status());
     const deckCalls = api.getQueue.mock.calls.length;
@@ -407,6 +410,20 @@ describe("TriagePage / non-blocking action queue", () => {
     await flush();
     expect(api.getQueue.mock.calls.length).toBe(deckCalls + 1);
     expect(cachedIds(client)).toContain("b1"); // stale copy still cached
+    expect(shown("Subject b1")).toBe(false);
+
+    // While that truth fetch is still in flight, act on another card. Its
+    // optimistic cache edit is not a fetch: it must not count as fresh data
+    // and release b1 from the stale cache.
+    api.postAction.mockResolvedValue(queued("job-x"));
+    api.getQueueStatus.mockResolvedValue(
+      status({ actions: 1, activeIds: ["job-x"], emailsLeft: 1 }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Archive" })); // f0
+    await waitFor(() => expect(api.postAction).toHaveBeenCalledTimes(2));
+    await flush();
+    expect(api.getQueue.mock.calls.length).toBe(deckCalls + 1); // still deferred
+    expect(cachedIds(client)).toContain("b1");
     expect(shown("Subject b1")).toBe(false);
 
     truth.resolve(queueOf(filler()));

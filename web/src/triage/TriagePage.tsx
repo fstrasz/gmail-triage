@@ -67,10 +67,10 @@ const GUARDABLE = new Set<TriageAction>([
 const SENDER_WIDE = new Set<TriageAction>(["delete-all", "archive-all"]);
 
 // Why a removed card stays hidden even if a deck refetch still lists it: its
-// enqueue is in flight, or it belongs to a queued job. `liftedAt` is the deck
-// query's dataUpdatedAt when the job was seen not active; the card stays
-// hidden until newer deck data arrives.
-type Suppression = "enqueuing" | { jobId: string; liftedAt?: number };
+// enqueue is in flight, or it belongs to a queued job. `liftedSeq` is the
+// `fetchSeq` of the deck data on hand when the job was seen not active; the
+// card stays hidden until data from a later fetch has landed.
+type Suppression = "enqueuing" | { jobId: string; liftedSeq?: number };
 
 // Workbench action column, in groups. Delete All sits directly after Delete
 // so the sender-wide pair reads as an extension of it.
@@ -176,42 +176,49 @@ export function TriagePage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const emails = queue.data?.emails;
-  const queueDataAt = queue.dataUpdatedAt;
+  // Which fetch produced the deck data on hand. Never `dataUpdatedAt`: that
+  // also moves on every optimistic cache edit, which is not fresh server data.
+  const queueSeq = queue.data?.fetchSeq ?? 0;
   const activeIds = status?.activeIds;
   const statusAt = queueStatus.dataUpdatedAt;
   const refetchQueue = queue.refetch;
 
   // Lift a job's suppression once the status does not list it as active. The
   // deck may still hold a stale copy of its cards (a refetch the server
-  // answered before the job existed), so refetch — cancelling any stale fetch
-  // in flight — and keep the cards hidden until data newer than the lift has
-  // landed (see the load effect below). Lifting on a status that predates the
-  // job is safe: that refetch starts after the job exists, and the server
-  // excludes an active job's mail, so the cards stay out.
+  // answered before the job existed), so refetch and keep the cards hidden
+  // until data from that later fetch has landed (see the load effect below).
+  // The refetch cancels any fetch already in flight (default cancelRefetch),
+  // so the next new `fetchSeq` to land is from a fetch started after the lift.
+  // Lifting on a status that predates the job is safe: that refetch starts
+  // after the job exists, and the server excludes an active job's mail.
   // Declared before the load effect so a lift is marked before it reconciles.
   useEffect(() => {
     const active = new Set(activeIds);
     let lifted = false;
     for (const s of suppressed.current.values()) {
-      if (s === "enqueuing" || s.liftedAt !== undefined) continue;
+      if (s === "enqueuing" || s.liftedSeq !== undefined) continue;
       if (active.has(s.jobId)) continue;
-      s.liftedAt = queueDataAt;
+      s.liftedSeq = queueSeq;
       lifted = true;
     }
     if (lifted) void refetchQueue();
-  }, [activeIds, statusAt, queueDataAt, refetchQueue]);
+  }, [activeIds, statusAt, queueSeq, refetchQueue]);
 
   // Sync deck cards from the query whenever data changes. The reducer's `load`
   // reconciles against local optimistic state; `keepRemoved` keeps a removed
   // card hidden while its enqueue is in flight, its job is not yet lifted, or
-  // no deck data newer than the lift has arrived — so neither a refetch that
+  // no fetch started after the lift has landed — so neither a refetch that
   // raced an enqueue nor a stale copy of a finished job can resurrect it. Once
-  // fresh data lands, server truth decides and the entry is dropped.
+  // that fresh data lands, server truth decides and the entry is dropped.
   useEffect(() => {
     if (!emails) return;
     const keepRemoved: string[] = [];
     for (const [id, s] of suppressed.current) {
-      if (s !== "enqueuing" && s.liftedAt !== undefined && queueDataAt > s.liftedAt) {
+      if (
+        s !== "enqueuing" &&
+        s.liftedSeq !== undefined &&
+        queueSeq > s.liftedSeq
+      ) {
         suppressed.current.delete(id);
       } else {
         keepRemoved.push(id);
@@ -219,7 +226,7 @@ export function TriagePage() {
     }
     dispatch({ type: "load", cards: emails, keepRemoved });
     setDeckLoaded(true);
-  }, [emails, queueDataAt]);
+  }, [emails, queueSeq]);
 
   // Low-water refetch: fewer than LOW_WATER cards left, nothing fetching, no
   // enqueue awaiting its response. `lowWaterAt` is the deck length when it
