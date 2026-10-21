@@ -1841,14 +1841,16 @@ app.post("/api/triage/action", async (req, res) => {
 
     // ── Guard pre-flights (stay in the route); the Gmail work itself runs in the
     // queue worker via triageExecutors.js ──
+    // The Gmail client is fetched only where a count pre-flight actually runs, so
+    // unguarded actions enqueue without a Gmail call on a guard-on mailbox too.
     if (guardOn) {
-      const gmail = await getGmailClient();
       if (action === "ok" || action === "vip") {
         const alreadyListed =
           action === "vip"
             ? isViplisted(fromEmail, name)
             : isOklisted(fromEmail, name);
         if (!alreadyListed && !isConfirmed(confirmed)) {
+          const gmail = await getGmailClient();
           const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
           const count = await countMatchingEmails(gmail, q);
           if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1868,6 +1870,7 @@ app.post("/api/triage/action", async (req, res) => {
         (action === "ok-clean" || action === "vip-clean") &&
         !isConfirmed(confirmed)
       ) {
+        const gmail = await getGmailClient();
         const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1884,6 +1887,7 @@ app.post("/api/triage/action", async (req, res) => {
       }
 
       if (action === "junk" && !isConfirmed(confirmed)) {
+        const gmail = await getGmailClient();
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
@@ -1903,6 +1907,7 @@ app.post("/api/triage/action", async (req, res) => {
         (action === "delete-all" || action === "archive-all") &&
         !isConfirmed(confirmed)
       ) {
+        const gmail = await getGmailClient();
         const isDelete = action === "delete-all";
         const q = fromQuery(fromEmail);
         const count = await countMatchingEmails(gmail, q);

@@ -6088,15 +6088,46 @@ test("actionQueue: prunes finished jobs beyond 200", async () => {
   });
 });
 
+test("actionQueue: jobsAffectingSince keeps active jobs and done jobs finished at or after the cutoff", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute, { concurrency: 1 });
+    const since = Date.now();
+    const a = q.enqueueJob({ action: "archive", msgId: "a1", fromEmail: "a@x.com" });
+    const b = q.enqueueJob({ action: "archive", msgId: "b1", fromEmail: "b@x.com" });
+    await aqUntil(() => ex.started.length === 1, "first job started");
+    const far = Date.now() + 1e6;
+    // Running and pending jobs are included whatever the cutoff.
+    const active = q.jobsAffectingSince(far).map((j) => j.id);
+    assert.ok(active.includes(a.id), "running job included");
+    assert.ok(active.includes(b.id), "pending job included");
+    ex.release(a);
+    await aqUntil(() => a.status === "done", "first job done");
+    assert.ok(a.finishedAt >= since);
+    assert.ok(
+      q.jobsAffectingSince(since).some((j) => j.id === a.id),
+      "done job finished after the snapshot is included",
+    );
+    assert.ok(
+      !q.jobsAffectingSince(a.finishedAt + 1).some((j) => j.id === a.id),
+      "done job finished before the snapshot is not",
+    );
+    assert.ok(
+      q.jobsAffectingSince(far).some((j) => j.id === b.id),
+      "second job still included",
+    );
+  });
+});
+
 // ─── queue routes (enqueue instead of execute) ───────────────────────────────
 // withApp imports triage.js once, so the queue module instance is shared across
 // these tests; each runs in its own temp cwd with the guard off and a reset queue.
 // The worker is not started under GMAIL_TRIAGE_NO_LISTEN, so jobs stay pending
 // and no Gmail call is made (there are no credentials in the temp cwd).
-async function withQueueApp(fn) {
+async function withQueueApp(fn, settings = '{"bulkGuardEnabled":false}') {
   const origCwd = process.cwd();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-qr-"));
-  fs.writeFileSync(path.join(dir, "settings.json"), '{"bulkGuardEnabled":false}');
+  fs.writeFileSync(path.join(dir, "settings.json"), settings);
   process.chdir(dir);
   try {
     const q = await import(actionQueueModulePath);
@@ -6183,6 +6214,21 @@ test("queue route: undo with unknown jobId is 404; undo of a pending job cancels
   });
 });
 
+test("queue route: unguarded actions enqueue without a Gmail call when the guard is on", async () => {
+  // No credentials exist in the temp cwd, so any getGmailClient() call would 500.
+  await withQueueApp(async ({ post }) => {
+    for (const action of ["archive", "delete", "review", "unsub"]) {
+      const r = await post("/api/triage/action", {
+        action,
+        id: `m-${action}`,
+        fromEmail: "g@x.com",
+      });
+      assert.equal(r.status, 200, action);
+      assert.equal((await r.json()).queued, true, action);
+    }
+  }, '{"bulkGuardEnabled":true}');
+});
+
 test("queue route: retry and dismiss of an unknown job are 404", async () => {
   await withQueueApp(async ({ post }) => {
     for (const p of ["retry", "dismiss"]) {
@@ -6218,6 +6264,9 @@ test("queueScope: excludeCoveredEmails and makeSkipSender keep ..VIP cards from 
   assert.equal(skip2("j@x.com", "J"), true);
   assert.equal(skip2("listed@x.com", "L"), true);
   assert.equal(skip2("s@x.com", "S"), false);
+  // A job stored without a msgId must not match every sender (null === null).
+  const noId = { action: "archive", msgId: null, fromEmail: "n@x.com", fromName: null };
+  assert.equal(makeSkipSender([noId])("z@x.com", "Z"), false);
   // A job that finished after the snapshot was taken still excludes its message.
   const done = {
     action: "archive",

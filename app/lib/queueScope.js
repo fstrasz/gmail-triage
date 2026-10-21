@@ -62,7 +62,7 @@ export function makeSkipSender(jobs, { hideListed = false, baseSkip = null } = {
     early.some((j) =>
       jobCoversMessage(
         j,
-        { id: null, fromEmail, fromName, tier: null },
+        { id: undefined, fromEmail, fromName, tier: null },
         { hideListed },
       ),
     );
