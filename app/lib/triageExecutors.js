@@ -55,11 +55,21 @@ export function isAuthError(e) {
 export async function executeTriageAction(
   gmail,
   job,
-  { onProgress = null, markUnsubDone = null } = {},
+  { onProgress = null, markUnsubDone = null, markListDecision = null } = {},
 ) {
   const { action, msgId, threadId, fromEmail, subject, unsubUrl, unsubPost } =
     job;
   const name = job.fromName || null;
+  // Whether THIS job put the sender on the list. Decided once, before the first
+  // Gmail call, and persisted on the job: a re-run (auth pause, retry, restart)
+  // sees the sender already listed and would otherwise report addedToList:false,
+  // leaving the entry behind on undo.
+  const decideAdded = (alreadyListed) => {
+    if (job.addedToList !== undefined) return job.addedToList;
+    const added = !alreadyListed;
+    markListDecision?.(added);
+    return added;
+  };
   const undoBase = {
     action,
     id: msgId,
@@ -73,8 +83,9 @@ export async function executeTriageAction(
     const alreadyListed = isVip
       ? isViplisted(fromEmail, name)
       : isOklisted(fromEmail, name);
+    const addedToList = decideAdded(alreadyListed);
     let labeled = 0;
-    if (!alreadyListed) {
+    if (addedToList) {
       if (isVip) addToViplist(fromEmail, name);
       else addToOklist(fromEmail, name);
       labeled = await labelSender(
@@ -111,7 +122,7 @@ export async function executeTriageAction(
       labeled,
       undo: {
         ...undoBase,
-        addedToList: !alreadyListed,
+        addedToList,
         listName: isVip ? "vip" : "ok",
       },
       result: {},
@@ -120,9 +131,9 @@ export async function executeTriageAction(
 
   if (action === "ok-clean" || action === "vip-clean") {
     const isVip = action === "vip-clean";
-    const alreadyListed = isVip
-      ? isViplisted(fromEmail, name)
-      : isOklisted(fromEmail, name);
+    const addedToList = decideAdded(
+      isVip ? isViplisted(fromEmail, name) : isOklisted(fromEmail, name),
+    );
     const { cleaned } = await keepAndClean(
       gmail,
       msgId,
@@ -144,7 +155,7 @@ export async function executeTriageAction(
       labeled: cleaned,
       undo: {
         ...undoBase,
-        addedToList: !alreadyListed,
+        addedToList,
         listName: isVip ? "vip" : "ok",
       },
       result: {},
@@ -152,7 +163,7 @@ export async function executeTriageAction(
   }
 
   if (action === "junk") {
-    const alreadyListed = !!isBlocked(fromEmail, name);
+    const addedToList = decideAdded(!!isBlocked(fromEmail, name));
     addToBlocklist(fromEmail, "junk", name);
     const moved = await blockSender(gmail, fromEmail, name, null, onProgress);
     addToStats({ junked: moved });
@@ -167,7 +178,7 @@ export async function executeTriageAction(
       labeled: moved,
       undo: {
         ...undoBase,
-        addedToList: !alreadyListed,
+        addedToList,
         listName: "blocklist",
       },
       result: {},
@@ -194,7 +205,7 @@ export async function executeTriageAction(
   }
 
   if (action === "unsub") {
-    const alreadyListed = !!isBlocked(fromEmail, name);
+    const addedToList = decideAdded(!!isBlocked(fromEmail, name));
     let result;
     let openTab;
     let openTabUrl;
@@ -225,7 +236,7 @@ export async function executeTriageAction(
       labeled: moved,
       undo: {
         ...undoBase,
-        addedToList: !alreadyListed,
+        addedToList,
         listName: "blocklist",
       },
       result: { unsubResult: result, openTab, openTabUrl },

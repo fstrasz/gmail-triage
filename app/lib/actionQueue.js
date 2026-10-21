@@ -28,6 +28,7 @@ let pauseTimer = null;
 let worker = null; // null when stopped
 const running = new Set(); // ids of jobs with an executor in flight
 const lastProgressWrite = new Map(); // job id -> ms of last write
+const undoing = new Set(); // ids of done jobs whose undo is in flight (not persisted)
 
 function queueFile() {
   return path.join(process.cwd(), "queue", "actions.json");
@@ -77,6 +78,7 @@ export function __resetQueueForTests() {
   jobs = null;
   paused = null;
   lastProgressWrite.clear();
+  undoing.clear();
   loadQueue();
 }
 
@@ -149,10 +151,19 @@ export function jobsAffectingSince(sinceMs) {
 
 export async function undoJob(id) {
   const job = find(id);
-  if (!isUndoable(job) || job.status === "failed" || job.status === "cancelled") {
+  if (
+    !isUndoable(job) ||
+    job.status === "failed" ||
+    job.status === "cancelled" ||
+    undoing.has(id) // a second click while the first undo is still in flight
+  ) {
     throw new QueueError("not_undoable", "action cannot be undone");
   }
-  if (job.status === "pending") {
+  // A pending job that has already started once (auth pause, retry, restart) may
+  // have changed Gmail or the lists, so cancelling it would strand that work: let
+  // the worker re-run it (idempotent) and then apply the undo.
+  const hasRun = job.startedAt !== null;
+  if (job.status === "pending" && !hasRun) {
     job.status = "cancelled";
     job.finishedAt = Date.now();
     prune();
@@ -160,12 +171,19 @@ export async function undoJob(id) {
     pump();
     return { state: "cancelled" };
   }
-  if (job.status === "running") {
+  if (job.status === "pending" || job.status === "running") {
     job.undoRequested = true;
     persist();
     return { state: "undo-requested" };
   }
-  await worker.undo(await worker.getGmail(), job.undo);
+  undoing.add(id);
+  try {
+    await worker.undo(await worker.getGmail(), job.undo);
+  } catch (e) {
+    undoing.delete(id);
+    throw e;
+  }
+  undoing.delete(id);
   job.status = "cancelled";
   persist();
   return { state: "undone" };
@@ -274,10 +292,18 @@ async function runJob(job) {
     job.unsubDone = true;
     persistQuietly();
   };
+  const markListDecision = (addedToList) => {
+    job.addedToList = addedToList;
+    persistQuietly();
+  };
 
   try {
     const gmail = await w.getGmail();
-    const out = await w.execute(gmail, job, { onProgress, markUnsubDone });
+    const out = await w.execute(gmail, job, {
+      onProgress,
+      markUnsubDone,
+      markListDecision,
+    });
     job.undo = out.undo ?? null;
     job.result = { labeled: out.labeled, ...out.result };
     job.finishedAt = Date.now();
@@ -292,8 +318,9 @@ async function runJob(job) {
     }
   } catch (e) {
     if (w.isAuthError(e)) {
+      // startedAt stays set: it records that this job has run, which undoJob needs.
       job.status = "pending";
-      job.startedAt = null;
+      job.finishedAt = null;
       paused = "gmail_auth";
       if (pauseTimer) clearTimeout(pauseTimer);
       pauseTimer = setTimeout(() => {

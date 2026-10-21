@@ -5531,6 +5531,40 @@ test("executeTriageAction ok adds to oklist and labels ..OK", async () => {
   });
 });
 
+test("executeTriageAction re-run after auth pause keeps addedToList true and still labels for ok", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { addToOklist } = await import(oklistModulePath);
+  await inTempCwd(async () => {
+    // First run: sender not listed -> decision recorded as added, before any Gmail call.
+    const decisions = [];
+    const g1 = executorMockGmail({ listed: ["m1"] });
+    const job = {
+      action: "ok",
+      msgId: "m1",
+      threadId: null,
+      fromEmail: "sender@example.com",
+      fromName: null,
+    };
+    const first = await executeTriageAction(g1, job, {
+      markListDecision: (v) => decisions.push(v),
+    });
+    assert.deepEqual(decisions, [true]);
+    assert.equal(first.undo.addedToList, true);
+
+    // Re-run: the sender now reads as listed, but the persisted decision wins.
+    addToOklist("sender@example.com", null);
+    const g2 = executorMockGmail({ listed: ["m1"] });
+    const second = await executeTriageAction(
+      g2,
+      { ...job, addedToList: true },
+      { markListDecision: (v) => decisions.push(v) },
+    );
+    assert.equal(g2._batches.length, 1, "re-run must still call labelSender");
+    assert.equal(second.undo.addedToList, true);
+    assert.deepEqual(decisions, [true], "decision is recorded once only");
+  });
+});
+
 test("executeTriageAction delete trashes only msgId", async () => {
   const { executeTriageAction } = await import(triageExecutorsModulePath);
   await inTempCwd(async () => {
@@ -5943,11 +5977,68 @@ test("actionQueue: auth error returns job to pending and pauses", async () => {
     await aqUntil(() => q.getQueueStatus().paused === "gmail_auth", "paused");
     assert.equal(first.status, "pending");
     assert.equal(first.error, null);
+    assert.equal(first.finishedAt, null);
     assert.equal(q.getQueueStatus().failed.length, 0);
+    await aqTick();
+    assert.equal(calls, 1, "worker must not re-run the job while paused");
     q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
     await aqUntil(() => q.getQueueStatus().actions === 0, "resumed and drained");
     assert.equal(q.getQueueStatus().paused, null);
     assert.equal(first.status, "done");
+  });
+});
+
+test("actionQueue: undo of a pending job that already ran once returns undo-requested and applies undo after the re-run", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    const undoCalls = [];
+    aqStart(
+      q,
+      async (_g, job) => {
+        calls++;
+        if (calls === 1) throw Object.assign(new Error("401"), { auth: true });
+        return { labeled: 1, undo: { action: job.action, addedToList: true }, result: {} };
+      },
+      {
+        isAuthError: (e) => e.auth === true,
+        undo: async (_g, d) => {
+          undoCalls.push(d);
+        },
+      },
+    );
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().paused === "gmail_auth", "paused");
+    assert.equal(job.status, "pending");
+    assert.deepEqual(await q.undoJob(job.id), { state: "undo-requested" });
+    assert.equal(job.status, "pending", "must not be cancelled");
+    q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    await aqUntil(() => undoCalls.length === 1, "undo applied after re-run");
+    assert.deepEqual(undoCalls[0], { action: "ok", addedToList: true });
+    assert.equal(job.status, "cancelled");
+  });
+});
+
+test("actionQueue: double undo of a done job runs undo once", async () => {
+  await aqWith(async (q) => {
+    let release;
+    const undoCalls = [];
+    aqStart(q, async () => ({ labeled: 1, undo: { action: "ok" }, result: {} }), {
+      undo: (_g, d) => {
+        undoCalls.push(d);
+        return new Promise((r) => {
+          release = r;
+        });
+      },
+    });
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => job.status === "done", "job done");
+    const first = q.undoJob(job.id);
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
+    await aqUntil(() => release !== undefined, "first undo in flight");
+    release();
+    assert.deepEqual(await first, { state: "undone" });
+    assert.equal(undoCalls.length, 1);
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
   });
 });
 
