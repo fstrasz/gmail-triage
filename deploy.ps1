@@ -204,7 +204,9 @@ if (-not $WhatIf) {
     $robinActive = Test-Path (Join-Path $Dest "config-robin\token.json")
     $profileArg = if ($robinActive) { " --profile robin" } else { "" }
     Write-Host ("  Robin instance: " + $(if ($robinActive) { "active" } else { "not seeded - skipped" }))
-    $sshCmd = "cd /volume1/docker/gmail-triage && sudo /usr/local/bin/docker compose$profileArg up -d --force-recreate"
+    # Synology's Docker refuses to start a container whose bind-mount source
+    # directory is missing (it does not create it), so make the queue dirs first.
+    $sshCmd = "cd /volume1/docker/gmail-triage && mkdir -p config/queue config-robin/queue && sudo /usr/local/bin/docker compose$profileArg up -d --force-recreate"
     ssh -i $sshKey fstrasz_admin@192.168.20.10 $sshCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Host "CONTAINER RECREATE FAILED (ssh exit $LASTEXITCODE). Check NAS manually." -ForegroundColor Red
