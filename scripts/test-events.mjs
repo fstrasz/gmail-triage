@@ -1531,6 +1531,156 @@ test("archiveAllFromSender: pages past a single result page — both pages acted
   assert.deepEqual(g._batches[0].ids, ["m1", "m2"]);
 });
 
+// ─── progress callbacks on the sender-wide helpers (triage action queue) ──────
+// 1500 ids across three 500-id list pages, no name filter. With failFirst the
+// first batchModify rejects, so chunk 1 (1000 ids) fails and chunk 2 (500) lands.
+function progressMockGmail({ failFirst = false } = {}) {
+  let page = 0;
+  let modifyCalls = 0;
+  return {
+    users: {
+      labels: {
+        list: async () => ({
+          data: {
+            labels: [
+              { name: "..VIP", id: "LBL_VIP" },
+              { name: ".DelPend", id: "LBL_DEL" },
+            ],
+          },
+        }),
+      },
+      messages: {
+        list: async () => {
+          const start = page * 500;
+          page++;
+          return {
+            data: {
+              messages: Array.from({ length: 500 }, (_, i) => ({
+                id: "m" + (start + i),
+              })),
+              nextPageToken: page < 3 ? "next" + page : undefined,
+            },
+          };
+        },
+        batchModify: async () => {
+          if (failFirst && modifyCalls++ === 0) throw new Error("boom");
+        },
+      },
+    },
+  };
+}
+
+test("labelSender reports total then cumulative processed", async () => {
+  const { labelSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await labelSender(
+    progressMockGmail(),
+    "..VIP",
+    "a@b.com",
+    null,
+    [],
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { processed: 1000 },
+    { processed: 1500 },
+  ]);
+});
+
+test("keepAndClean reports failedChunk and still returns ids.length", async () => {
+  const { keepAndClean } = await import(keepCleanModulePath);
+  const events = [];
+  const r = await keepAndClean(
+    progressMockGmail({ failFirst: true }),
+    null,
+    "a@b.com",
+    null,
+    (e) => events.push(e),
+  );
+  assert.deepEqual(r, { cleaned: 1500 });
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("blockSender reports failedChunk", async () => {
+  const { blockSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await blockSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    null,
+    null,
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("deleteAllFromSender reports failedChunk", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await deleteAllFromSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("archiveAllFromSender reports failedChunk", async () => {
+  const { archiveAllFromSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await archiveAllFromSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("sender-wide helpers work with no onProgress", async () => {
+  const {
+    labelSender,
+    blockSender,
+    deleteAllFromSender,
+    archiveAllFromSender,
+  } = await import(gmailModulePath);
+  const { keepAndClean } = await import(keepCleanModulePath);
+  assert.equal(
+    await labelSender(progressMockGmail(), "..VIP", "a@b.com"),
+    1500,
+  );
+  assert.equal(await blockSender(progressMockGmail(), "a@b.com"), 1500);
+  assert.equal(await deleteAllFromSender(progressMockGmail(), "a@b.com"), 1500);
+  assert.equal(
+    await archiveAllFromSender(progressMockGmail(), "a@b.com"),
+    1500,
+  );
+  assert.deepEqual(
+    await keepAndClean(progressMockGmail(), null, "a@b.com", null),
+    { cleaned: 1500 },
+  );
+});
+
 test("setLastReapply / clearLastReapply round-trip through settings.json", async () => {
   const dir = fs.mkdtempSync(
     path.join(os.tmpdir(), "gmail-triage-reapply-undo-"),

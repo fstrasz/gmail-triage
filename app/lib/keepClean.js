@@ -6,7 +6,13 @@ import { ensureLabel, extractName } from "./gmail.js";
 // .DelPend and removing INBOX/UNREAD. The OK-list entry governs future mail
 // from this sender; current inbox state is wiped uniformly.
 // Returns { cleaned: number }.
-export async function keepAndClean(gmail, id, fromEmail, fromName) {
+export async function keepAndClean(
+  gmail,
+  id,
+  fromEmail,
+  fromName,
+  onProgress = null,
+) {
   const delPendId = await ensureLabel(gmail, ".DelPend");
 
   // Collect every message from this sender in inbox. ..VIP is excluded so a
@@ -49,18 +55,24 @@ export async function keepAndClean(gmail, id, fromEmail, fromName) {
   if (id && !ids.includes(id)) ids.push(id);
 
   // Batch-apply .DelPend, remove INBOX + UNREAD (true archive)
+  onProgress?.({ total: ids.length });
+  let processed = 0;
   for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
     try {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: {
-          ids: ids.slice(i, i + 1000),
+          ids: chunk,
           addLabelIds: [delPendId],
           removeLabelIds: ["INBOX", "UNREAD"],
         },
       });
+      processed += chunk.length;
+      onProgress?.({ processed });
     } catch (e) {
       console.error("keep-clean batchModify FAILED:", e.message);
+      onProgress?.({ failedChunk: true, processed });
     }
   }
 
