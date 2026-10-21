@@ -38,9 +38,11 @@
 
 - **OK & Clean / VIP & Clean** — Adds the sender to the OK (or VIP) list so future mail from this sender is auto-labeled, AND uniformly archives every CURRENT inbox message from that sender — including the clicked one — by adding `.DelPend` and removing `INBOX` + `UNREAD` labels. The list entry governs future mail; current inbox state is wiped uniformly. Excludes `..VIP`-labeled messages from cleanup as a safety against demoting an existing VIP sender.
 
-- **Bulk safety guard** — Any action that would label or archive more than 100 emails (VIP, OK, VIP & Clean, OK & Clean, Junk, list Reapply) triggers a confirmation dialog showing the exact count before proceeding. Cancel cleanly reverts the card to its pre-click state. The guard applies to UI-triggered actions only; scheduler auto-scans run without prompts.
+- **Bulk safety guard** — Any action that would label or archive more than 100 emails (VIP, OK, VIP & Clean, OK & Clean, Junk, list Reapply) triggers a confirmation dialog showing the exact count before proceeding. Cancel cleanly reverts the card to its pre-click state. The guard applies to UI-triggered actions only; scheduler auto-scans run without prompts. The guard is a per-mailbox setting, `bulkGuardEnabled` (default on). Turn it off for a mailbox where you want large senders to queue with no dialog: `POST /api/settings/bulk-guard-enabled {"enabled": false}` (send it to the running container, then read it back from `GET /api/settings`). With it off, no pre-flight count is run for any action.
 
-- **Delete All / Archive All always confirm** — These act on every message from the sender, under any display name, so they ask first whatever the count. The dialog names the sender and gives the count. For Delete All it states that the mail goes to Gmail Trash and can be recovered for 30 days; for Archive All, that mail stays in All Mail and unread stays unread. Both sit apart from the per-email actions, under "All from this sender".
+- **Background action queue** — Clicking an action returns at once: the server queues the Gmail work and a background worker (two jobs at a time) runs it. The cards the action covers leave the deck immediately (for example Junk removes the sender's other cards too), and a counter shows the work still to do, such as `3 actions · 412 emails left`, with `(1 counting)` while a sender-wide job's size is not yet known. It disappears when the queue is empty. A job that fails shows as `1 failed` with **Retry** and **Dismiss**; Retry re-runs the whole job (safe to repeat), Dismiss drops it. If Gmail authorization lapses the queue pauses, a Reconnect Gmail banner appears above the deck, and it resumes on the next action or after 5 minutes. **Undo** applies to the job: a job that has not started is cancelled, a running one is undone as soon as it finishes, and a finished one is reversed as before (list membership and single-message moves; the bulk `.DelPend` from Clean and Junk stays). Unsubscribe, Review, Delete All and Archive All cannot be undone. The queue is saved to `config/queue/actions.json`, so queued work survives a restart, deploy or crash and resumes where it stopped. Status: `GET /api/queue`.
+
+- **Delete All / Archive All always confirm** — These act on every message from the sender, under any display name, so they ask first whatever the count, including on a mailbox with the bulk guard off (there the dialog gives no count, since none is run). The dialog names the sender and, with the guard on, gives the count. For Delete All it states that the mail goes to Gmail Trash and can be recovered for 30 days; for Archive All, that mail stays in All Mail and unread stays unread. Both sit apart from the per-email actions, under "All from this sender".
 
 - **Keyboard shortcuts (desktop)** — Each key acts on the selected email. Clicking a sender in the queue selects it, and the keys then act on it straight away.
 
@@ -276,6 +278,8 @@ gmail-triage/
 │   ├── review.json              # Review queue
 │   ├── eventsdb/                # Events of Interest — SQLite (see below)
 │   │   └── events.db            #   plus events.db-wal / events.db-shm (WAL mode)
+│   ├── queue/                   # Triage action queue (directory mount, like eventsdb)
+│   │   └── actions.json         #   pending/running/failed jobs, resumed on restart
 │   ├── blocklist.backup.json    # Pre-reset auto backup
 │   └── blocklist.backups.json   # Named numbered backups
 ├── scripts/
@@ -312,6 +316,7 @@ All settings persist to `config/settings.json` and are managed at `/settings`:
 | `eventsSearchEnabled` | `false` | Enable scheduled events search |
 | `eventsSearchEmail` | `null` | Recipient(s) for events email (comma/semicolon/space separated) |
 | `eventsSearchIntervalDays` | `7` | Days between event search runs |
+| `bulkGuardEnabled` | `true` | Ask for confirmation before UI actions that touch more than the threshold. Set with `POST /api/settings/bulk-guard-enabled {"enabled": false}`; Delete All / Archive All still always confirm |
 
 ### Request security (environment, `config/.env`)
 
@@ -342,7 +347,7 @@ A second person's mailbox runs as its own container (`gmail-triage-robin` in `co
    b. `[]` in `activity-log.json`, `blocklist.json`, `blocklist.backups.json`, `keptlist.json`, `viplist.json`, `oklist.json`, `review.json`, `scan-log.json` and `rules.json`.
    c. `null` in `blocklist.backup.json` (a `{}` seed makes Settings show a phantom empty backup) and `{}` in `settings.json`.
    d. `stats.json` containing `{"kept":0,"cleaned":0,"junked":0,"unsubbed":0,"vip":0,"ok":0,"daily":[]}`.
-   e. An empty `eventsdb/` directory.
+   e. Empty `eventsdb/` and `queue/` directories (compose mounts `./config-robin/queue` for the triage action queue; `config/queue` likewise for the first instance).
    f. `.env` with `ANTHROPIC_API_KEY=<the shared key from config/.env, or Robin's workspace key>`, `OWNER_NAME=Robin`, and optionally `ALLOWED_HOSTS=localhost:3000,192.168.20.10:3001,vegasnas:3001,<tailscale-ip>:3001,<magicdns>:3001` (the container-internal healthcheck is still `localhost:3000`). List every name Robin's browser will use, including the full MagicDNS name (`*.ts.net`) if Robin browses by it, since an unlisted host gets HTTP 421. The React UI is served unless `WEB_APP_ENABLED=0`. Copy any other keys from `config/.env` that are not mailbox-specific.
 5. **Add `OWNER_NAME=Frank` to `config/.env`** (back it up first).
 6. **Mint the token.** Locally create `config-robin/` with `credentials.json`, run `cd app && node auth.js ../config-robin`, sign in as Robin in the browser that opens. `auth.js` prints the account the token is for; confirm it is Robin's address before copying `config-robin/token.json` to the NAS. If it shows any other address, delete `config-robin/token.json` and re-run, choosing Robin's account (use a private/incognito window or sign out first).
