@@ -131,6 +131,14 @@ const shown = (subject: string) =>
 // Query results reach React through notifyManager's setTimeout(0) batching.
 const flush = () => act(() => new Promise((r) => setTimeout(r, 5)));
 
+// For tests that fake only the poll interval (setInterval): advance it, then
+// let React Query's notify batching (real setTimeout) reach React.
+const tick = async (ms: number) => {
+  await act(() => vi.advanceTimersByTimeAsync(ms));
+  await flush();
+  await flush();
+};
+
 const cachedIds = (client: QueryClient) =>
   (
     client.getQueryData(["triage", "queue", { hideListed: true, limit: 25 }]) as
@@ -140,6 +148,11 @@ const cachedIds = (client: QueryClient) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset, not just clear: a test that fails mid-way can leave queued
+  // mockReturnValueOnce values that the next test would otherwise receive.
+  for (const fn of [api.getQueue, api.getQueueStatus, api.postAction, api.postUndo]) {
+    fn.mockReset();
+  }
   api.getQueue.mockResolvedValue(queueOf([makeEmail("e1"), makeEmail("e2")]));
   api.getQueueStatus.mockResolvedValue(status());
   api.postUndo.mockResolvedValue({ ok: true, state: "cancelled" });
@@ -307,19 +320,30 @@ describe("TriagePage / non-blocking action queue", () => {
       await flush();
 
       const statusCalls = api.getQueueStatus.mock.calls.length;
+      const deckCalls = api.getQueue.mock.calls.length;
       fireEvent.click(screen.getByRole("button", { name: "Delete All" })); // a1+a2
       expect(shown("Subject a2")).toBe(false);
+      // Server truth once B is enqueued: its card is no longer in the queue.
+      api.getQueue.mockResolvedValue(
+        queueOf([makeEmail("a1", a), makeEmail("a2", a), ...filler()]),
+      );
       fireEvent.click(screen.getByRole("button", { name: "Junk" })); // b1
       await waitFor(() => expect(api.postAction).toHaveBeenCalledTimes(2));
 
       // B's enqueue lands, and a status fetched after it no longer lists B
-      // (it already finished) — nothing but the deck's own state hides b1.
+      // (it already finished): B's suppression lifts, the deck refetches and
+      // that fresh data (without b1) lands BEFORE A answers. From then on
+      // nothing but the cache can bring b1 back.
       await waitFor(() =>
         expect(api.getQueueStatus.mock.calls.length).toBeGreaterThan(
           statusCalls,
         ),
       );
+      await waitFor(() =>
+        expect(api.getQueue.mock.calls.length).toBeGreaterThan(deckCalls),
+      );
       await flush();
+      expect(cachedIds(client)).not.toContain("b1");
 
       if (outcome === "guard") {
         dA.resolve({
@@ -332,8 +356,9 @@ describe("TriagePage / non-blocking action queue", () => {
       }
 
       await waitFor(() => expect(shown("Subject a1")).toBe(true));
-      // A later status poll (B not active) lifts B's suppression: from here
-      // only the cache decides whether b1 shows.
+      // B's suppression has lifted (its job is not active and fresh deck data
+      // has landed): from here only the cache decides whether b1 shows. One
+      // more status poll and render pass, so a resurrected b1 would surface.
       await flush();
       await act(() => client.refetchQueries({ queryKey: ["queue", "status"] }));
       await flush();
@@ -370,6 +395,35 @@ describe("TriagePage / non-blocking action queue", () => {
     await waitFor(() => expect(api.getQueueStatus.mock.calls.length).toBe(2));
     await flush();
     expect(shown("Subject b1")).toBe(false);
+
+    // The job finishes: the next status poll drops it from activeIds while
+    // the cache still holds the stale copy of b1. The deck must refetch, and
+    // b1 must stay hidden until that fresh data (without b1) has landed.
+    const truth = deferred<ReturnType<typeof queueOf>>();
+    api.getQueue.mockReturnValueOnce(truth.promise);
+    api.getQueueStatus.mockResolvedValue(status());
+    const deckCalls = api.getQueue.mock.calls.length;
+    await act(() => client.refetchQueries({ queryKey: ["queue", "status"] }));
+    await flush();
+    expect(api.getQueue.mock.calls.length).toBe(deckCalls + 1);
+    expect(cachedIds(client)).toContain("b1"); // stale copy still cached
+    expect(shown("Subject b1")).toBe(false);
+
+    truth.resolve(queueOf(filler()));
+    await flush();
+    expect(cachedIds(client)).not.toContain("b1");
+    expect(shown("Subject b1")).toBe(false);
+  });
+
+  test("4b. a mount with a full deck fetches the queue exactly once", async () => {
+    api.getQueue.mockResolvedValue(
+      queueOf(Array.from({ length: 15 }, (_, i) => makeEmail(`m${i}`))),
+    );
+    renderWithClient(<TriagePage />);
+    await screen.findByText("Subject m0");
+    await flush();
+    await flush();
+    expect(api.getQueue).toHaveBeenCalledTimes(1);
   });
 
   test("5. low-water refetch still completes when the user keeps clicking", async () => {
@@ -381,6 +435,10 @@ describe("TriagePage / non-blocking action queue", () => {
       )
       .mockReturnValueOnce(refetch.promise);
     api.postAction.mockResolvedValue(queued("job-1"));
+    // The archive job is still running throughout.
+    api.getQueueStatus.mockResolvedValue(
+      status({ actions: 1, emailsLeft: 1, activeIds: ["job-1"] }),
+    );
 
     renderWithClient(<TriagePage />);
     await screen.findAllByText("Subject e1");
@@ -432,14 +490,6 @@ describe("TriagePage / non-blocking action queue", () => {
       .mockResolvedValueOnce(busy)
       .mockResolvedValue(status());
 
-    // Only the poll interval is faked; React Query's notify batching runs on
-    // real setTimeout, which `flush` waits out.
-    const tick = async (ms: number) => {
-      await act(() => vi.advanceTimersByTimeAsync(ms));
-      await flush();
-      await flush();
-    };
-
     renderWithClient(<TriagePage />);
     await tick(0);
     expect(api.getQueueStatus).toHaveBeenCalledTimes(1);
@@ -460,6 +510,10 @@ describe("TriagePage / non-blocking action queue", () => {
     setDesktop();
     api.getQueue.mockResolvedValue(queueOf([makeEmail("e1"), ...filler()]));
     api.postAction.mockResolvedValueOnce(queued("job-1"));
+    // The job is pending, so only the undo can cause the deck refetch.
+    api.getQueueStatus.mockResolvedValue(
+      status({ actions: 1, emailsLeft: 1, activeIds: ["job-1"] }),
+    );
 
     renderWithClient(<TriagePage />);
     await screen.findAllByText("Subject e1");
@@ -480,6 +534,7 @@ describe("TriagePage / non-blocking action queue", () => {
   });
 
   test("8b. undo-requested refetches again when the job leaves activeIds", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     setDesktop();
     api.getQueue.mockResolvedValue(queueOf([makeEmail("e1"), ...filler()]));
     api.postAction.mockResolvedValueOnce(queued("job-1"));
@@ -488,31 +543,40 @@ describe("TriagePage / non-blocking action queue", () => {
     api.getQueueStatus.mockResolvedValue(running);
 
     renderWithClient(<TriagePage />);
-    await screen.findAllByText("Subject e1");
+    await tick(0);
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-    const undo = await screen.findByRole("button", {
-      name: "Undo last action",
-    });
-    await waitFor(() => expect(api.getQueueStatus).toHaveBeenCalledTimes(2));
-    await flush();
+    await tick(0);
+    expect(api.getQueueStatus).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(undo);
-    await waitFor(() =>
-      expect(api.postUndo).toHaveBeenCalledWith({ jobId: "job-1" }),
-    );
-    // The undo's own refetch, while the job still runs.
-    await waitFor(() => expect(api.getQueueStatus).toHaveBeenCalledTimes(3));
-    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Undo last action" }));
+    await tick(0);
+    expect(api.postUndo).toHaveBeenCalledWith({ jobId: "job-1" });
+    // The undo's own status refetch, while the job still runs.
+    expect(api.getQueueStatus).toHaveBeenCalledTimes(3);
     const deckCalls = api.getQueue.mock.calls.length;
 
-    // The job finishes (and its undo is applied): it leaves activeIds.
+    // The job finishes (and its undo is applied): the next poll drops it.
     api.getQueueStatus.mockResolvedValue(status());
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 2100)); // one poll interval
-    });
-    await waitFor(() =>
-      expect(api.getQueue.mock.calls.length).toBeGreaterThan(deckCalls),
+    await tick(2000);
+    expect(api.getQueueStatus).toHaveBeenCalledTimes(4);
+    expect(api.getQueue.mock.calls.length).toBeGreaterThan(deckCalls);
+  });
+
+  test("8c. a failed undo says so in the status area", async () => {
+    setDesktop();
+    api.getQueue.mockResolvedValue(queueOf([makeEmail("e1"), ...filler()]));
+    api.postAction.mockResolvedValueOnce(queued("job-1"));
+    api.postUndo.mockRejectedValue(new Error("postUndo failed: 400"));
+
+    renderWithClient(<TriagePage />);
+    await screen.findAllByText("Subject e1");
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Undo last action" }),
     );
+    expect(
+      await screen.findByText("Undo failed — the action could not be undone"),
+    ).toBeInTheDocument();
   });
 
   test("9. a late response does not replace the newer toast", async () => {
@@ -544,7 +608,7 @@ describe("TriagePage / non-blocking action queue", () => {
     );
   });
 
-  test("10. failed job shows Retry and Dismiss", async () => {
+  test("10. failed job shows Retry and Dismiss; Dismiss confirms first", async () => {
     api.getQueueStatus.mockResolvedValue(
       status({
         failed: [
@@ -564,7 +628,20 @@ describe("TriagePage / non-blocking action queue", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry Sender X" }));
     await waitFor(() => expect(api.retryJob).toHaveBeenCalledWith("f1"));
+
+    // Dismiss names the job and what cannot be reversed; Cancel does nothing.
     fireEvent.click(screen.getByRole("button", { name: "Dismiss Sender X" }));
+    const title = "Dismiss the failed Junk for Sender X?";
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(
+      screen.getByText("It will not be retried, and this cannot be undone."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText(title)).toBeNull());
+    expect(api.dismissJob).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Sender X" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
     await waitFor(() => expect(api.dismissJob).toHaveBeenCalledWith("f1"));
   });
 

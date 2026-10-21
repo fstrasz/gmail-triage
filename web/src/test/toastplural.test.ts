@@ -20,6 +20,6 @@ describe("toastMessage queued copy", () => {
     );
   });
   test("review has no undo tail", () => {
-    expect(toastMessage(info("review"))).toBe("Queued for review — queued");
+    expect(toastMessage(info("review"))).toBe("Review — queued");
   });
 });

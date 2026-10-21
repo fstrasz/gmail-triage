@@ -1,8 +1,13 @@
 import { X } from "lucide-react";
-import type { QueueStatus } from "../lib/api.ts";
+import { useState } from "react";
+import type { QueueJob, QueueStatus } from "../lib/api.ts";
+import { ConfirmDialog } from "../settings/ConfirmDialog.tsx";
 import { linkAction } from "../shell/ui.ts";
+import { ACTION_LABEL } from "./actionMeta.ts";
 
 const n = (v: number) => v.toLocaleString();
+const sender = (job: QueueJob) =>
+  job.fromName ?? job.fromEmail ?? "unknown sender";
 
 // "3 actions · 1,240 emails left (1 counting) · 1 failed", in the deck header.
 // Hidden when nothing is queued and nothing failed.
@@ -15,6 +20,9 @@ export function QueueCounter({
   onRetry: (id: string) => void;
   onDismiss: (id: string) => void;
 }) {
+  // The failed job whose Dismiss is awaiting confirmation.
+  const [dismissing, setDismissing] = useState<QueueJob | null>(null);
+
   if (!status) return null;
   const { actions, emailsLeft, counting, failed } = status;
   if (actions === 0 && failed.length === 0) return null;
@@ -32,7 +40,7 @@ export function QueueCounter({
             · {n(failed.length)} failed
           </span>
           {failed.map((job) => {
-            const who = job.fromName ?? job.fromEmail ?? "unknown sender";
+            const who = sender(job);
             return (
               <span key={job.id} className="inline-flex items-center gap-1.5">
                 <span className="max-w-32 truncate text-graphite">{who}</span>
@@ -48,7 +56,7 @@ export function QueueCounter({
                   type="button"
                   aria-label={`Dismiss ${who}`}
                   className="inline-flex items-center rounded text-muted hover:text-ink pointer-coarse:min-h-11 pointer-coarse:px-2"
-                  onClick={() => onDismiss(job.id)}
+                  onClick={() => setDismissing(job)}
                 >
                   <X aria-hidden size={14} />
                 </button>
@@ -57,6 +65,21 @@ export function QueueCounter({
           })}
         </>
       )}
+      <ConfirmDialog
+        open={dismissing !== null}
+        title={
+          dismissing
+            ? `Dismiss the failed ${ACTION_LABEL[dismissing.action]} for ${sender(dismissing)}?`
+            : ""
+        }
+        message="It will not be retried, and this cannot be undone."
+        confirmLabel="Dismiss"
+        onConfirm={() => {
+          if (dismissing) onDismiss(dismissing.id);
+          setDismissing(null);
+        }}
+        onCancel={() => setDismissing(null)}
+      />
     </div>
   );
 }

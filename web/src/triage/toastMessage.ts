@@ -12,7 +12,7 @@ const ACTION_VERB: Record<TriageAction, string> = {
   delete: "Deleted",
   "delete-all": "Deleted all",
   "archive-all": "Archived all",
-  review: "Queued for review",
+  review: "Review",
 };
 
 // What Undo will (or will not) do for each action.

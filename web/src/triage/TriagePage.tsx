@@ -67,8 +67,10 @@ const GUARDABLE = new Set<TriageAction>([
 const SENDER_WIDE = new Set<TriageAction>(["delete-all", "archive-all"]);
 
 // Why a removed card stays hidden even if a deck refetch still lists it: its
-// enqueue is in flight, or it belongs to a job recorded at `at`.
-type Suppression = "enqueuing" | { jobId: string; at: number };
+// enqueue is in flight, or it belongs to a queued job. `liftedAt` is the deck
+// query's dataUpdatedAt when the job was seen not active; the card stays
+// hidden until newer deck data arrives.
+type Suppression = "enqueuing" | { jobId: string; liftedAt?: number };
 
 // Workbench action column, in groups. Delete All sits directly after Delete
 // so the sender-wide pair reads as an extension of it.
@@ -167,47 +169,79 @@ export function TriagePage() {
   const commitSeq = useRef(0);
   // Jobs whose undo was deferred until they finish (state "undo-requested").
   const [undoWatch, setUndoWatch] = useState<string[]>([]);
+  // Set once the first queue data has been loaded into the deck.
+  const [deckLoaded, setDeckLoaded] = useState(false);
+  // A short status shown in the toast area when no action toast is up (e.g. a
+  // failed undo).
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // Sync deck cards from the query whenever data changes, and whenever the
-  // status poll changes which jobs are active. The reducer's `load` reconciles
-  // against local optimistic state; `keepRemoved` keeps a card hidden while its
-  // enqueue is in flight or its job is active (or recorded after the last
-  // status fetch), so a refetch that raced an enqueue cannot resurrect it.
-  // Once the job leaves `activeIds`, server truth decides.
   const emails = queue.data?.emails;
+  const queueDataAt = queue.dataUpdatedAt;
   const activeIds = status?.activeIds;
   const statusAt = queueStatus.dataUpdatedAt;
+  const refetchQueue = queue.refetch;
+
+  // Lift a job's suppression once the status does not list it as active. The
+  // deck may still hold a stale copy of its cards (a refetch the server
+  // answered before the job existed), so refetch — cancelling any stale fetch
+  // in flight — and keep the cards hidden until data newer than the lift has
+  // landed (see the load effect below). Lifting on a status that predates the
+  // job is safe: that refetch starts after the job exists, and the server
+  // excludes an active job's mail, so the cards stay out.
+  // Declared before the load effect so a lift is marked before it reconciles.
+  useEffect(() => {
+    const active = new Set(activeIds);
+    let lifted = false;
+    for (const s of suppressed.current.values()) {
+      if (s === "enqueuing" || s.liftedAt !== undefined) continue;
+      if (active.has(s.jobId)) continue;
+      s.liftedAt = queueDataAt;
+      lifted = true;
+    }
+    if (lifted) void refetchQueue();
+  }, [activeIds, statusAt, queueDataAt, refetchQueue]);
+
+  // Sync deck cards from the query whenever data changes. The reducer's `load`
+  // reconciles against local optimistic state; `keepRemoved` keeps a removed
+  // card hidden while its enqueue is in flight, its job is not yet lifted, or
+  // no deck data newer than the lift has arrived — so neither a refetch that
+  // raced an enqueue nor a stale copy of a finished job can resurrect it. Once
+  // fresh data lands, server truth decides and the entry is dropped.
   useEffect(() => {
     if (!emails) return;
-    const active = new Set(activeIds);
-    const keepRemoved = [...suppressed.current]
-      .filter(
-        ([, s]) =>
-          s === "enqueuing" || active.has(s.jobId) || statusAt <= s.at,
-      )
-      .map(([id]) => id);
+    const keepRemoved: string[] = [];
+    for (const [id, s] of suppressed.current) {
+      if (s !== "enqueuing" && s.liftedAt !== undefined && queueDataAt > s.liftedAt) {
+        suppressed.current.delete(id);
+      } else {
+        keepRemoved.push(id);
+      }
+    }
     dispatch({ type: "load", cards: emails, keepRemoved });
-  }, [emails, activeIds, statusAt]);
+    setDeckLoaded(true);
+  }, [emails, queueDataAt]);
 
   // Low-water refetch: fewer than LOW_WATER cards left, nothing fetching, no
   // enqueue awaiting its response. `lowWaterAt` is the deck length when it
   // last fired: it fires again only once the deck has shrunk further, so a
   // fetch that comes back short does not loop, and a fetch that was cancelled
   // or failed is retried on the next action instead of disarming the refill.
+  // `deckLoaded` waits for the first `load` to reach the deck: in the render
+  // that first delivers data the deck is still empty, which is not low water.
   const lowWaterAt = useRef<number | null>(null);
   const deckLen = deck.cards.length;
   const queueFetching = queue.isFetching;
-  const refetchQueue = queue.refetch;
   useEffect(() => {
+    if (!deckLoaded) return;
     if (deckLen >= LOW_WATER) {
       lowWaterAt.current = null;
       return;
     }
-    if (!emails || queueFetching || actionInFlight) return;
+    if (queueFetching || actionInFlight) return;
     if (lowWaterAt.current !== null && deckLen >= lowWaterAt.current) return;
     lowWaterAt.current = deckLen;
     void refetchQueue();
-  }, [deckLen, emails, queueFetching, actionInFlight, refetchQueue]);
+  }, [deckLoaded, deckLen, queueFetching, actionInFlight, refetchQueue]);
 
   // An undo that was deferred behind a running job lands when the job
   // finishes: refetch the deck once the status shows it has left activeIds.
@@ -267,9 +301,8 @@ export function TriagePage() {
         // FIX E — a successful action proves the Gmail connection is live again;
         // clear any stale Reconnect banner.
         setAuthError(false);
-        const at = Date.now();
         for (const id of ids) {
-          suppressed.current.set(id, { jobId: result.jobId, at });
+          suppressed.current.set(id, { jobId: result.jobId });
         }
         // A late response for an older commit must not replace the newer
         // toast: only the latest action carries Undo.
@@ -328,6 +361,7 @@ export function TriagePage() {
       const seq = ++commitSeq.current;
       // The previous action's status stays up until the next action.
       setToast(null);
+      setNotice(null);
 
       // One `act` per user gesture for the ACTIVE card (by id, so it works
       // regardless of position). The reducer removes the group, keeps the
@@ -388,12 +422,14 @@ export function TriagePage() {
   const onUndo = useCallback(
     ({ jobId }: ToastInfo["undo"]) => {
       setToast(null);
+      setNotice(null);
       undo.mutateAsync({ jobId }).then(
         (r) => {
           // A running job applies the undo when it finishes: refetch then.
           if (r.state === "undo-requested") setUndoWatch((w) => [...w, jobId]);
         },
-        () => {},
+        // e.g. 400 not_undoable: the job failed in the meantime.
+        () => setNotice("Undo failed — the action could not be undone"),
       );
     },
     [undo],
@@ -613,6 +649,17 @@ export function TriagePage() {
     </div>
   ) : null;
 
+  // Shown in the same place when there is no action toast.
+  const noticeNode = notice ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-lg bg-paper px-2.5 py-1.5 text-sm text-junk ring-1 ring-rule-strong"
+    >
+      {notice}
+    </div>
+  ) : null;
+
   const counter = (
     <QueueCounter status={status} onRetry={onRetry} onDismiss={onDismiss} />
   );
@@ -687,7 +734,7 @@ export function TriagePage() {
           </h1>
           {counter}
           {/* Inline feedback — centered between title and chip */}
-          <div className="flex min-w-0 flex-1 justify-center">{toastNode}</div>
+          <div className="flex min-w-0 flex-1 justify-center">{toastNode ?? noticeNode}</div>
           {hideToggle}
         </header>
       )}
@@ -824,7 +871,7 @@ export function TriagePage() {
                 const next = deck.cards[activeIndex + step];
                 if (next) dispatch({ type: "select", id: next.id });
               }}
-              feedback={deckToast}
+              feedback={deckToast ?? noticeNode}
             />
           </div>
         </div>
