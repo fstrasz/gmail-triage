@@ -17,6 +17,16 @@ import {
   restoreNamedBackup,
 } from "./lib/blocklist.js";
 import { createCalendarEvent, getCalendarClient } from "./lib/calendar.js";
+import {
+  dismissJob,
+  enqueueJob,
+  getQueueStatus,
+  jobsAffectingSince,
+  QueueError,
+  retryJob,
+  startQueueWorker,
+  undoJob,
+} from "./lib/actionQueue.js";
 import { analyzeEmail } from "./lib/claude.js";
 import {
   sendEventsEmail,
@@ -75,6 +85,7 @@ import {
   removeFromOklist,
 } from "./lib/oklist.js";
 import { originGuard } from "./lib/originGuard.js";
+import { excludeCoveredEmails, makeSkipSender } from "./lib/queueScope.js";
 import {
   APP_VERSION,
   blocklistPage,
@@ -1709,11 +1720,18 @@ app.get("/api/triage/queue", async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 25;
   try {
     const gmail = await getGmailClient();
+    // One snapshot of in-flight queue work per request: pending/running jobs plus
+    // jobs that finish while this fetch runs. Cards those jobs cover stay out of the
+    // deck, so an action the operator already took does not reappear.
+    const jobs = jobsAffectingSince(Date.now());
     // Skip listed senders DURING fetch (draw from the larger pool until `limit`
     // unlisted are found), exactly like the live /triage. A post-fetch filter alone
     // returned an EMPTY queue whenever the newest `limit` messages were all VIP/OK-
     // listed — leaving no card to advance to. filterHidden still drops blocked mail.
-    const skipSender = hideListed ? isListedSender : null;
+    const skipSender = makeSkipSender(jobs, {
+      hideListed,
+      baseSkip: hideListed ? isListedSender : null,
+    });
     // FIX a — exclude already-labeled ..VIP/..OK at the query level in hidden mode.
     // FIX b — walk up to 10 inbox pages so the queue reaches unprocessed mail
     // buried past the newest 100 (the deck refills, so it surfaces deeper batches
@@ -1723,7 +1741,11 @@ app.get("/api/triage/queue", async (req, res) => {
       maxPages: 10,
       excludeListedLabels: hideListed,
     });
-    const emails = filterHidden(raw, { hideListed }).map(shapeTriageEmail);
+    const emails = excludeCoveredEmails(
+      filterHidden(raw, { hideListed }).map(shapeTriageEmail),
+      jobs,
+      { hideListed },
+    );
     res.json({ emails, counts: { left: emails.length } });
   } catch (e) {
     if (isAuthError(e)) return res.status(503).json({ error: "gmail_auth" });
@@ -1796,24 +1818,57 @@ app.post("/api/triage/action", async (req, res) => {
   if (SENDER_QUERY_ACTIONS.has(action) && rejectUnsafeSender(res, fromEmail))
     return;
   const name = fromName || null;
-  const undoBase = {
-    action,
-    id,
-    threadId: threadId || null,
-    fromEmail,
-    fromName: name,
-  };
   try {
-    const gmail = await getGmailClient();
+    const guardOn = getBulkGuardEnabled();
+    // Guard off: no pre-flight counts, so no Gmail call before enqueueing. Delete All
+    // and Archive All still need an explicit confirmation, just without a count.
+    if (!guardOn) {
+      const senderWide = ["delete-all", "archive-all"].includes(action);
+      if (senderWide && !isConfirmed(confirmed))
+        return res.json(
+          normalizeGuard({
+            ok: false,
+            guard: true,
+            count: null,
+            email: fromEmail,
+            action,
+            fromName: name,
+            scope: guardScope(action, name),
+            message: `This will ${action === "delete-all" ? "delete" : "archive"} all mail from ${fromEmail}. Confirm?`,
+          }),
+        );
+    }
 
-    // ── Guard pre-flights (stay in the route). Execution lives in triageExecutors.js ──
-    if (action === "ok" || action === "vip") {
-      const alreadyListed =
-        action === "vip"
-          ? isViplisted(fromEmail, name)
-          : isOklisted(fromEmail, name);
-      if (!alreadyListed && !isConfirmed(confirmed)) {
-        const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
+    // ── Guard pre-flights (stay in the route); the Gmail work itself runs in the
+    // queue worker via triageExecutors.js ──
+    if (guardOn) {
+      const gmail = await getGmailClient();
+      if (action === "ok" || action === "vip") {
+        const alreadyListed =
+          action === "vip"
+            ? isViplisted(fromEmail, name)
+            : isOklisted(fromEmail, name);
+        if (!alreadyListed && !isConfirmed(confirmed)) {
+          const q = `from:"${fromEmail}" in:inbox -in:sent -in:trash`;
+          const count = await countMatchingEmails(gmail, q);
+          if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
+            return res.json(
+              normalizeGuard({
+                ok: false,
+                guard: true,
+                count,
+                email: fromEmail,
+                message: `This will label ${count} emails from ${fromEmail}. Confirm?`,
+              }),
+            );
+        }
+      }
+
+      if (
+        (action === "ok-clean" || action === "vip-clean") &&
+        !isConfirmed(confirmed)
+      ) {
+        const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
         const count = await countMatchingEmails(gmail, q);
         if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
           return res.json(
@@ -1822,70 +1877,53 @@ app.post("/api/triage/action", async (req, res) => {
               guard: true,
               count,
               email: fromEmail,
-              message: `This will label ${count} emails from ${fromEmail}. Confirm?`,
+              scope: guardScope(action, name),
+              message: `This will clean ${count} emails from ${fromEmail}. Confirm?`,
             }),
           );
       }
+
+      if (action === "junk" && !isConfirmed(confirmed)) {
+        const q = fromQuery(fromEmail);
+        const count = await countMatchingEmails(gmail, q);
+        if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
+          return res.json(
+            normalizeGuard({
+              ok: false,
+              guard: true,
+              count,
+              email: fromEmail,
+              scope: guardScope(action, name),
+              message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?`,
+            }),
+          );
+      }
+
+      if (
+        (action === "delete-all" || action === "archive-all") &&
+        !isConfirmed(confirmed)
+      ) {
+        const isDelete = action === "delete-all";
+        const q = fromQuery(fromEmail);
+        const count = await countMatchingEmails(gmail, q);
+        if (senderWideNeedsConfirm(action, count))
+          return res.json(
+            normalizeGuard({
+              ok: false,
+              guard: true,
+              count,
+              email: fromEmail,
+              action,
+              fromName: name ?? null,
+              scope: guardScope(action, name),
+              message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
+            }),
+          );
+      }
+
     }
 
-    if (
-      (action === "ok-clean" || action === "vip-clean") &&
-      !isConfirmed(confirmed)
-    ) {
-      const q = `from:"${fromEmail}" in:inbox -label:..VIP -in:sent -in:trash`;
-      const count = await countMatchingEmails(gmail, q);
-      if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
-        return res.json(
-          normalizeGuard({
-            ok: false,
-            guard: true,
-            count,
-            email: fromEmail,
-            scope: guardScope(action, name),
-            message: `This will clean ${count} emails from ${fromEmail}. Confirm?`,
-          }),
-        );
-    }
-
-    if (action === "junk" && !isConfirmed(confirmed)) {
-      const q = fromQuery(fromEmail);
-      const count = await countMatchingEmails(gmail, q);
-      if (count > getBulkGuardThreshold(BULK_GUARD_THRESHOLD))
-        return res.json(
-          normalizeGuard({
-            ok: false,
-            guard: true,
-            count,
-            email: fromEmail,
-            scope: guardScope(action, name),
-            message: `This will label ${count} emails from ${fromEmail} as junk. Confirm?`,
-          }),
-        );
-    }
-
-    if (
-      (action === "delete-all" || action === "archive-all") &&
-      !isConfirmed(confirmed)
-    ) {
-      const isDelete = action === "delete-all";
-      const q = fromQuery(fromEmail);
-      const count = await countMatchingEmails(gmail, q);
-      if (senderWideNeedsConfirm(action, count))
-        return res.json(
-          normalizeGuard({
-            ok: false,
-            guard: true,
-            count,
-            email: fromEmail,
-            action,
-            fromName: name ?? null,
-            scope: guardScope(action, name),
-            message: `This will ${isDelete ? "delete" : "archive"} ${count} emails from ${fromEmail}. Confirm?`,
-          }),
-        );
-    }
-
-    const { labeled, undo, result } = await executeTriageAction(gmail, {
+    const job = enqueueJob({
       action,
       msgId: id,
       threadId,
@@ -1895,7 +1933,7 @@ app.post("/api/triage/action", async (req, res) => {
       unsubUrl,
       unsubPost,
     });
-    return res.json({ ok: true, labeled, ...result, undo });
+    return res.json({ ok: true, queued: true, jobId: job.id });
   } catch (e) {
     if (isAuthError(e))
       return res.status(503).json({ ok: false, error: "gmail_auth" });
@@ -1903,25 +1941,50 @@ app.post("/api/triage/action", async (req, res) => {
   }
 });
 
-// ─── API: Stateless triage undo (React) ────────────────────────────────────────
-// Consumes the UndoDescriptor from the body and applies the compensating call
-// per ACTION_DISPATCH[action].undo. The bulk .DelPend from clean/junk is NOT
-// reversed (slice scope); undo only reverses list membership + single-message moves.
+// ─── API: Triage undo (React) ──────────────────────────────────────────────────
+// Undoes a queued job by id: a job that has not started is cancelled, a running one
+// is undone when it finishes, a finished one is reversed via applyTriageUndo. The
+// bulk .DelPend from clean/junk is NOT reversed (slice scope); undo only reverses
+// list membership + single-message moves.
 app.post("/api/triage/undo", async (req, res) => {
-  const d = req.body || {};
-  const spec = ACTION_DISPATCH[d.action];
-  if (!spec)
-    return res.status(400).json({ ok: false, error: "Invalid action" });
   try {
-    const gmail = await getGmailClient();
-    await applyTriageUndo(gmail, d);
-    res.json({ ok: true });
+    const { state } = await undoJob((req.body || {}).jobId);
+    res.json({ ok: true, state });
   } catch (e) {
+    if (e instanceof QueueError)
+      return res
+        .status(e.code === "not_found" ? 404 : 400)
+        .json({ ok: false, error: e.code });
     if (isAuthError(e))
       return res.status(503).json({ ok: false, error: "gmail_auth" });
     triageServerError(res, e, "/api/triage/undo", true);
   }
 });
+
+// ─── API: Action queue status / retry / dismiss (React) ────────────────────────
+app.get("/api/queue", (req, res) => {
+  res.json({
+    ok: true,
+    ...getQueueStatus(),
+    bulkGuardEnabled: getBulkGuardEnabled(),
+  });
+});
+
+for (const [verb, fn] of [
+  ["retry", retryJob],
+  ["dismiss", dismissJob],
+]) {
+  app.post(`/api/queue/:id/${verb}`, (req, res) => {
+    try {
+      fn(req.params.id);
+      res.json({ ok: true });
+    } catch (e) {
+      if (e instanceof QueueError)
+        return res.status(404).json({ ok: false, error: "not_found" });
+      triageServerError(res, e, `/api/queue/${verb}`, true);
+    }
+  });
+}
 
 // ═══ React Slices 2–3 JSON API (Lists / Rules / Events / Review / Settings) ═════
 // Thin JSON wrappers over the existing loaders/setters, backing the React ports of
@@ -2434,4 +2497,10 @@ if (process.env.GMAIL_TRIAGE_NO_LISTEN !== "1")
     startScheduler(getGmailClient);
     startDailySummaryScheduler(getGmailClient);
     startEventsSearchScheduler(getGmailClient);
+    startQueueWorker({
+      getGmail: getGmailClient,
+      execute: executeTriageAction,
+      undo: applyTriageUndo,
+      isAuthError,
+    });
   });

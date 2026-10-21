@@ -41,3 +41,29 @@ export function jobCoversMessage(job, msg, { hideListed = false } = {}) {
       return false;
   }
 }
+
+// Drops shaped deck emails that any snapshot job will take care of (real tier known).
+export function excludeCoveredEmails(emails, jobs, { hideListed = false } = {}) {
+  return emails.filter(
+    (e) => !jobs.some((j) => jobCoversMessage(j, e, { hideListed })),
+  );
+}
+
+// skipSender callback for fetchEmails, which asks before a message's tier is known.
+// ok-clean / vip-clean are left out: their coverage depends on the tier (..VIP mail
+// is spared), so a tier:null check would wrongly drop that sender's ..VIP cards;
+// excludeCoveredEmails handles them afterwards.
+export function makeSkipSender(jobs, { hideListed = false, baseSkip = null } = {}) {
+  const early = jobs.filter(
+    (j) => j.action !== "ok-clean" && j.action !== "vip-clean",
+  );
+  return (fromEmail, fromName) =>
+    !!baseSkip?.(fromEmail, fromName) ||
+    early.some((j) =>
+      jobCoversMessage(
+        j,
+        { id: null, fromEmail, fromName, tier: null },
+        { hideListed },
+      ),
+    );
+}

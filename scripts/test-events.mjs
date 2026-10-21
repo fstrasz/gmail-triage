@@ -3018,11 +3018,11 @@ test("delete-all / archive-all: unconfirmed guard goes through senderWideNeedsCo
     "utf8",
   );
   // The guard stays in the route; the route block runs from its delete-all marker to
-  // the executor call that every confirmed action falls through to.
+  // the enqueueJob call that every confirmed action falls through to.
   const start = src.indexOf('(action === "delete-all" || action === "archive-all")');
   assert.ok(start >= 0, "delete-all guard block not found");
-  const end = src.indexOf("await executeTriageAction(", start);
-  assert.ok(end > start, "route must hand the action to executeTriageAction");
+  const end = src.indexOf("enqueueJob(", start);
+  assert.ok(end > start, "route must hand the action to the queue via enqueueJob");
   const block = src.slice(start, end);
   // (a) the threshold lives in senderWideNeedsConfirm, not inline.
   assert.ok(
@@ -6086,4 +6086,161 @@ test("actionQueue: prunes finished jobs beyond 200", async () => {
     assert.ok(!jobs.some((j) => j.id === "job-1"), "oldest finished job pruned");
     assert.ok(jobs.some((j) => j.msgId === "new"), "newest kept");
   });
+});
+
+// ─── queue routes (enqueue instead of execute) ───────────────────────────────
+// withApp imports triage.js once, so the queue module instance is shared across
+// these tests; each runs in its own temp cwd with the guard off and a reset queue.
+// The worker is not started under GMAIL_TRIAGE_NO_LISTEN, so jobs stay pending
+// and no Gmail call is made (there are no credentials in the temp cwd).
+async function withQueueApp(fn) {
+  const origCwd = process.cwd();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-qr-"));
+  fs.writeFileSync(path.join(dir, "settings.json"), '{"bulkGuardEnabled":false}');
+  process.chdir(dir);
+  try {
+    const q = await import(actionQueueModulePath);
+    q.__resetQueueForTests();
+    return await withApp(async (base) => {
+      const post = (p, body) =>
+        fetch(`${base}${p}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      return fn({ base, post, q });
+    });
+  } finally {
+    process.chdir(origCwd);
+  }
+}
+
+test("queue route: action enqueues and returns jobId when the guard is off", async () => {
+  await withQueueApp(async ({ base, post }) => {
+    const before = await (await fetch(`${base}/api/queue`)).json();
+    const r = await post("/api/triage/action", {
+      action: "archive",
+      id: "m1",
+      fromEmail: "a@b.com",
+      fromName: "A",
+    });
+    const body = await r.json();
+    assert.equal(r.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.queued, true);
+    assert.equal(typeof body.jobId, "string");
+    const after = await (await fetch(`${base}/api/queue`)).json();
+    assert.equal(after.actions, before.actions + 1);
+    assert.ok(after.activeIds.includes(body.jobId));
+    assert.equal(after.bulkGuardEnabled, false);
+  });
+});
+
+test("queue route: delete-all without confirmed returns a count-less guard when the guard is off", async () => {
+  await withQueueApp(async ({ base, post }) => {
+    const before = await (await fetch(`${base}/api/queue`)).json();
+    const r = await post("/api/triage/action", {
+      action: "delete-all",
+      id: "m1",
+      fromEmail: "a@b.com",
+      fromName: "A",
+    });
+    const body = await r.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.guard.count, null);
+    assert.equal(body.guard.action, "delete-all");
+    assert.match(body.guard.message, /delete all mail from a@b\.com/);
+    const after = await (await fetch(`${base}/api/queue`)).json();
+    assert.equal(after.actions, before.actions);
+    // Confirmed proceeds to the queue.
+    const r2 = await post("/api/triage/action", {
+      action: "delete-all",
+      id: "m1",
+      fromEmail: "a@b.com",
+      confirmed: true,
+    });
+    assert.equal((await r2.json()).queued, true);
+  });
+});
+
+test("queue route: undo with unknown jobId is 404; undo of a pending job cancels it", async () => {
+  await withQueueApp(async ({ post }) => {
+    let r = await post("/api/triage/undo", { jobId: "nope" });
+    assert.equal(r.status, 404);
+    assert.deepEqual(await r.json(), { ok: false, error: "not_found" });
+    const { jobId } = await (
+      await post("/api/triage/action", { action: "archive", id: "m2", fromEmail: "c@d.com" })
+    ).json();
+    r = await post("/api/triage/undo", { jobId });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { ok: true, state: "cancelled" });
+    const { jobId: unsubId } = await (
+      await post("/api/triage/action", { action: "unsub", id: "m3", fromEmail: "c@d.com" })
+    ).json();
+    r = await post("/api/triage/undo", { jobId: unsubId });
+    assert.equal(r.status, 400);
+    assert.deepEqual(await r.json(), { ok: false, error: "not_undoable" });
+  });
+});
+
+test("queue route: retry and dismiss of an unknown job are 404", async () => {
+  await withQueueApp(async ({ post }) => {
+    for (const p of ["retry", "dismiss"]) {
+      const r = await post(`/api/queue/nope/${p}`, {});
+      assert.equal(r.status, 404);
+      assert.deepEqual(await r.json(), { ok: false, error: "not_found" });
+    }
+  });
+});
+
+test("queueScope: excludeCoveredEmails and makeSkipSender keep ..VIP cards from an ok-clean sender", async () => {
+  const { excludeCoveredEmails, makeSkipSender } = await import(
+    url.pathToFileURL(path.join(projectDir, "app", "lib", "queueScope.js")).href
+  );
+  const clean = { action: "ok-clean", msgId: "c1", fromEmail: "s@x.com", fromName: null };
+  const vipCard = { id: "v1", fromEmail: "s@x.com", fromName: "S", tier: "..VIP" };
+  const plainCard = { id: "p1", fromEmail: "s@x.com", fromName: "S", tier: null };
+  const other = { id: "o1", fromEmail: "z@x.com", fromName: "Z", tier: null };
+  const emails = [vipCard, plainCard, other];
+  assert.deepEqual(
+    excludeCoveredEmails(emails, [clean], { hideListed: false }).map((e) => e.id),
+    ["v1", "o1"],
+  );
+  // fetchEmails asks before the tier is known, so the pre-filter must not drop the sender.
+  const skip = makeSkipSender([clean], { hideListed: false, baseSkip: null });
+  assert.equal(skip("s@x.com", "S"), false);
+  // A sender-wide job is skipped outright, and baseSkip still applies.
+  const junk = { action: "junk", msgId: "j1", fromEmail: "j@x.com", fromName: null };
+  const skip2 = makeSkipSender([clean, junk], {
+    hideListed: false,
+    baseSkip: (e) => e === "listed@x.com",
+  });
+  assert.equal(skip2("j@x.com", "J"), true);
+  assert.equal(skip2("listed@x.com", "L"), true);
+  assert.equal(skip2("s@x.com", "S"), false);
+  // A job that finished after the snapshot was taken still excludes its message.
+  const done = {
+    action: "archive",
+    msgId: "p1",
+    fromEmail: "s@x.com",
+    fromName: "S",
+    status: "done",
+    finishedAt: Date.now() + 1000,
+  };
+  assert.deepEqual(
+    excludeCoveredEmails(emails, [done], { hideListed: false }).map((e) => e.id),
+    ["v1", "o1"],
+  );
+});
+
+test("triage.js starts the queue worker with the real executors", () => {
+  const src = fs.readFileSync(path.join(projectDir, "app", "triage.js"), "utf8");
+  assert.match(
+    src,
+    /startQueueWorker\(\{\s*getGmail: getGmailClient,\s*execute: executeTriageAction,\s*undo: applyTriageUndo,\s*isAuthError,?\s*\}\)/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(projectDir, "compose.yaml"), "utf8"),
+    /\.\/config\/queue:\/app\/queue[\s\S]*\.\/config-robin\/queue:\/app\/queue/,
+  );
 });
