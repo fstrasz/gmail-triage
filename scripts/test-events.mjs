@@ -5659,3 +5659,340 @@ test("queueScope matches every fixture case", async () => {
     );
   }
 });
+
+// ─── actionQueue (persistent job queue + worker) ─────────────────────────────
+
+const actionQueueModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "actionQueue.js"),
+).href;
+
+async function aqUntil(cond, what = "condition") {
+  for (let i = 0; i < 400; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+const aqTick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+
+// Fresh module instance in a fresh temp cwd; always stops the worker and restores cwd.
+async function aqWith(fn) {
+  const origCwd = process.cwd();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-aq-"));
+  process.chdir(dir);
+  const loadFresh = () => import(`${actionQueueModulePath}?t=${Date.now()}-${Math.random()}`);
+  const mods = [];
+  try {
+    const q = await loadFresh();
+    mods.push(q);
+    await fn(q, {
+      dir,
+      loadFresh: async () => {
+        const m = await loadFresh();
+        mods.push(m);
+        return m;
+      },
+      readFile: () =>
+        JSON.parse(fs.readFileSync(path.join(dir, "queue", "actions.json"), "utf8")),
+    });
+  } finally {
+    for (const m of mods) m.stopQueueWorker();
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Executor whose jobs each wait on a deferred promise; tracks peak in-flight.
+function aqGatedExecutor() {
+  const gates = new Map();
+  const started = [];
+  let inflight = 0;
+  let peak = 0;
+  const execute = (_gmail, job) => {
+    started.push(job);
+    inflight++;
+    peak = Math.max(peak, inflight);
+    return new Promise((resolve) => {
+      gates.set(job.id, () => {
+        inflight--;
+        resolve({ labeled: 1, undo: { action: job.action, id: job.msgId }, result: {} });
+      });
+    });
+  };
+  return {
+    execute,
+    started,
+    release: (job) => gates.get(job.id)(),
+    peak: () => peak,
+  };
+}
+
+const aqStart = (q, execute, extra = {}) =>
+  q.startQueueWorker({
+    getGmail: async () => ({}),
+    execute,
+    undo: async () => {},
+    isAuthError: () => false,
+    pauseMs: 60000,
+    ...extra,
+  });
+
+const aqJob = (i, extra = {}) => ({
+  id: `job-${i}`,
+  seq: i,
+  action: "archive",
+  msgId: `m${i}`,
+  threadId: null,
+  fromEmail: `s${i}@x.com`,
+  fromName: null,
+  subject: null,
+  unsubUrl: null,
+  unsubPost: null,
+  unsubDone: false,
+  status: "pending",
+  total: 1,
+  processed: 0,
+  undoRequested: false,
+  undo: null,
+  result: null,
+  error: null,
+  createdAt: 1,
+  startedAt: null,
+  finishedAt: null,
+  ...extra,
+});
+
+test("actionQueue: enqueueJob persists to queue/actions.json", async () => {
+  await aqWith(async (q, env) => {
+    const job = q.enqueueJob({ action: "archive", msgId: "m1", fromEmail: "a@x.com" });
+    assert.equal(job.status, "pending");
+    assert.equal(job.total, 1);
+    const onDisk = env.readFile().jobs;
+    assert.equal(onDisk.length, 1);
+    assert.equal(onDisk[0].id, job.id);
+    assert.equal(onDisk[0].msgId, "m1");
+  });
+});
+
+test("actionQueue: runs at most 2 jobs at once", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute);
+    for (let i = 1; i <= 5; i++) {
+      q.enqueueJob({ action: "ok", msgId: `m${i}`, fromEmail: `s${i}@x.com` });
+    }
+    await aqUntil(() => ex.started.length === 2, "two jobs started");
+    await aqTick();
+    assert.equal(ex.started.length, 2);
+    for (let done = 0; done < 5; done++) {
+      await aqUntil(() => ex.started.length > done, "next job started");
+      ex.release(ex.started[done]);
+      await aqTick(10);
+    }
+    await aqUntil(() => q.getQueueStatus().actions === 0, "queue drained");
+    assert.equal(ex.started.length, 5);
+    assert.equal(ex.peak(), 2);
+  });
+});
+
+test("actionQueue: same-sender jobs run in click order", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute);
+    const a1 = q.enqueueJob({ action: "archive", msgId: "a1", fromEmail: "A@x.com" });
+    const b1 = q.enqueueJob({ action: "archive", msgId: "b1", fromEmail: "b@x.com" });
+    const a2 = q.enqueueJob({ action: "archive", msgId: "a2", fromEmail: "a@x.com" });
+    await aqUntil(() => ex.started.length === 2, "A1 and B1 started");
+    assert.deepEqual(ex.started.map((j) => j.id), [a1.id, b1.id]);
+    ex.release(b1);
+    await aqTick();
+    assert.equal(ex.started.length, 2, "A2 must wait for A1");
+    ex.release(a1);
+    await aqUntil(() => ex.started.length === 3, "A2 started");
+    assert.equal(ex.started[2].id, a2.id);
+    ex.release(a2);
+  });
+});
+
+test("actionQueue: recovers running jobs to pending on load", async () => {
+  await aqWith(async (q, env) => {
+    fs.mkdirSync(path.join(env.dir, "queue"));
+    fs.writeFileSync(
+      path.join(env.dir, "queue", "actions.json"),
+      JSON.stringify({ jobs: [aqJob(1, { status: "running", startedAt: 5 })] }),
+    );
+    const seen = [];
+    aqStart(q, async (_g, job) => {
+      seen.push(job.id);
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqUntil(() => seen.length === 1, "recovered job executed");
+    assert.deepEqual(seen, ["job-1"]);
+    await aqUntil(() => env.readFile().jobs[0].status === "done", "job done on disk");
+  });
+});
+
+test("actionQueue: unsubDone survives a restart", async () => {
+  await aqWith(async (q, env) => {
+    let started = false;
+    aqStart(q, (_g, _job, { markUnsubDone }) => {
+      markUnsubDone();
+      started = true;
+      return new Promise(() => {});
+    });
+    q.enqueueJob({ action: "unsub", msgId: "u1", fromEmail: "u@x.com", unsubUrl: "mailto:x" });
+    await aqUntil(() => started, "unsub executor ran");
+    q.stopQueueWorker();
+
+    const q2 = await env.loadFresh();
+    let seenUnsubDone = null;
+    aqStart(q2, async (_g, job) => {
+      seenUnsubDone = job.unsubDone;
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqUntil(() => seenUnsubDone !== null, "re-run after restart");
+    assert.equal(seenUnsubDone, true);
+  });
+});
+
+test("actionQueue: undo of a pending job cancels it and never executes", async () => {
+  await aqWith(async (q) => {
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    assert.deepEqual(await q.undoJob(job.id), { state: "cancelled" });
+    const seen = [];
+    aqStart(q, async (_g, j) => {
+      seen.push(j.id);
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqTick();
+    assert.deepEqual(seen, []);
+    assert.equal(q.getQueueStatus().actions, 0);
+  });
+});
+
+test("actionQueue: undo of a running job defers undo until it finishes", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    const undoCalls = [];
+    aqStart(q, ex.execute, {
+      undo: async (_g, d) => {
+        undoCalls.push(d);
+      },
+    });
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => ex.started.length === 1, "job started");
+    assert.deepEqual(await q.undoJob(job.id), { state: "undo-requested" });
+    assert.equal(undoCalls.length, 0);
+    ex.release(job);
+    await aqUntil(() => undoCalls.length === 1, "deferred undo");
+    assert.deepEqual(undoCalls[0], { action: "ok", id: "m1" });
+    await aqUntil(() => q.getQueueStatus().actions === 0, "job finished");
+    assert.equal(undoCalls.length, 1);
+  });
+});
+
+test("actionQueue: undo of a non-undoable job throws not_undoable", async () => {
+  await aqWith(async (q) => {
+    const job = q.enqueueJob({ action: "unsub", msgId: "m1", fromEmail: "a@x.com" });
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
+  });
+});
+
+test("actionQueue: failedChunk marks the job failed; retry re-runs it", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    aqStart(q, async (_g, _job, { onProgress }) => {
+      calls++;
+      onProgress({ total: 3 });
+      if (calls === 1) {
+        onProgress({ failedChunk: true, processed: 1 });
+      } else {
+        onProgress({ processed: 3 });
+      }
+      return { labeled: 3, undo: null, result: {} };
+    });
+    const job = q.enqueueJob({ action: "delete-all", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().failed.length === 1, "job failed");
+    const failed = q.getQueueStatus().failed[0];
+    assert.equal(failed.error, "partial");
+    assert.equal(failed.processed, 1);
+    q.retryJob(job.id);
+    await aqUntil(
+      () => q.getQueueStatus().actions === 0 && calls === 2,
+      "retry finished",
+    );
+    assert.equal(q.getQueueStatus().failed.length, 0);
+    assert.equal(job.status, "done");
+  });
+});
+
+test("actionQueue: auth error returns job to pending and pauses", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    aqStart(
+      q,
+      async () => {
+        calls++;
+        if (calls === 1) throw Object.assign(new Error("401"), { auth: true });
+        return { labeled: 1, undo: null, result: {} };
+      },
+      { isAuthError: (e) => e.auth === true },
+    );
+    const first = q.enqueueJob({ action: "archive", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().paused === "gmail_auth", "paused");
+    assert.equal(first.status, "pending");
+    assert.equal(first.error, null);
+    assert.equal(q.getQueueStatus().failed.length, 0);
+    q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    await aqUntil(() => q.getQueueStatus().actions === 0, "resumed and drained");
+    assert.equal(q.getQueueStatus().paused, null);
+    assert.equal(first.status, "done");
+  });
+});
+
+test("actionQueue: getQueueStatus sums emailsLeft and counting", async () => {
+  await aqWith(async (q) => {
+    const gates = [];
+    aqStart(q, (_g, job, { onProgress }) => {
+      if (job.action === "ok") {
+        onProgress({ total: 10 });
+        onProgress({ processed: 4 });
+      }
+      return new Promise((resolve) => gates.push(resolve));
+    });
+    const j1 = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    const j2 = q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    const j3 = q.enqueueJob({ action: "ok", msgId: "m3", fromEmail: "c@x.com" });
+    await aqUntil(() => gates.length === 2, "two running");
+    const s = q.getQueueStatus();
+    assert.equal(s.actions, 3);
+    assert.equal(s.emailsLeft, 6 + 1);
+    assert.equal(s.counting, 1);
+    assert.deepEqual(new Set(s.activeIds), new Set([j1.id, j2.id, j3.id]));
+  });
+});
+
+test("actionQueue: prunes finished jobs beyond 200", async () => {
+  await aqWith(async (q, env) => {
+    fs.mkdirSync(path.join(env.dir, "queue"));
+    const seeded = [];
+    for (let i = 1; i <= 205; i++) {
+      seeded.push(aqJob(i, { status: "done", finishedAt: 1000 + i }));
+    }
+    fs.writeFileSync(
+      path.join(env.dir, "queue", "actions.json"),
+      JSON.stringify({ jobs: seeded }),
+    );
+    aqStart(q, async () => ({ labeled: 1, undo: null, result: {} }));
+    q.enqueueJob({ action: "archive", msgId: "new", fromEmail: "new@x.com" });
+    await aqUntil(
+      () => env.readFile().jobs.every((j) => j.status !== "pending" && j.status !== "running"),
+      "new job finished",
+    );
+    const jobs = env.readFile().jobs;
+    assert.equal(jobs.length, 200);
+    assert.ok(!jobs.some((j) => j.id === "job-1"), "oldest finished job pruned");
+    assert.ok(jobs.some((j) => j.msgId === "new"), "newest kept");
+  });
+});

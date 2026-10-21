@@ -6,6 +6,7 @@ app/node_modules
 **/node_modules
 config/
 config-robin/
+app/queue/
 .claude/
 .cline/
 deploy.log
