@@ -75,6 +75,8 @@ const localLlmModulePath = url.pathToFileURL(
 
 // ─── Pure-logic tests (no Gmail, no IO) ──────────────────────────────────────
 
+const { activeEvents } = await import(foundEventsModulePath);
+
 test("date filter: keeps today and future, drops past", () => {
   const today = "2026-05-15";
   const events = [
@@ -82,7 +84,7 @@ test("date filter: keeps today and future, drops past", () => {
     { title: "Today", date: "2026-05-15" },
     { title: "Future", date: "2026-06-01" },
   ];
-  const out = events.filter((e) => !e.ignored && (!e.date || e.date >= today));
+  const out = activeEvents(events, today);
   assert.deepEqual(
     out.map((e) => e.title),
     ["Today", "Future"],
@@ -95,7 +97,7 @@ test("date filter: keeps TBD (null date), drops past", () => {
     { title: "TBD", date: null },
     { title: "Past", date: "2026-03-26" },
   ];
-  const out = events.filter((e) => !e.ignored && (!e.date || e.date >= today));
+  const out = activeEvents(events, today);
   assert.deepEqual(
     out.map((e) => e.title),
     ["TBD"],
@@ -109,11 +111,42 @@ test("date filter: respects ignored flag independently of date", () => {
     { title: "Future-Active", date: "2026-06-01", ignored: false },
     { title: "TBD-Ignored", date: null, ignored: true },
   ];
-  const out = events.filter((e) => !e.ignored && (!e.date || e.date >= today));
+  const out = activeEvents(events, today);
   assert.deepEqual(
     out.map((e) => e.title),
     ["Future-Active"],
   );
+});
+
+test("date filter: default today drops yesterday (the events-search email bug)", () => {
+  const d = new Date();
+  const today = d.toISOString().slice(0, 10);
+  d.setUTCDate(d.getUTCDate() - 1);
+  const yesterday = d.toISOString().slice(0, 10);
+  const out = activeEvents([
+    { title: "Yesterday", date: yesterday },
+    { title: "Today", date: today },
+  ]);
+  assert.deepEqual(
+    out.map((e) => e.title),
+    ["Today"],
+  );
+});
+
+test("every sendEventsEmail call site filters through activeEvents", () => {
+  // runEventsSearchNow once emailed its raw search results, so the morning
+  // email listed the previous day's events. Pin every caller to the filter.
+  for (const rel of ["app/lib/scheduler.js", "app/triage.js"]) {
+    const src = fs.readFileSync(path.join(projectDir, rel), "utf8");
+    const calls = [...src.matchAll(/await sendEventsEmail\(gmail, ([^,]+),/g)];
+    assert.ok(calls.length > 0, `${rel}: no sendEventsEmail calls found`);
+    for (const [, arg] of calls) {
+      const ok =
+        arg.startsWith("activeEvents(") ||
+        src.includes(`const ${arg} = activeEvents(`);
+      assert.ok(ok, `${rel}: sendEventsEmail(${arg}) is not filtered`);
+    }
+  }
 });
 
 test("sort: dated chronological ascending, TBD last", () => {
