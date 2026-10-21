@@ -7,12 +7,24 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { ActionResult, TriageEmail, UndoDescriptor } from "../lib/api.ts";
+import type { ActionResult, TriageEmail } from "../lib/api.ts";
 
 // ---------------------------------------------------------------------------
 // Mock the Task-5 hooks so the Deck UI renders without a backend.
-// Controllable: queue data/status, action result, mutate spies.
+// Controllable: queue data/status, action result, mutateAsync spies.
 // ---------------------------------------------------------------------------
+
+// A mutateAsync double that settles SYNCHRONOUSLY, so assertions right after a
+// click see the result (the real hook resolves on a later microtask). TriagePage
+// only chains `.then`, which is all this implements.
+interface SyncThenable {
+  then: (onOk?: (v: unknown) => unknown) => SyncThenable;
+}
+function settled(value: unknown): SyncThenable {
+  return { then: (onOk) => settled(onOk ? onOk(value) : value) };
+}
+
+const QUEUED: ActionResult = { ok: true, queued: true, jobId: "job-1" };
 
 interface QueueState {
   data: { emails: TriageEmail[]; counts: { left: number } } | undefined;
@@ -25,43 +37,25 @@ const hookState: {
   actionResult: ActionResult;
 } = {
   queue: { data: undefined, isPending: false, isError: false },
-  actionResult: { ok: true, undo: stubUndo("ok") },
+  actionResult: QUEUED,
 };
 
-const actionMutate = vi.fn(
-  (
-    _payload: unknown,
-    opts?: {
-      onSuccess?: (r: ActionResult) => void;
-      onError?: (e: unknown) => void;
-      onSettled?: () => void;
-    },
-  ) => {
-    // Resolve synchronously with the configured result so tests are deterministic.
-    // Mirror react-query's settle order: onSuccess/onError then onSettled (the
-    // FIX-B single-in-flight lock releases in onSettled).
-    opts?.onSuccess?.(hookState.actionResult);
-    opts?.onSettled?.();
-  },
+// Resolves with the configured result, synchronously, so tests are deterministic.
+const actionMutate = vi.fn((_payload: unknown) =>
+  settled(hookState.actionResult),
 );
 
-const undoMutate = vi.fn();
-
-function stubUndo(action: UndoDescriptor["action"]): UndoDescriptor {
-  return {
-    action,
-    id: "top-id",
-    fromEmail: "a@b.com",
-    fromName: "A",
-    addedToList: true,
-    listName: "ok",
-  };
-}
+const undoMutate = vi.fn((_payload: unknown) =>
+  settled({ ok: true, state: "cancelled" }),
+);
+const queueRefetch = vi.fn();
 
 vi.mock("../lib/queries.ts", () => ({
-  useQueue: () => hookState.queue,
-  useAction: () => ({ mutate: actionMutate, isPending: false }),
-  useUndo: () => ({ mutate: undoMutate, isPending: false }),
+  useQueue: () => ({ ...hookState.queue, refetch: queueRefetch }),
+  useAction: () => ({ mutateAsync: actionMutate }),
+  useUndo: () => ({ mutateAsync: undoMutate }),
+  useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
+  useActionInFlight: () => false,
 }));
 
 // Import AFTER the mock is registered.
@@ -104,7 +98,7 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   };
-  hookState.actionResult = { ok: true, undo: stubUndo("ok") };
+  hookState.actionResult = QUEUED;
 });
 
 // The nine action accessible names exactly as rendered by the UI (aria-label
@@ -291,7 +285,7 @@ describe("TriagePage / Deck UI", () => {
     ).toBeInTheDocument();
 
     // Next call should succeed.
-    hookState.actionResult = { ok: true, undo: stubUndo("archive") };
+    hookState.actionResult = QUEUED;
     fireEvent.click(screen.getByRole("button", { name: /^confirm$/i }));
 
     const last = actionMutate.mock.calls.at(-1)![0] as {
@@ -335,9 +329,8 @@ describe("TriagePage / Deck UI", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("7. the undo toast button calls useUndo.mutate with the action result descriptor", () => {
-    const desc = stubUndo("archive");
-    hookState.actionResult = { ok: true, undo: desc };
+  test("7. the undo toast button calls useUndo with the queued job's id", () => {
+    hookState.actionResult = { ok: true, queued: true, jobId: "job-7" };
     render(<TriagePage />);
     fireEvent.click(
       screen.getByRole("button", { name: ACTION_LABELS.ok }),
@@ -345,28 +338,21 @@ describe("TriagePage / Deck UI", () => {
     const toast = screen.getByRole("status");
     fireEvent.click(within(toast).getByRole("button", { name: /undo/i }));
     expect(undoMutate).toHaveBeenCalledTimes(1);
-    expect(undoMutate.mock.calls[0][0]).toEqual(desc);
+    expect(undoMutate.mock.calls[0][0]).toEqual({ jobId: "job-7" });
   });
 
-  test("7b. honest bulk copy: vip-clean toast says N archived + undo removes from list", () => {
-    hookState.actionResult = {
-      ok: true,
-      labeled: 7,
-      undo: stubUndo("vip-clean"),
-    };
+  test("7b. honest bulk copy: vip-clean toast says queued + undo removes from list", () => {
     render(<TriagePage />);
     fireEvent.click(
       screen.getByRole("button", { name: ACTION_LABELS["vip-clean"] }),
     );
     const toast = screen.getByRole("status");
-    expect(within(toast).getByText(/7 messages archived/i)).toBeInTheDocument();
     expect(
-      within(toast).getByText(/undo removes from list/i),
+      within(toast).getByText("VIP & Clean — queued. Undo removes from list."),
     ).toBeInTheDocument();
   });
 
   test('7c. honest unsub copy (FIX H3): toast does NOT claim "undo available" and renders NO Undo button', () => {
-    hookState.actionResult = { ok: true, undo: stubUndo("unsub") };
     render(<TriagePage />);
     fireEvent.click(screen.getByRole("button", { name: ACTION_LABELS.unsub }));
     const toast = screen.getByRole("status");
@@ -379,17 +365,12 @@ describe("TriagePage / Deck UI", () => {
     expect(within(toast).getByText(/not reversible here/i)).toBeInTheDocument();
   });
 
-  test("7d. unsub status reports how many of the sender's messages were moved", () => {
-    hookState.actionResult = {
-      ok: true,
-      labeled: 12,
-      undo: stubUndo("unsub"),
-    };
+  test("7d. unsub status reports the enqueue and that the sender is blocklisted", () => {
     render(<TriagePage />);
     fireEvent.click(screen.getByRole("button", { name: ACTION_LABELS.unsub }));
     expect(
       within(screen.getByRole("status")).getByText(
-        /12 messages moved to \.DelPend and marked read/i,
+        "Unsubscribed — queued; sender blocklisted (not reversible here)",
       ),
     ).toBeInTheDocument();
   });
@@ -397,11 +378,6 @@ describe("TriagePage / Deck UI", () => {
   test("7e. status stays up and clears on the next action; position stays visible beside it", () => {
     vi.useFakeTimers();
     try {
-      hookState.actionResult = {
-        ok: true,
-        labeled: 1,
-        undo: stubUndo("archive"),
-      };
       render(<TriagePage />);
       fireEvent.click(
         screen.getByRole("button", { name: ACTION_LABELS.ok }),

@@ -1,7 +1,12 @@
 import type { QueryKey } from "@tanstack/react-query";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ActionResult, TriageEmail } from "./api.ts";
-import { getQueue, postAction, postUndo } from "./api.ts";
+import { getQueue, getQueueStatus, postAction, postUndo } from "./api.ts";
 
 // ---------------------------------------------------------------------------
 // Query key factory — shared between useQueue and useAction for consistent
@@ -17,6 +22,9 @@ function queueKey(params: QueueParams): QueryKey {
   return ["triage", "queue", params] as const;
 }
 
+const STATUS_KEY = ["queue", "status"] as const;
+const ACTION_KEY = ["triage", "action"] as const;
+
 // ---------------------------------------------------------------------------
 // useQueue — fetch the triage queue
 // ---------------------------------------------------------------------------
@@ -29,7 +37,25 @@ export function useQueue(params: QueueParams) {
 }
 
 // ---------------------------------------------------------------------------
-// useAction — perform a triage action with optimistic queue removal
+// useQueueStatus — the action queue's counter + failures. Fetched on mount (so
+// jobs from before a reload show), polled every 2 s while anything is queued.
+// ---------------------------------------------------------------------------
+
+export function useQueueStatus() {
+  return useQuery({
+    queryKey: STATUS_KEY,
+    queryFn: getQueueStatus,
+    refetchInterval: (q) => ((q.state.data?.actions ?? 0) > 0 ? 2000 : false),
+  });
+}
+
+/** True while any triage action's enqueue request is awaiting its response. */
+export function useActionInFlight(): boolean {
+  return useIsMutating({ mutationKey: ACTION_KEY }) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// useAction — enqueue a triage action with optimistic queue removal
 // ---------------------------------------------------------------------------
 
 interface ActionPayload {
@@ -40,81 +66,93 @@ interface ActionPayload {
   unsubUrl?: string | null;
   unsubPost?: string | null;
   confirmed?: boolean;
+  /** Every queue card this action covers, removed from the cache at once. */
+  coveredIds: string[];
   /** Queue params to target for optimistic update */
   queueParams: QueueParams;
 }
 
 type QueueData = { emails: TriageEmail[]; counts: { left: number } };
+type Removed = { email: TriageEmail; index: number }[];
 
 export function useAction() {
   const queryClient = useQueryClient();
 
+  // Put back exactly the entries this action removed, into the CURRENT cache
+  // value. Never a whole snapshot: with concurrent actions a snapshot still
+  // holds the other actions' cards and would resurrect them.
+  function putBack(key: QueryKey, removed: Removed) {
+    queryClient.setQueryData<QueueData>(key, (prev) => {
+      if (!prev) return prev;
+      const present = new Set(prev.emails.map((e) => e.id));
+      const back = removed.filter((r) => !present.has(r.email.id));
+      const emails = [...prev.emails];
+      for (const { email, index } of back) {
+        emails.splice(Math.min(index, emails.length), 0, email);
+      }
+      return { ...prev, emails, counts: { left: prev.counts.left + back.length } };
+    });
+  }
+
   return useMutation({
+    mutationKey: ACTION_KEY,
     mutationFn: ({
       queueParams: _qp,
+      coveredIds: _ids,
       ...payload
     }: ActionPayload): Promise<ActionResult> => postAction(payload),
 
-    onMutate: async ({ id, queueParams }) => {
+    // No cancelQueries here: it would cancel the low-water refetch on every
+    // click and leave the deck draining to empty.
+    onMutate: ({ coveredIds, queueParams }) => {
       const key = queueKey(queueParams);
-
-      // Cancel any in-flight refetches so they don't overwrite our optimistic state
-      await queryClient.cancelQueries({ queryKey: key });
-
-      // Snapshot prior state for rollback
-      const snapshot = queryClient.getQueryData<QueueData>(key);
-
-      // Optimistically remove the acted email from the queue
+      const ids = new Set(coveredIds);
+      let removed: Removed = [];
       queryClient.setQueryData<QueueData>(key, (prev) => {
         if (!prev) return prev;
+        removed = prev.emails
+          .map((email, index) => ({ email, index }))
+          .filter((r) => ids.has(r.email.id));
         return {
           ...prev,
-          emails: prev.emails.filter((e) => e.id !== id),
-          counts: { left: Math.max(0, prev.counts.left - 1) },
+          emails: prev.emails.filter((e) => !ids.has(e.id)),
+          counts: { left: Math.max(0, prev.counts.left - removed.length) },
         };
       });
-
-      return { snapshot, key };
+      return { key, removed };
     },
 
     onError: (_err, _vars, context) => {
-      // Roll back to snapshot on a thrown error.
-      if (context?.snapshot !== undefined) {
-        queryClient.setQueryData(context.key, context.snapshot);
-      }
+      if (context) putBack(context.key, context.removed);
     },
 
-    // Guard and auth-error results arrive here as RESOLVED values (ok:false),
-    // not thrown errors — so onError never fires for them. The optimistic
-    // removal must be rolled back here, exactly like onError does, so the
-    // cache (which seeds the deck's `load` reconcile) puts the card back. The
-    // caller still receives the typed result via mutation.data / its own
-    // onSuccess to drive the guard dialog or auth state. Only a genuine
-    // ok:true result leaves the optimistic removal standing.
+    // Guard and auth-error results arrive as RESOLVED values (ok:false), so
+    // onError never fires for them; roll back here too. A queued action leaves
+    // the removal standing and does NOT refetch the deck — the server excludes
+    // the job's mail from the queue on its own.
     onSuccess: (result, _vars, context) => {
-      if (!result.ok && context?.snapshot !== undefined) {
-        // Guard / auth: roll back optimistic removal so the card stays visible.
-        queryClient.setQueryData(context.key, context.snapshot);
-      } else if (result.ok) {
-        // Successful action: refetch the queue so new mail fills in immediately.
-        void queryClient.invalidateQueries({ queryKey: context?.key });
+      if (!result.ok) {
+        putBack(context.key, context.removed);
+        return;
       }
+      void queryClient.invalidateQueries({ queryKey: STATUS_KEY });
     },
   });
 }
 
 // ---------------------------------------------------------------------------
-// useUndo — undo a previous action; invalidates the queue so the restored
-// email can reappear
+// useUndo — undo a queued action by job id; refetches the deck so the server
+// decides what comes back, and the status so the counter moves
 // ---------------------------------------------------------------------------
 
 export function useUndo(queueParams: QueueParams) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: postUndo,
+    mutationFn: (payload: { jobId: string }) => postUndo(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queueKey(queueParams) });
+      void queryClient.invalidateQueries({ queryKey: STATUS_KEY });
     },
   });
 }

@@ -1,6 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { ActionResult, TriageEmail, UndoDescriptor } from "../lib/api.ts";
+import type { ActionResult, TriageEmail } from "../lib/api.ts";
+
+// A mutateAsync double that settles SYNCHRONOUSLY (TriagePage only chains `.then`).
+interface SyncThenable {
+  then: (onOk?: (v: unknown) => unknown) => SyncThenable;
+}
+function settled(value: unknown): SyncThenable {
+  return { then: (onOk) => settled(onOk ? onOk(value) : value) };
+}
+
+const QUEUED: ActionResult = { ok: true, queued: true, jobId: "job-1" };
 
 // Same mocking pattern as keyboard.test.tsx.
 const hookState: {
@@ -12,37 +22,20 @@ const hookState: {
   actionResult: ActionResult;
 } = {
   queue: { data: undefined, isPending: false, isError: false },
-  actionResult: { ok: true, undo: stubUndo() },
+  actionResult: QUEUED,
 };
 
-const actionMutate = vi.fn(
-  (
-    _payload: unknown,
-    opts?: {
-      onSuccess?: (r: ActionResult) => void;
-      onSettled?: () => void;
-    },
-  ) => {
-    opts?.onSuccess?.(hookState.actionResult);
-    opts?.onSettled?.();
-  },
+const actionMutate = vi.fn((_payload: unknown) =>
+  settled(hookState.actionResult),
 );
-
-function stubUndo(): UndoDescriptor {
-  return {
-    action: "archive",
-    id: "e1",
-    fromEmail: "a@b.com",
-    fromName: "A",
-    addedToList: false,
-    listName: "ok",
-  };
-}
+const queueRefetch = vi.fn();
 
 vi.mock("../lib/queries.ts", () => ({
-  useQueue: () => hookState.queue,
-  useAction: () => ({ mutate: actionMutate, isPending: false }),
-  useUndo: () => ({ mutate: vi.fn(), isPending: false }),
+  useQueue: () => ({ ...hookState.queue, refetch: queueRefetch }),
+  useAction: () => ({ mutateAsync: actionMutate }),
+  useUndo: () => ({ mutateAsync: vi.fn() }),
+  useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
+  useActionInFlight: () => false,
 }));
 
 import { TriagePage } from "../triage/TriagePage.tsx";
@@ -92,7 +85,7 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   };
-  hookState.actionResult = { ok: true, undo: stubUndo() };
+  hookState.actionResult = QUEUED;
   setDesktop(true);
 });
 

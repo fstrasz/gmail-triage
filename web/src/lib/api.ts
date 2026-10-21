@@ -32,15 +32,6 @@ export interface TriageEmail {
   unsubPost: string | null;
 }
 
-export interface UndoDescriptor {
-  action: TriageAction;
-  id: string;
-  fromEmail: string | null;
-  fromName: string | null;
-  addedToList: boolean;
-  listName?: "vip" | "ok" | "blocklist";
-}
-
 export interface AutoCleanEntry {
   email: string;
   reason: string;

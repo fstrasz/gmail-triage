@@ -13,29 +13,25 @@ const hookState: {
   };
 } = { queue: { data: undefined, isPending: false, isError: false } };
 
-const actionMutate = vi.fn(
-  (
-    _p: unknown,
-    opts?: { onSuccess?: (r: ActionResult) => void; onSettled?: () => void },
-  ) => {
-    opts?.onSuccess?.({
-      ok: true,
-      undo: {
-        action: "archive",
-        id: "e2",
-        fromEmail: "e2@example.com",
-        fromName: "Name e2",
-        addedToList: false,
-      },
-    });
-    opts?.onSettled?.();
-  },
+// A mutateAsync double that settles SYNCHRONOUSLY (TriagePage only chains `.then`).
+interface SyncThenable {
+  then: (onOk?: (v: unknown) => unknown) => SyncThenable;
+}
+function settled(value: unknown): SyncThenable {
+  return { then: (onOk) => settled(onOk ? onOk(value) : value) };
+}
+
+const actionMutate = vi.fn((_p: unknown) =>
+  settled({ ok: true, queued: true, jobId: "job-1" } satisfies ActionResult),
 );
+const queueRefetch = vi.fn();
 
 vi.mock("../lib/queries.ts", () => ({
-  useQueue: () => hookState.queue,
-  useAction: () => ({ mutate: actionMutate, isPending: false }),
-  useUndo: () => ({ mutate: vi.fn(), isPending: false }),
+  useQueue: () => ({ ...hookState.queue, refetch: queueRefetch }),
+  useAction: () => ({ mutateAsync: actionMutate }),
+  useUndo: () => ({ mutateAsync: vi.fn() }),
+  useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
+  useActionInFlight: () => false,
 }));
 
 import { TriagePage } from "../triage/TriagePage.tsx";
@@ -124,7 +120,8 @@ describe("touch tablet (iPad portrait) layout", () => {
     render(<TriagePage />);
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const status = screen.getByRole("status");
-    expect(within(status).getByText("Archive")).toBeInTheDocument();
+    // The stamp names the action that was queued.
+    expect(within(status).getByText("OK")).toBeInTheDocument();
   });
 });
 
