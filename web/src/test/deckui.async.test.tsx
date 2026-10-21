@@ -59,6 +59,12 @@ function filler(): TriageEmail[] {
   return Array.from({ length: 10 }, (_, i) => makeEmail(`f${i}`));
 }
 
+// Two more unrelated cards, for a deck that must stay at or above the
+// low-water mark after two actions.
+function extra(): TriageEmail[] {
+  return [makeEmail("x0"), makeEmail("x1")];
+}
+
 function queueOf(emails: TriageEmail[]) {
   return { emails, counts: { left: emails.length } };
 }
@@ -331,17 +337,18 @@ describe("TriagePage / non-blocking action queue", () => {
       await waitFor(() => expect(api.postAction).toHaveBeenCalledTimes(2));
 
       // B's enqueue lands, and a status fetched after it no longer lists B
-      // (it already finished): B's suppression lifts, the deck refetches and
-      // that fresh data (without b1) lands BEFORE A answers. From then on
-      // nothing but the cache can bring b1 back.
+      // (it already finished): B's suppression lifts, with no refetch of its
+      // own. A natural deck fetch (e.g. window focus) then lands fresh data
+      // without b1 BEFORE A answers. From then on nothing but the cache can
+      // bring b1 back.
       await waitFor(() =>
         expect(api.getQueueStatus.mock.calls.length).toBeGreaterThan(
           statusCalls,
         ),
       );
-      await waitFor(() =>
-        expect(api.getQueue.mock.calls.length).toBeGreaterThan(deckCalls),
-      );
+      await flush();
+      expect(api.getQueue.mock.calls.length).toBe(deckCalls);
+      await act(() => client.refetchQueries({ queryKey: ["triage", "queue"] }));
       await flush();
       expect(cachedIds(client)).not.toContain("b1");
 
@@ -371,7 +378,9 @@ describe("TriagePage / non-blocking action queue", () => {
 
   test("4. a refetch racing an enqueue does not resurrect the card", async () => {
     setDesktop();
-    api.getQueue.mockResolvedValue(queueOf([makeEmail("b1"), ...filler()]));
+    api.getQueue.mockResolvedValue(
+      queueOf([makeEmail("b1"), ...filler(), ...extra()]),
+    );
     const dB = deferred<ActionResult>();
     api.postAction.mockReturnValueOnce(dB.promise);
 
@@ -396,25 +405,26 @@ describe("TriagePage / non-blocking action queue", () => {
     await flush();
     expect(shown("Subject b1")).toBe(false);
 
-    // The job finishes: the next status poll drops it from activeIds while
-    // the cache still holds the stale copy of b1. The deck must refetch, and
-    // b1 must stay hidden until that fresh data (without b1) has landed.
-    const truth = deferred<ReturnType<typeof queueOf>>();
-    // Server truth from here on (b1's job is done), for this fetch and any
-    // later refill.
-    api.getQueue.mockResolvedValue(queueOf(filler()));
-    api.getQueue.mockReturnValueOnce(truth.promise);
+    // A second deck fetch that started before the job finished, and is still
+    // in flight: the server answered it before b1's job existed.
+    const stale = deferred<ReturnType<typeof queueOf>>();
+    api.getQueue.mockReturnValueOnce(stale.promise);
+    act(() => {
+      void client.refetchQueries({ queryKey: ["triage", "queue"] });
+    });
+
+    // The job finishes: the next status poll drops it from activeIds. That
+    // must NOT refetch the deck (a fetch per poll is the Gmail-quota class),
+    // and b1 stays hidden.
     api.getQueueStatus.mockResolvedValue(status());
     const deckCalls = api.getQueue.mock.calls.length;
     await act(() => client.refetchQueries({ queryKey: ["queue", "status"] }));
     await flush();
-    expect(api.getQueue.mock.calls.length).toBe(deckCalls + 1);
-    expect(cachedIds(client)).toContain("b1"); // stale copy still cached
+    expect(api.getQueue.mock.calls.length).toBe(deckCalls);
     expect(shown("Subject b1")).toBe(false);
 
-    // While that truth fetch is still in flight, act on another card. Its
-    // optimistic cache edit is not a fetch: it must not count as fresh data
-    // and release b1 from the stale cache.
+    // Act on another card meanwhile. Its optimistic cache edit is not a fetch
+    // and must not release b1.
     api.postAction.mockResolvedValue(queued("job-x"));
     api.getQueueStatus.mockResolvedValue(
       status({ actions: 1, activeIds: ["job-x"], emailsLeft: 1 }),
@@ -422,14 +432,67 @@ describe("TriagePage / non-blocking action queue", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" })); // f0
     await waitFor(() => expect(api.postAction).toHaveBeenCalledTimes(2));
     await flush();
-    expect(api.getQueue.mock.calls.length).toBe(deckCalls + 1); // still deferred
+    expect(api.getQueue.mock.calls.length).toBe(deckCalls);
+    expect(shown("Subject b1")).toBe(false);
+
+    // The stale fetch lands AFTER the lift, still holding b1. It started
+    // before the lift, so it cannot release b1.
+    stale.resolve(queueOf([makeEmail("b1"), ...filler(), ...extra()]));
+    await flush();
     expect(cachedIds(client)).toContain("b1");
     expect(shown("Subject b1")).toBe(false);
 
-    truth.resolve(queueOf(filler()));
+    // The next natural fetch (window focus, low water, undo) brings server
+    // truth: b1's job is done, so b1 is gone for good.
+    api.getQueue.mockResolvedValue(queueOf([...filler(), ...extra()]));
+    await act(() => client.refetchQueries({ queryKey: ["triage", "queue"] }));
     await flush();
     expect(cachedIds(client)).not.toContain("b1");
     expect(shown("Subject b1")).toBe(false);
+  });
+
+  test("4c. a FAILED job's card returns on the next natural fetch, not before", async () => {
+    setDesktop();
+    api.getQueue.mockResolvedValue(queueOf([makeEmail("e1"), ...filler()]));
+    api.postAction.mockResolvedValueOnce(queued("job-1"));
+    api.getQueueStatus.mockResolvedValue(
+      status({ actions: 1, emailsLeft: 1, activeIds: ["job-1"] }),
+    );
+
+    const { client } = renderWithClient(<TriagePage />);
+    await screen.findAllByText("Subject e1");
+    fireEvent.click(screen.getByRole("button", { name: "Archive" })); // e1
+    await waitFor(() => expect(api.postAction).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(shown("Subject e1")).toBe(false);
+
+    // The job fails: it leaves activeIds and shows on the counter. No deck
+    // fetch happens, so e1 does not come back yet.
+    api.getQueueStatus.mockResolvedValue(
+      status({
+        failed: [
+          {
+            id: "job-1",
+            action: "archive",
+            fromEmail: "e1@example.com",
+            fromName: "Name e1",
+            error: "boom",
+          },
+        ],
+      }),
+    );
+    const deckCalls = api.getQueue.mock.calls.length;
+    await act(() => client.refetchQueries({ queryKey: ["queue", "status"] }));
+    await flush();
+    expect(screen.getByText(/1 failed/)).toBeInTheDocument();
+    expect(api.getQueue.mock.calls.length).toBe(deckCalls);
+    expect(shown("Subject e1")).toBe(false);
+
+    // The next natural fetch: the server no longer excludes a failed job's
+    // mail, so e1 is back.
+    await act(() => client.refetchQueries({ queryKey: ["triage", "queue"] }));
+    await flush();
+    expect(shown("Subject e1")).toBe(true);
   });
 
   test("4b. a mount with a full deck fetches the queue exactly once", async () => {

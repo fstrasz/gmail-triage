@@ -32,6 +32,7 @@ vi.mock("../lib/queries.ts", () => ({
   useUndo: () => ({ mutateAsync: vi.fn() }),
   useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
   useActionInFlight: () => false,
+  currentStartedFetchSeq: () => 0,
 }));
 
 import { TriagePage } from "../triage/TriagePage.tsx";

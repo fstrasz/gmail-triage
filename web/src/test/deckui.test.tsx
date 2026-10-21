@@ -56,6 +56,7 @@ vi.mock("../lib/queries.ts", () => ({
   useUndo: () => ({ mutateAsync: undoMutate }),
   useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
   useActionInFlight: () => false,
+  currentStartedFetchSeq: () => 0,
 }));
 
 // Import AFTER the mock is registered.

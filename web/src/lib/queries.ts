@@ -29,18 +29,24 @@ const ACTION_KEY = ["triage", "action"] as const;
 // useQueue — fetch the triage queue
 // ---------------------------------------------------------------------------
 
-// Stamped onto each queue response when its fetch STARTS. Only a real fetch
-// produces a new stamp: optimistic `setQueryData` edits spread `prev` and carry
-// it through, whereas `dataUpdatedAt` moves on those edits too. A counter, not
-// Date.now(): a lift and the refetch it starts routinely share a millisecond.
+// Counts queue fetches as they START; each response carries the number its
+// fetch started with. Only a real fetch produces a new stamp: optimistic
+// `setQueryData` edits spread `prev` and carry it through, whereas
+// `dataUpdatedAt` moves on those edits too. A counter, not Date.now(): two
+// events routinely share a millisecond.
 let fetchSeq = 0;
+
+/** How many queue fetches have STARTED so far, landed or still in flight. */
+export function currentStartedFetchSeq(): number {
+  return fetchSeq;
+}
 
 export function useQueue(params: QueueParams) {
   return useQuery({
     queryKey: queueKey(params),
     queryFn: async (): Promise<QueueData> => {
       const seq = ++fetchSeq;
-      return { ...(await getQueue(params)), fetchSeq: seq };
+      return { ...(await getQueue(params)), fetchStartedSeq: seq };
     },
   });
 }
@@ -81,11 +87,11 @@ interface ActionPayload {
   queueParams: QueueParams;
 }
 
-// Client-side shape: `fetchSeq` is added by useQueue, not sent by the server.
+// Client-side shape: `fetchStartedSeq` is added by useQueue, not sent by the server.
 type QueueData = {
   emails: TriageEmail[];
   counts: { left: number };
-  fetchSeq?: number;
+  fetchStartedSeq?: number;
 };
 type Removed = { email: TriageEmail; index: number }[];
 

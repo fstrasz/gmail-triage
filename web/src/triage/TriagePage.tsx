@@ -12,6 +12,7 @@ import { dismissJob, getBodyUrl, retryJob } from "../lib/api.ts";
 import { shortDate } from "../lib/format.ts";
 import { loadMode, saveMode } from "../lib/persistMode.ts";
 import {
+  currentStartedFetchSeq,
   useAction,
   useActionInFlight,
   useQueue,
@@ -67,9 +68,9 @@ const GUARDABLE = new Set<TriageAction>([
 const SENDER_WIDE = new Set<TriageAction>(["delete-all", "archive-all"]);
 
 // Why a removed card stays hidden even if a deck refetch still lists it: its
-// enqueue is in flight, or it belongs to a queued job. `liftedSeq` is the
-// `fetchSeq` of the deck data on hand when the job was seen not active; the
-// card stays hidden until data from a later fetch has landed.
+// enqueue is in flight, or it belongs to a queued job. `liftedSeq` is how many
+// queue fetches had STARTED when the job was seen not active; the card stays
+// hidden until data from a fetch started after that has landed.
 type Suppression = "enqueuing" | { jobId: string; liftedSeq?: number };
 
 // Workbench action column, in groups. Delete All sits directly after Delete
@@ -178,31 +179,29 @@ export function TriagePage() {
   const emails = queue.data?.emails;
   // Which fetch produced the deck data on hand. Never `dataUpdatedAt`: that
   // also moves on every optimistic cache edit, which is not fresh server data.
-  const queueSeq = queue.data?.fetchSeq ?? 0;
+  const queueSeq = queue.data?.fetchStartedSeq ?? 0;
   const activeIds = status?.activeIds;
   const statusAt = queueStatus.dataUpdatedAt;
   const refetchQueue = queue.refetch;
 
   // Lift a job's suppression once the status does not list it as active. The
-  // deck may still hold a stale copy of its cards (a refetch the server
-  // answered before the job existed), so refetch and keep the cards hidden
-  // until data from that later fetch has landed (see the load effect below).
-  // The refetch cancels any fetch already in flight (default cancelRefetch),
-  // so the next new `fetchSeq` to land is from a fetch started after the lift.
-  // Lifting on a status that predates the job is safe: that refetch starts
-  // after the job exists, and the server excludes an active job's mail.
-  // Declared before the load effect so a lift is marked before it reconciles.
+  // deck may still hold, or have in flight, a stale copy of its cards (a fetch
+  // the server answered before the job existed), so the cards stay hidden
+  // until data from a fetch STARTED after the lift lands (the load effect
+  // below). No refetch here: a status poll sees jobs finish every 2 s while the
+  // operator works, and a queue fetch per poll is the Gmail-quota class the
+  // spec rules out. The cards come back on the next natural fetch (low water,
+  // window focus, undo). Lifting on a status that predates the job is safe:
+  // any later fetch starts after the job exists, and the server excludes an
+  // active job's mail.
   useEffect(() => {
     const active = new Set(activeIds);
-    let lifted = false;
     for (const s of suppressed.current.values()) {
       if (s === "enqueuing" || s.liftedSeq !== undefined) continue;
       if (active.has(s.jobId)) continue;
-      s.liftedSeq = queueSeq;
-      lifted = true;
+      s.liftedSeq = currentStartedFetchSeq();
     }
-    if (lifted) void refetchQueue();
-  }, [activeIds, statusAt, queueSeq, refetchQueue]);
+  }, [activeIds, statusAt]);
 
   // Sync deck cards from the query whenever data changes. The reducer's `load`
   // reconciles against local optimistic state; `keepRemoved` keeps a removed
