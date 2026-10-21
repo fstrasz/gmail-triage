@@ -91,6 +91,13 @@
     "covered": true
   },
   {
+    "name": "junk covers a ..VIP-tier card from the same sender and name",
+    "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
+    "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice", "tier": "..VIP" },
+    "hideListed": false,
+    "covered": true
+  },
+  {
     "name": "junk does not cover a different display name",
     "job": { "action": "junk", "msgId": "m1", "fromEmail": "a@x.com", "fromName": "Alice" },
     "msg": { "id": "m2", "fromEmail": "a@x.com", "fromName": "Alice Corp", "tier": null },

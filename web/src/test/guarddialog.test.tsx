@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { GuardDialog } from "../triage/GuardDialog.tsx";
 
@@ -32,6 +32,27 @@ describe("GuardDialog", () => {
     expect(btn.className).toContain("bg-ink");
     expect(btn.className).not.toContain("bg-junk");
     expect(screen.getByText(/stay in All Mail/)).toBeTruthy();
+  });
+
+  test("GuardDialog with null count shows no number", () => {
+    renderGuard({
+      count: null,
+      message: "Move every message from Acme to Trash?",
+      action: "delete-all",
+      fromName: "Acme",
+    });
+    expect(
+      screen.getByRole("button", { name: "Move all to Trash" }),
+    ).toBeTruthy();
+    cleanup();
+    renderGuard({
+      count: null,
+      message: "Archive every message from Acme?",
+      action: "archive-all",
+      fromName: "Acme",
+    });
+    expect(screen.getByRole("button", { name: "Archive all" })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/null|NaN|undefined/);
   });
 
   test("a guard without an action renders the generic dialog", () => {

@@ -22,12 +22,16 @@ export interface DeckState {
 // ---------------------------------------------------------------------------
 
 export type DeckEvent =
-  | { type: "load"; cards: TriageEmail[] }
+  // keepRemoved: removed ids that stay suppressed even when the incoming cards
+  // include them (their job is still being enqueued or is active).
+  | { type: "load"; cards: TriageEmail[]; keepRemoved?: string[] }
   | { type: "setMode"; mode: Mode }
   | { type: "select"; id: string }
-  | { type: "act"; action: TriageAction; id?: string }
+  // ids: every card the action covers, the acted card first.
+  | { type: "act"; action: TriageAction; id?: string; ids?: string[] }
   | { type: "advance"; id?: string }
-  | { type: "undo" };
+  | { type: "undo" }
+  | { type: "restore"; ids: string[] };
 
 // The id to act on: an explicit id, else the current selection, else the top.
 function activeId(state: DeckState, explicit?: string): string | null {
@@ -50,7 +54,10 @@ export function deckReducer(state: DeckState, event: DeckEvent): DeckState {
       // incoming queue was restored server-side → drop it from `removed`; one
       // still absent is an in-flight/confirmed removal → keep it filtered out.
       const incomingIds = new Set(event.cards.map((c) => c.id));
-      const removed = state.removed.filter((r) => !incomingIds.has(r.card.id));
+      const keep = new Set(event.keepRemoved);
+      const removed = state.removed.filter(
+        (r) => keep.has(r.card.id) || !incomingIds.has(r.card.id),
+      );
       const removedIds = new Set(removed.map((r) => r.card.id));
       const cards = event.cards.filter((c) => !removedIds.has(c.id));
       // Keep the selection if it's still present, else fall back to the top.
@@ -75,11 +82,18 @@ export function deckReducer(state: DeckState, event: DeckEvent): DeckState {
       if (id == null) return state;
       const index = state.cards.findIndex((c) => c.id === id);
       if (index < 0) return state;
-      const card = state.cards[index];
-      const cards = [
-        ...state.cards.slice(0, index),
-        ...state.cards.slice(index + 1),
-      ];
+      // A group act removes every covered card, the acted card first.
+      const ids = new Set(event.type === "act" && event.ids ? event.ids : [id]);
+      ids.add(id);
+      const group = state.cards
+        .map((card, i) => ({ card, index: i }))
+        .filter((r) => ids.has(r.card.id))
+        .sort(
+          (a, b) =>
+            Number(b.card.id === id) - Number(a.card.id === id) ||
+            a.index - b.index,
+        );
+      const cards = state.cards.filter((c) => !ids.has(c.id));
       // Keep the cursor at the same position — the card that shifts up into the
       // gap becomes selected (the queue "moves up"); clamp at the end.
       const nextSelected = cards.length
@@ -88,8 +102,27 @@ export function deckReducer(state: DeckState, event: DeckEvent): DeckState {
       return {
         ...state,
         cards,
-        removed: [{ card, index }, ...state.removed],
+        removed: [...group, ...state.removed],
         selectedId: nextSelected,
+      };
+    }
+
+    case "restore": {
+      const ids = new Set(event.ids);
+      const back = state.removed
+        .filter((r) => ids.has(r.card.id))
+        .sort((a, b) => a.index - b.index);
+      if (back.length === 0) return state;
+      // Ascending order: each insert sees every lower-index card in place.
+      const cards = [...state.cards];
+      for (const { card, index } of back) {
+        cards.splice(Math.min(index, cards.length), 0, card);
+      }
+      return {
+        ...state,
+        cards,
+        removed: state.removed.filter((r) => !ids.has(r.card.id)),
+        selectedId: state.selectedId ?? back[0].card.id,
       };
     }
 
