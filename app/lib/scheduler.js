@@ -10,6 +10,7 @@ import {
   shouldSkipWebSearch,
 } from "./eventSearch.js";
 import {
+  activeEvents,
   loadFoundEvents,
   pruneInvalidEmailEvents,
   upsertFoundEvents,
@@ -524,14 +525,11 @@ function _scheduleSummary() {
       try {
         const gmail = await _summaryGmailGetter();
         await pruneInvalidEmailEvents(gmail);
-        const today = new Date().toISOString().slice(0, 10);
-        const activeEvents = loadFoundEvents().filter(
-          (e) => !e.ignored && (!e.date || e.date >= today),
-        );
-        if (activeEvents.length) {
-          await sendEventsEmail(gmail, activeEvents, loadSettings());
+        const active = activeEvents(loadFoundEvents());
+        if (active.length) {
+          await sendEventsEmail(gmail, active, loadSettings());
           console.log(
-            `[scheduler] daily events email sent (${activeEvents.length} events)`,
+            `[scheduler] daily events email sent (${active.length} events)`,
           );
         }
       } catch (e) {
@@ -594,7 +592,7 @@ export async function runEventsSearchNow(getGmailClient) {
   if (!skipWeb && webResult.status === "fulfilled") setWebSearchLastRunAt();
   const allEvents = [...webEvents, ...emailEvents];
   const added = upsertFoundEvents(allEvents);
-  await sendEventsEmail(gmail, allEvents, s);
+  await sendEventsEmail(gmail, activeEvents(allEvents), s);
   setEventsSearchLastRunAt();
   console.log(
     `[scheduler] events search complete: ${webEvents.length} web + ${emailEvents.length} email = ${allEvents.length} found, ${added} new`,
