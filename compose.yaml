@@ -26,6 +26,9 @@ services:
       # in the container's ephemeral layer — leaving a host-side reader (the
       # EventViewer) on a stale database and losing WAL state on recreate.
       - ./config/eventsdb:/app/eventsdb
+      # Triage action queue (queue/actions.json). A directory mount so the atomic
+      # temp-file rename works and queued jobs survive a container recreate.
+      - ./config/queue:/app/queue
       # Config & data
       - ./config/.env:/app/.env
       - ./config/credentials.json:/app/credentials.json
@@ -70,6 +73,7 @@ services:
       - ./web/dist:/app/web/dist
       - ./config-robin/activity-log.json:/app/activity-log.json
       - ./config-robin/eventsdb:/app/eventsdb
+      - ./config-robin/queue:/app/queue
       - ./config-robin/.env:/app/.env
       - ./config-robin/credentials.json:/app/credentials.json
       - ./config-robin/token.json:/app/token.json

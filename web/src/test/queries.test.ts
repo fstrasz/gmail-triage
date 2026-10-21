@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { UndoDescriptor } from "../lib/api.ts";
 import { getBodyUrl, getQueue, postAction, postUndo } from "../lib/api.ts";
 
 // ---------------------------------------------------------------------------
@@ -23,16 +22,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("postAction", () => {
-  test("POSTs to /api/triage/action and returns parsed ActionResult on success", async () => {
-    const undoDesc: UndoDescriptor = {
-      action: "ok",
-      id: "msg-1",
-      fromEmail: "sender@example.com",
-      fromName: "Sender Name",
-      addedToList: true,
-      listName: "ok",
-    };
-    mockFetch(200, { ok: true, labeled: 3, undo: undoDesc });
+  test("POSTs to /api/triage/action and returns the queued job on success", async () => {
+    mockFetch(200, { ok: true, queued: true, jobId: "job-1" });
 
     const result = await postAction({
       id: "msg-1",
@@ -51,7 +42,7 @@ describe("postAction", () => {
         fromName: "Sender Name",
       }),
     });
-    expect(result).toEqual({ ok: true, labeled: 3, undo: undoDesc });
+    expect(result).toEqual({ ok: true, queued: true, jobId: "job-1" });
   });
 
   test("returns guard response (not throws) when server returns ok:false guard", async () => {
@@ -101,15 +92,7 @@ describe("postAction", () => {
   });
 
   test("includes confirmed:true in body when passed", async () => {
-    const undoDesc: UndoDescriptor = {
-      action: "junk",
-      id: "msg-5",
-      fromEmail: "x@x.com",
-      fromName: "X",
-      addedToList: true,
-      listName: "blocklist",
-    };
-    mockFetch(200, { ok: true, undo: undoDesc });
+    mockFetch(200, { ok: true, queued: true, jobId: "job-5" });
 
     await postAction({
       id: "msg-5",
@@ -131,25 +114,17 @@ describe("postAction", () => {
 // ---------------------------------------------------------------------------
 
 describe("postUndo", () => {
-  test("POSTs descriptor to /api/triage/undo and returns {ok:true}", async () => {
-    mockFetch(200, { ok: true });
+  test("POSTs {jobId} to /api/triage/undo and returns the undo state", async () => {
+    mockFetch(200, { ok: true, state: "cancelled" });
 
-    const descriptor: UndoDescriptor = {
-      action: "ok",
-      id: "msg-10",
-      fromEmail: "undo@example.com",
-      fromName: "Undo Test",
-      addedToList: false,
-    };
-
-    const result = await postUndo(descriptor);
+    const result = await postUndo({ jobId: "job-10" });
 
     expect(fetch).toHaveBeenCalledWith("/api/triage/undo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(descriptor),
+      body: JSON.stringify({ jobId: "job-10" }),
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, state: "cancelled" });
   });
 });
 

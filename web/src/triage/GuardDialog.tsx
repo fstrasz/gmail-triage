@@ -9,7 +9,7 @@ import {
 } from "../shell/ui.ts";
 
 export interface GuardInfo {
-  count: number;
+  count: number | null;
   message: string;
   /** What the count covers — reach + name scope (search-scope visibility). */
   scope?: string;
@@ -35,10 +35,16 @@ export function GuardDialog({
     : isArchive
       ? `Archive all mail from ${who}?`
       : "Confirm bulk action";
+  // A null count means no count was run (guard-off mailbox): name no number.
+  const counted = guard?.count != null;
   const confirmLabel = isDelete
-    ? `Move ${guard?.count} to Trash`
+    ? counted
+      ? `Move ${guard?.count} to Trash`
+      : "Move all to Trash"
     : isArchive
-      ? `Archive ${guard?.count}`
+      ? counted
+        ? `Archive ${guard?.count}`
+        : "Archive all"
       : "Confirm";
   const confirmCls = isArchive ? btnPrimary : btnDanger;
   return (

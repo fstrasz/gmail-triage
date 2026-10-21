@@ -1564,6 +1564,156 @@ test("archiveAllFromSender: pages past a single result page — both pages acted
   assert.deepEqual(g._batches[0].ids, ["m1", "m2"]);
 });
 
+// ─── progress callbacks on the sender-wide helpers (triage action queue) ──────
+// 1500 ids across three 500-id list pages, no name filter. With failFirst the
+// first batchModify rejects, so chunk 1 (1000 ids) fails and chunk 2 (500) lands.
+function progressMockGmail({ failFirst = false } = {}) {
+  let page = 0;
+  let modifyCalls = 0;
+  return {
+    users: {
+      labels: {
+        list: async () => ({
+          data: {
+            labels: [
+              { name: "..VIP", id: "LBL_VIP" },
+              { name: ".DelPend", id: "LBL_DEL" },
+            ],
+          },
+        }),
+      },
+      messages: {
+        list: async () => {
+          const start = page * 500;
+          page++;
+          return {
+            data: {
+              messages: Array.from({ length: 500 }, (_, i) => ({
+                id: "m" + (start + i),
+              })),
+              nextPageToken: page < 3 ? "next" + page : undefined,
+            },
+          };
+        },
+        batchModify: async () => {
+          if (failFirst && modifyCalls++ === 0) throw new Error("boom");
+        },
+      },
+    },
+  };
+}
+
+test("labelSender reports total then cumulative processed", async () => {
+  const { labelSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await labelSender(
+    progressMockGmail(),
+    "..VIP",
+    "a@b.com",
+    null,
+    [],
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { processed: 1000 },
+    { processed: 1500 },
+  ]);
+});
+
+test("keepAndClean reports failedChunk and still returns ids.length", async () => {
+  const { keepAndClean } = await import(keepCleanModulePath);
+  const events = [];
+  const r = await keepAndClean(
+    progressMockGmail({ failFirst: true }),
+    null,
+    "a@b.com",
+    null,
+    (e) => events.push(e),
+  );
+  assert.deepEqual(r, { cleaned: 1500 });
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("blockSender reports failedChunk", async () => {
+  const { blockSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await blockSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    null,
+    null,
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("deleteAllFromSender reports failedChunk", async () => {
+  const { deleteAllFromSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await deleteAllFromSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("archiveAllFromSender reports failedChunk", async () => {
+  const { archiveAllFromSender } = await import(gmailModulePath);
+  const events = [];
+  const n = await archiveAllFromSender(
+    progressMockGmail({ failFirst: true }),
+    "a@b.com",
+    (e) => events.push(e),
+  );
+  assert.equal(n, 1500);
+  assert.deepEqual(events, [
+    { total: 1500 },
+    { failedChunk: true, processed: 0 },
+    { processed: 500 },
+  ]);
+});
+
+test("sender-wide helpers work with no onProgress", async () => {
+  const {
+    labelSender,
+    blockSender,
+    deleteAllFromSender,
+    archiveAllFromSender,
+  } = await import(gmailModulePath);
+  const { keepAndClean } = await import(keepCleanModulePath);
+  assert.equal(
+    await labelSender(progressMockGmail(), "..VIP", "a@b.com"),
+    1500,
+  );
+  assert.equal(await blockSender(progressMockGmail(), "a@b.com"), 1500);
+  assert.equal(await deleteAllFromSender(progressMockGmail(), "a@b.com"), 1500);
+  assert.equal(
+    await archiveAllFromSender(progressMockGmail(), "a@b.com"),
+    1500,
+  );
+  assert.deepEqual(
+    await keepAndClean(progressMockGmail(), null, "a@b.com", null),
+    { cleaned: 1500 },
+  );
+});
+
 test("setLastReapply / clearLastReapply round-trip through settings.json", async () => {
   const dir = fs.mkdtempSync(
     path.join(os.tmpdir(), "gmail-triage-reapply-undo-"),
@@ -1767,6 +1917,59 @@ test("setBulkGuardThreshold: zero / negative / NaN / non-number clears the key (
         `${String(bad)} → getter falls back to default`,
       );
     }
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── bulkGuardEnabled: per-mailbox switch, absent = on ──────────────────────
+test("getBulkGuardEnabled defaults to true", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync("settings.json", "{}");
+    const { getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getBulkGuardEnabled(), true);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("setBulkGuardEnabled(false) persists", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const { setBulkGuardEnabled, getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    setBulkGuardEnabled(false);
+    assert.equal(getBulkGuardEnabled(), false);
+    assert.match(
+      fs.readFileSync("settings.json", "utf8"),
+      /"bulkGuardEnabled": false/,
+    );
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("getBulkGuardEnabled treats a non-boolean as true", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-guard-en-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    fs.writeFileSync("settings.json", JSON.stringify({ bulkGuardEnabled: "no" }));
+    const { getBulkGuardEnabled } = await import(
+      settingsModulePath + "?t=" + Date.now() + Math.random()
+    );
+    assert.equal(getBulkGuardEnabled(), true);
   } finally {
     process.chdir(origCwd);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -2847,23 +3050,32 @@ test("delete-all / archive-all: unconfirmed guard goes through senderWideNeedsCo
     path.join(projectDir, "app", "triage.js"),
     "utf8",
   );
-  const start = src.indexOf('if (action === "delete-all"');
-  assert.ok(start >= 0, "delete-all block not found");
-  const block = src.slice(start, src.indexOf("const moved = isDelete", start));
+  // The guard stays in the route; the route block runs from its delete-all marker to
+  // the enqueueJob call that every confirmed action falls through to.
+  const start = src.indexOf('(action === "delete-all" || action === "archive-all")');
+  assert.ok(start >= 0, "delete-all guard block not found");
+  const end = src.indexOf("enqueueJob(", start);
+  assert.ok(end > start, "route must hand the action to the queue via enqueueJob");
+  const block = src.slice(start, end);
   // (a) the threshold lives in senderWideNeedsConfirm, not inline.
   assert.ok(
     !/count\s*>/.test(block),
     "the threshold must live in senderWideNeedsConfirm, not inline",
   );
-  assert.match(block, /if \(!isConfirmed\(confirmed\)\)/);
+  assert.match(block, /!isConfirmed\(confirmed\)/);
   assert.match(
     block,
     /if \(senderWideNeedsConfirm\(action, count\)\)\s*return res\.json\(\s*normalizeGuard\(/,
   );
   assert.match(block, /action,\s*\n\s*fromName: name \?\? null/);
-  // (b) confirmed falls through to the delete.
-  const after = src.slice(start, start + 2000);
-  assert.match(after, /deleteAllFromSender\(gmail, fromEmail\)/);
+  // (b) confirmed falls through to the delete, now performed by the executor
+  // (which may pass a trailing onProgress argument).
+  const exec = fs.readFileSync(
+    path.join(projectDir, "app", "lib", "triageExecutors.js"),
+    "utf8",
+  );
+  assert.match(exec, /deleteAllFromSender\(gmail, fromEmail(?:, onProgress)?\)/);
+  assert.match(exec, /archiveAllFromSender\(gmail, fromEmail(?:, onProgress)?\)/);
 });
 
 test("guardScope: Clean names the display name it is restricted to", async () => {
@@ -4847,6 +5059,19 @@ test("H3 app: unsafe fromEmail is a 400 on the action routes; GET /reset no long
   });
 });
 
+test("POST /api/settings/bulk-guard-enabled rejects a non-boolean with 400", async () => {
+  await withApp(async (base) => {
+    const r = await fetch(`${base}/api/settings/bulk-guard-enabled`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: "x" }),
+    });
+    assert.equal(r.status, 400);
+    const j = await r.json();
+    assert.equal(j.ok, false);
+  });
+});
+
 test("H4 sanitizeUrl: blocks 0.0.0.0, trailing-dot names, mapped IPv6, ULA, CGNAT", async () => {
   const { sanitizeUrl } = await import(unsubModulePath);
   for (const bad of [
@@ -5248,4 +5473,856 @@ test("authPaths: defaults to ../config, honours a config-dir argument", async ()
   const r = authPaths("../config-robin", cwd);
   assert.equal(r.credPath, path.join(projectDir, "config-robin", "credentials.json"));
   assert.equal(r.tokenPath, path.join(projectDir, "config-robin", "token.json"));
+});
+
+// ─── triageExecutors: per-action Gmail work extracted from the route ──────────
+const triageExecutorsModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "triageExecutors.js"),
+).href;
+// Recorded at load (suite start): stats.json / activity-log.json must not leak into
+// the repo root from executor tests running in a temp cwd (F36 class).
+const rootLeakFiles = ["stats.json", "activity-log.json"];
+const rootLeakBefore = Object.fromEntries(
+  rootLeakFiles.map((f) => [f, fs.existsSync(path.join(projectDir, f))]),
+);
+
+function executorMockGmail({ listed = [], deleted = false } = {}) {
+  const batches = [];
+  const modifies = [];
+  const untrashed = [];
+  return {
+    _batches: batches,
+    _modifies: modifies,
+    _untrashed: untrashed,
+    users: {
+      labels: {
+        list: async () => ({
+          data: {
+            labels: [
+              { name: "..OK", id: "LBL_OK" },
+              { name: ".DelPend", id: "LBL_DEL" },
+            ],
+          },
+        }),
+      },
+      messages: {
+        list: async () => ({ data: { messages: listed.map((id) => ({ id })) } }),
+        batchModify: async (p) => {
+          batches.push(p.requestBody);
+        },
+        modify: async (p) => {
+          modifies.push(p);
+        },
+        untrash: async (p) => {
+          untrashed.push(p.id);
+        },
+      },
+    },
+  };
+}
+
+async function inTempCwd(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-exec-"));
+  const origCwd = process.cwd();
+  process.chdir(dir);
+  try {
+    return await fn(dir);
+  } finally {
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("executeTriageAction ok adds to oklist and labels ..OK", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { ensureLabel } = await import(gmailModulePath);
+  const { isOklisted } = await import(oklistModulePath);
+  await inTempCwd(async (dir) => {
+    const g = executorMockGmail({ listed: ["m1", "m2"] });
+    const okId = await ensureLabel(g, "..OK");
+    const out = await executeTriageAction(g, {
+      action: "ok",
+      msgId: "m1",
+      threadId: null,
+      fromEmail: "sender@example.com",
+      fromName: null,
+    });
+    assert.equal(out.labeled, 2);
+    assert.deepEqual(g._batches[0], {
+      ids: ["m1", "m2"],
+      addLabelIds: [okId],
+      removeLabelIds: [],
+    });
+    assert.equal(out.undo.addedToList, true);
+    assert.equal(out.undo.listName, "ok");
+    assert.equal(out.undo.id, "m1");
+    assert.equal(isOklisted("sender@example.com", null), true);
+    assert.deepEqual(g._modifies[0].requestBody, { removeLabelIds: ["UNREAD"] });
+    // stats / activity log landed in the temp cwd, not the repo root
+    assert.ok(fs.existsSync(path.join(dir, "activity-log.json")));
+    assert.ok(fs.existsSync(path.join(dir, "stats.json")));
+  });
+});
+
+test("executeTriageAction re-run after auth pause keeps addedToList true and still labels for ok", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { addToOklist } = await import(oklistModulePath);
+  await inTempCwd(async () => {
+    // First run: sender not listed -> decision recorded as added, before any Gmail call.
+    const decisions = [];
+    const g1 = executorMockGmail({ listed: ["m1"] });
+    const job = {
+      action: "ok",
+      msgId: "m1",
+      threadId: null,
+      fromEmail: "sender@example.com",
+      fromName: null,
+    };
+    const first = await executeTriageAction(g1, job, {
+      markListDecision: (v) => decisions.push(v),
+    });
+    assert.deepEqual(decisions, [true]);
+    assert.equal(first.undo.addedToList, true);
+
+    // Re-run: the sender now reads as listed, but the persisted decision wins.
+    addToOklist("sender@example.com", null);
+    const g2 = executorMockGmail({ listed: ["m1"] });
+    const second = await executeTriageAction(
+      g2,
+      { ...job, addedToList: true },
+      { markListDecision: (v) => decisions.push(v) },
+    );
+    assert.equal(g2._batches.length, 1, "re-run must still call labelSender");
+    assert.equal(second.undo.addedToList, true);
+    assert.deepEqual(decisions, [true], "decision is recorded once only");
+  });
+});
+
+test("executeTriageAction delete trashes only msgId", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  await inTempCwd(async () => {
+    const g = executorMockGmail();
+    const events = [];
+    const out = await executeTriageAction(
+      g,
+      {
+        action: "delete",
+        msgId: "m9",
+        fromEmail: "sender@example.com",
+        fromName: null,
+      },
+      { onProgress: (e) => events.push(e) },
+    );
+    assert.deepEqual(g._batches, [
+      { ids: ["m9"], addLabelIds: ["TRASH"], removeLabelIds: ["INBOX", "UNREAD"] },
+    ]);
+    assert.equal(out.labeled, 1);
+    assert.equal(out.undo.addedToList, false);
+    assert.deepEqual(events, [{ total: 1 }, { processed: 1 }]);
+  });
+});
+
+test("executeTriageAction unsub with unsubDone skips tryUnsubscribe", async () => {
+  const { executeTriageAction } = await import(triageExecutorsModulePath);
+  const { isBlocked } = await import(blocklistModulePath);
+  await inTempCwd(async () => {
+    const origFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls++;
+      throw new Error("tryUnsubscribe must not run when unsubDone");
+    };
+    try {
+      const g = executorMockGmail({ listed: ["m5"] });
+      let marked = 0;
+      const out = await executeTriageAction(
+        g,
+        {
+          action: "unsub",
+          msgId: "m4",
+          fromEmail: "news@example.com",
+          fromName: null,
+          unsubUrl: "<https://example.com/unsub>",
+          unsubPost: "List-Unsubscribe=One-Click",
+          unsubDone: true,
+        },
+        { markUnsubDone: () => marked++ },
+      );
+      assert.equal(fetchCalls, 0);
+      assert.equal(marked, 0);
+      assert.equal(out.result.unsubResult, "skipped-recovered");
+      assert.ok(!out.result.openTab);
+      assert.ok(!out.result.openTabUrl);
+      // the blockSender sweep still ran
+      assert.deepEqual(g._batches[0].ids, ["m5"]);
+      assert.deepEqual(g._batches[0].addLabelIds, ["LBL_DEL"]);
+      assert.ok(isBlocked("news@example.com", null));
+      assert.equal(out.labeled, 1);
+
+      // not recovered: tryUnsubscribe runs (no header -> compose, no network), then marks
+      const g2 = executorMockGmail();
+      const out2 = await executeTriageAction(
+        g2,
+        {
+          action: "unsub",
+          msgId: "m6",
+          fromEmail: "news@example.com",
+          fromName: null,
+          unsubUrl: "",
+          unsubDone: false,
+        },
+        { markUnsubDone: () => marked++ },
+      );
+      assert.equal(marked, 1);
+      assert.equal(out2.result.unsubResult, "no-header→compose");
+      assert.equal(out2.result.openTab, true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+});
+
+test("applyTriageUndo delete untrashes the message", async () => {
+  const { applyTriageUndo } = await import(triageExecutorsModulePath);
+  const g = executorMockGmail();
+  await applyTriageUndo(g, {
+    action: "delete",
+    id: "m9",
+    fromEmail: "sender@example.com",
+    fromName: null,
+    addedToList: false,
+  });
+  assert.deepEqual(g._untrashed, ["m9"]);
+  assert.deepEqual(g._batches, [{ ids: ["m9"], addLabelIds: ["INBOX"] }]);
+});
+
+test("executor tests leave no stats.json / activity-log.json in the repo root", () => {
+  for (const f of rootLeakFiles) {
+    if (rootLeakBefore[f]) continue;
+    assert.equal(
+      fs.existsSync(path.join(projectDir, f)),
+      false,
+      `${f} appeared in the repo root during the suite`,
+    );
+  }
+});
+
+test("queueScope matches every fixture case", async () => {
+  const { jobCoversMessage } = await import(
+    url.pathToFileURL(path.join(projectDir, "app", "lib", "queueScope.js")).href
+  );
+  const cases = JSON.parse(
+    fs.readFileSync(
+      path.join(projectDir, "web", "src", "test", "fixtures", "queueScope.json"),
+      "utf8",
+    ),
+  );
+  assert.ok(cases.length >= 15);
+  for (const c of cases) {
+    assert.equal(
+      jobCoversMessage(c.job, c.msg, { hideListed: c.hideListed }),
+      c.covered,
+      c.name,
+    );
+  }
+});
+
+// ─── actionQueue (persistent job queue + worker) ─────────────────────────────
+
+const actionQueueModulePath = url.pathToFileURL(
+  path.join(projectDir, "app", "lib", "actionQueue.js"),
+).href;
+
+async function aqUntil(cond, what = "condition") {
+  for (let i = 0; i < 400; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+const aqTick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+
+// Fresh module instance in a fresh temp cwd; always stops the worker and restores cwd.
+async function aqWith(fn) {
+  const origCwd = process.cwd();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-aq-"));
+  process.chdir(dir);
+  const loadFresh = () => import(`${actionQueueModulePath}?t=${Date.now()}-${Math.random()}`);
+  const mods = [];
+  try {
+    const q = await loadFresh();
+    mods.push(q);
+    await fn(q, {
+      dir,
+      loadFresh: async () => {
+        const m = await loadFresh();
+        mods.push(m);
+        return m;
+      },
+      readFile: () =>
+        JSON.parse(fs.readFileSync(path.join(dir, "queue", "actions.json"), "utf8")),
+    });
+  } finally {
+    for (const m of mods) m.stopQueueWorker();
+    process.chdir(origCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Executor whose jobs each wait on a deferred promise; tracks peak in-flight.
+function aqGatedExecutor() {
+  const gates = new Map();
+  const started = [];
+  let inflight = 0;
+  let peak = 0;
+  const execute = (_gmail, job) => {
+    started.push(job);
+    inflight++;
+    peak = Math.max(peak, inflight);
+    return new Promise((resolve) => {
+      gates.set(job.id, () => {
+        inflight--;
+        resolve({ labeled: 1, undo: { action: job.action, id: job.msgId }, result: {} });
+      });
+    });
+  };
+  return {
+    execute,
+    started,
+    release: (job) => gates.get(job.id)(),
+    peak: () => peak,
+  };
+}
+
+const aqStart = (q, execute, extra = {}) =>
+  q.startQueueWorker({
+    getGmail: async () => ({}),
+    execute,
+    undo: async () => {},
+    isAuthError: () => false,
+    pauseMs: 60000,
+    ...extra,
+  });
+
+const aqJob = (i, extra = {}) => ({
+  id: `job-${i}`,
+  seq: i,
+  action: "archive",
+  msgId: `m${i}`,
+  threadId: null,
+  fromEmail: `s${i}@x.com`,
+  fromName: null,
+  subject: null,
+  unsubUrl: null,
+  unsubPost: null,
+  unsubDone: false,
+  status: "pending",
+  total: 1,
+  processed: 0,
+  undoRequested: false,
+  undo: null,
+  result: null,
+  error: null,
+  createdAt: 1,
+  startedAt: null,
+  finishedAt: null,
+  ...extra,
+});
+
+test("actionQueue: enqueueJob persists to queue/actions.json", async () => {
+  await aqWith(async (q, env) => {
+    const job = q.enqueueJob({ action: "archive", msgId: "m1", fromEmail: "a@x.com" });
+    assert.equal(job.status, "pending");
+    assert.equal(job.total, 1);
+    const onDisk = env.readFile().jobs;
+    assert.equal(onDisk.length, 1);
+    assert.equal(onDisk[0].id, job.id);
+    assert.equal(onDisk[0].msgId, "m1");
+  });
+});
+
+test("actionQueue: runs at most 2 jobs at once", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute);
+    for (let i = 1; i <= 5; i++) {
+      q.enqueueJob({ action: "ok", msgId: `m${i}`, fromEmail: `s${i}@x.com` });
+    }
+    await aqUntil(() => ex.started.length === 2, "two jobs started");
+    await aqTick();
+    assert.equal(ex.started.length, 2);
+    for (let done = 0; done < 5; done++) {
+      await aqUntil(() => ex.started.length > done, "next job started");
+      ex.release(ex.started[done]);
+      await aqTick(10);
+    }
+    await aqUntil(() => q.getQueueStatus().actions === 0, "queue drained");
+    assert.equal(ex.started.length, 5);
+    assert.equal(ex.peak(), 2);
+  });
+});
+
+test("actionQueue: same-sender jobs run in click order", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute);
+    const a1 = q.enqueueJob({ action: "archive", msgId: "a1", fromEmail: "A@x.com" });
+    const b1 = q.enqueueJob({ action: "archive", msgId: "b1", fromEmail: "b@x.com" });
+    const a2 = q.enqueueJob({ action: "archive", msgId: "a2", fromEmail: "a@x.com" });
+    await aqUntil(() => ex.started.length === 2, "A1 and B1 started");
+    assert.deepEqual(ex.started.map((j) => j.id), [a1.id, b1.id]);
+    ex.release(b1);
+    await aqTick();
+    assert.equal(ex.started.length, 2, "A2 must wait for A1");
+    ex.release(a1);
+    await aqUntil(() => ex.started.length === 3, "A2 started");
+    assert.equal(ex.started[2].id, a2.id);
+    ex.release(a2);
+  });
+});
+
+test("actionQueue: recovers running jobs to pending on load", async () => {
+  await aqWith(async (q, env) => {
+    fs.mkdirSync(path.join(env.dir, "queue"));
+    fs.writeFileSync(
+      path.join(env.dir, "queue", "actions.json"),
+      JSON.stringify({ jobs: [aqJob(1, { status: "running", startedAt: 5 })] }),
+    );
+    const seen = [];
+    aqStart(q, async (_g, job) => {
+      seen.push(job.id);
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqUntil(() => seen.length === 1, "recovered job executed");
+    assert.deepEqual(seen, ["job-1"]);
+    await aqUntil(() => env.readFile().jobs[0].status === "done", "job done on disk");
+  });
+});
+
+test("actionQueue: unsubDone survives a restart", async () => {
+  await aqWith(async (q, env) => {
+    let started = false;
+    aqStart(q, (_g, _job, { markUnsubDone }) => {
+      markUnsubDone();
+      started = true;
+      return new Promise(() => {});
+    });
+    q.enqueueJob({ action: "unsub", msgId: "u1", fromEmail: "u@x.com", unsubUrl: "mailto:x" });
+    await aqUntil(() => started, "unsub executor ran");
+    q.stopQueueWorker();
+
+    const q2 = await env.loadFresh();
+    let seenUnsubDone = null;
+    aqStart(q2, async (_g, job) => {
+      seenUnsubDone = job.unsubDone;
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqUntil(() => seenUnsubDone !== null, "re-run after restart");
+    assert.equal(seenUnsubDone, true);
+  });
+});
+
+test("actionQueue: undo of a pending job cancels it and never executes", async () => {
+  await aqWith(async (q) => {
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    assert.deepEqual(await q.undoJob(job.id), { state: "cancelled" });
+    const seen = [];
+    aqStart(q, async (_g, j) => {
+      seen.push(j.id);
+      return { labeled: 1, undo: null, result: {} };
+    });
+    await aqTick();
+    assert.deepEqual(seen, []);
+    assert.equal(q.getQueueStatus().actions, 0);
+  });
+});
+
+test("actionQueue: undo of a running job defers undo until it finishes", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    const undoCalls = [];
+    aqStart(q, ex.execute, {
+      undo: async (_g, d) => {
+        undoCalls.push(d);
+      },
+    });
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => ex.started.length === 1, "job started");
+    assert.deepEqual(await q.undoJob(job.id), { state: "undo-requested" });
+    assert.equal(undoCalls.length, 0);
+    ex.release(job);
+    await aqUntil(() => undoCalls.length === 1, "deferred undo");
+    assert.deepEqual(undoCalls[0], { action: "ok", id: "m1" });
+    await aqUntil(() => q.getQueueStatus().actions === 0, "job finished");
+    assert.equal(undoCalls.length, 1);
+  });
+});
+
+test("actionQueue: undo of a non-undoable job throws not_undoable", async () => {
+  await aqWith(async (q) => {
+    const job = q.enqueueJob({ action: "unsub", msgId: "m1", fromEmail: "a@x.com" });
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
+  });
+});
+
+test("actionQueue: failedChunk marks the job failed; retry re-runs it", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    aqStart(q, async (_g, _job, { onProgress }) => {
+      calls++;
+      onProgress({ total: 3 });
+      if (calls === 1) {
+        onProgress({ failedChunk: true, processed: 1 });
+      } else {
+        onProgress({ processed: 3 });
+      }
+      return { labeled: 3, undo: null, result: {} };
+    });
+    const job = q.enqueueJob({ action: "delete-all", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().failed.length === 1, "job failed");
+    const failed = q.getQueueStatus().failed[0];
+    assert.equal(failed.error, "partial");
+    assert.equal(failed.processed, 1);
+    q.retryJob(job.id);
+    await aqUntil(
+      () => q.getQueueStatus().actions === 0 && calls === 2,
+      "retry finished",
+    );
+    assert.equal(q.getQueueStatus().failed.length, 0);
+    assert.equal(job.status, "done");
+  });
+});
+
+test("actionQueue: auth error returns job to pending and pauses", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    aqStart(
+      q,
+      async () => {
+        calls++;
+        if (calls === 1) throw Object.assign(new Error("401"), { auth: true });
+        return { labeled: 1, undo: null, result: {} };
+      },
+      { isAuthError: (e) => e.auth === true },
+    );
+    const first = q.enqueueJob({ action: "archive", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().paused === "gmail_auth", "paused");
+    assert.equal(first.status, "pending");
+    assert.equal(first.error, null);
+    assert.equal(first.finishedAt, null);
+    assert.equal(q.getQueueStatus().failed.length, 0);
+    await aqTick();
+    assert.equal(calls, 1, "worker must not re-run the job while paused");
+    q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    await aqUntil(() => q.getQueueStatus().actions === 0, "resumed and drained");
+    assert.equal(q.getQueueStatus().paused, null);
+    assert.equal(first.status, "done");
+  });
+});
+
+test("actionQueue: undo of a pending job that already ran once returns undo-requested and applies undo after the re-run", async () => {
+  await aqWith(async (q) => {
+    let calls = 0;
+    const undoCalls = [];
+    aqStart(
+      q,
+      async (_g, job) => {
+        calls++;
+        if (calls === 1) throw Object.assign(new Error("401"), { auth: true });
+        return { labeled: 1, undo: { action: job.action, addedToList: true }, result: {} };
+      },
+      {
+        isAuthError: (e) => e.auth === true,
+        undo: async (_g, d) => {
+          undoCalls.push(d);
+        },
+      },
+    );
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => q.getQueueStatus().paused === "gmail_auth", "paused");
+    assert.equal(job.status, "pending");
+    assert.deepEqual(await q.undoJob(job.id), { state: "undo-requested" });
+    assert.equal(job.status, "pending", "must not be cancelled");
+    q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    await aqUntil(() => undoCalls.length === 1, "undo applied after re-run");
+    assert.deepEqual(undoCalls[0], { action: "ok", addedToList: true });
+    assert.equal(job.status, "cancelled");
+  });
+});
+
+test("actionQueue: double undo of a done job runs undo once", async () => {
+  await aqWith(async (q) => {
+    let release;
+    const undoCalls = [];
+    aqStart(q, async () => ({ labeled: 1, undo: { action: "ok" }, result: {} }), {
+      undo: (_g, d) => {
+        undoCalls.push(d);
+        return new Promise((r) => {
+          release = r;
+        });
+      },
+    });
+    const job = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    await aqUntil(() => job.status === "done", "job done");
+    const first = q.undoJob(job.id);
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
+    await aqUntil(() => release !== undefined, "first undo in flight");
+    release();
+    assert.deepEqual(await first, { state: "undone" });
+    assert.equal(undoCalls.length, 1);
+    await assert.rejects(q.undoJob(job.id), { code: "not_undoable" });
+  });
+});
+
+test("actionQueue: getQueueStatus sums emailsLeft and counting", async () => {
+  await aqWith(async (q) => {
+    const gates = [];
+    aqStart(q, (_g, job, { onProgress }) => {
+      if (job.action === "ok") {
+        onProgress({ total: 10 });
+        onProgress({ processed: 4 });
+      }
+      return new Promise((resolve) => gates.push(resolve));
+    });
+    const j1 = q.enqueueJob({ action: "ok", msgId: "m1", fromEmail: "a@x.com" });
+    const j2 = q.enqueueJob({ action: "archive", msgId: "m2", fromEmail: "b@x.com" });
+    const j3 = q.enqueueJob({ action: "ok", msgId: "m3", fromEmail: "c@x.com" });
+    await aqUntil(() => gates.length === 2, "two running");
+    const s = q.getQueueStatus();
+    assert.equal(s.actions, 3);
+    assert.equal(s.emailsLeft, 6 + 1);
+    assert.equal(s.counting, 1);
+    assert.deepEqual(new Set(s.activeIds), new Set([j1.id, j2.id, j3.id]));
+  });
+});
+
+test("actionQueue: prunes finished jobs beyond 200", async () => {
+  await aqWith(async (q, env) => {
+    fs.mkdirSync(path.join(env.dir, "queue"));
+    const seeded = [];
+    for (let i = 1; i <= 205; i++) {
+      seeded.push(aqJob(i, { status: "done", finishedAt: 1000 + i }));
+    }
+    fs.writeFileSync(
+      path.join(env.dir, "queue", "actions.json"),
+      JSON.stringify({ jobs: seeded }),
+    );
+    aqStart(q, async () => ({ labeled: 1, undo: null, result: {} }));
+    q.enqueueJob({ action: "archive", msgId: "new", fromEmail: "new@x.com" });
+    await aqUntil(
+      () => env.readFile().jobs.every((j) => j.status !== "pending" && j.status !== "running"),
+      "new job finished",
+    );
+    const jobs = env.readFile().jobs;
+    assert.equal(jobs.length, 200);
+    assert.ok(!jobs.some((j) => j.id === "job-1"), "oldest finished job pruned");
+    assert.ok(jobs.some((j) => j.msgId === "new"), "newest kept");
+  });
+});
+
+test("actionQueue: jobsAffectingSince keeps active jobs and done jobs finished at or after the cutoff", async () => {
+  await aqWith(async (q) => {
+    const ex = aqGatedExecutor();
+    aqStart(q, ex.execute, { concurrency: 1 });
+    const since = Date.now();
+    const a = q.enqueueJob({ action: "archive", msgId: "a1", fromEmail: "a@x.com" });
+    const b = q.enqueueJob({ action: "archive", msgId: "b1", fromEmail: "b@x.com" });
+    await aqUntil(() => ex.started.length === 1, "first job started");
+    const far = Date.now() + 1e6;
+    // Running and pending jobs are included whatever the cutoff.
+    const active = q.jobsAffectingSince(far).map((j) => j.id);
+    assert.ok(active.includes(a.id), "running job included");
+    assert.ok(active.includes(b.id), "pending job included");
+    ex.release(a);
+    await aqUntil(() => a.status === "done", "first job done");
+    assert.ok(a.finishedAt >= since);
+    assert.ok(
+      q.jobsAffectingSince(since).some((j) => j.id === a.id),
+      "done job finished after the snapshot is included",
+    );
+    assert.ok(
+      !q.jobsAffectingSince(a.finishedAt + 1).some((j) => j.id === a.id),
+      "done job finished before the snapshot is not",
+    );
+    assert.ok(
+      q.jobsAffectingSince(far).some((j) => j.id === b.id),
+      "second job still included",
+    );
+  });
+});
+
+// ─── queue routes (enqueue instead of execute) ───────────────────────────────
+// withApp imports triage.js once, so the queue module instance is shared across
+// these tests; each runs in its own temp cwd with the guard off and a reset queue.
+// The worker is not started under GMAIL_TRIAGE_NO_LISTEN, so jobs stay pending
+// and no Gmail call is made (there are no credentials in the temp cwd).
+async function withQueueApp(fn, settings = '{"bulkGuardEnabled":false}') {
+  const origCwd = process.cwd();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-triage-qr-"));
+  fs.writeFileSync(path.join(dir, "settings.json"), settings);
+  process.chdir(dir);
+  try {
+    const q = await import(actionQueueModulePath);
+    q.__resetQueueForTests();
+    return await withApp(async (base) => {
+      const post = (p, body) =>
+        fetch(`${base}${p}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      return fn({ base, post, q });
+    });
+  } finally {
+    process.chdir(origCwd);
+  }
+}
+
+test("queue route: action enqueues and returns jobId when the guard is off", async () => {
+  await withQueueApp(async ({ base, post }) => {
+    const before = await (await fetch(`${base}/api/queue`)).json();
+    const r = await post("/api/triage/action", {
+      action: "archive",
+      id: "m1",
+      fromEmail: "a@b.com",
+      fromName: "A",
+    });
+    const body = await r.json();
+    assert.equal(r.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.queued, true);
+    assert.equal(typeof body.jobId, "string");
+    const after = await (await fetch(`${base}/api/queue`)).json();
+    assert.equal(after.actions, before.actions + 1);
+    assert.ok(after.activeIds.includes(body.jobId));
+    assert.equal(after.bulkGuardEnabled, false);
+  });
+});
+
+test("queue route: delete-all without confirmed returns a count-less guard when the guard is off", async () => {
+  await withQueueApp(async ({ base, post }) => {
+    const before = await (await fetch(`${base}/api/queue`)).json();
+    const r = await post("/api/triage/action", {
+      action: "delete-all",
+      id: "m1",
+      fromEmail: "a@b.com",
+      fromName: "A",
+    });
+    const body = await r.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.guard.count, null);
+    assert.equal(body.guard.action, "delete-all");
+    assert.match(body.guard.message, /delete all mail from a@b\.com/);
+    const after = await (await fetch(`${base}/api/queue`)).json();
+    assert.equal(after.actions, before.actions);
+    // Confirmed proceeds to the queue.
+    const r2 = await post("/api/triage/action", {
+      action: "delete-all",
+      id: "m1",
+      fromEmail: "a@b.com",
+      confirmed: true,
+    });
+    assert.equal((await r2.json()).queued, true);
+  });
+});
+
+test("queue route: undo with unknown jobId is 404; undo of a pending job cancels it", async () => {
+  await withQueueApp(async ({ post }) => {
+    let r = await post("/api/triage/undo", { jobId: "nope" });
+    assert.equal(r.status, 404);
+    assert.deepEqual(await r.json(), { ok: false, error: "not_found" });
+    const { jobId } = await (
+      await post("/api/triage/action", { action: "archive", id: "m2", fromEmail: "c@d.com" })
+    ).json();
+    r = await post("/api/triage/undo", { jobId });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { ok: true, state: "cancelled" });
+    const { jobId: unsubId } = await (
+      await post("/api/triage/action", { action: "unsub", id: "m3", fromEmail: "c@d.com" })
+    ).json();
+    r = await post("/api/triage/undo", { jobId: unsubId });
+    assert.equal(r.status, 400);
+    assert.deepEqual(await r.json(), { ok: false, error: "not_undoable" });
+  });
+});
+
+test("queue route: unguarded actions enqueue without a Gmail call when the guard is on", async () => {
+  // No credentials exist in the temp cwd, so any getGmailClient() call would 500.
+  await withQueueApp(async ({ post }) => {
+    for (const action of ["archive", "delete", "review", "unsub"]) {
+      const r = await post("/api/triage/action", {
+        action,
+        id: `m-${action}`,
+        fromEmail: "g@x.com",
+      });
+      assert.equal(r.status, 200, action);
+      assert.equal((await r.json()).queued, true, action);
+    }
+  }, '{"bulkGuardEnabled":true}');
+});
+
+test("queue route: retry and dismiss of an unknown job are 404", async () => {
+  await withQueueApp(async ({ post }) => {
+    for (const p of ["retry", "dismiss"]) {
+      const r = await post(`/api/queue/nope/${p}`, {});
+      assert.equal(r.status, 404);
+      assert.deepEqual(await r.json(), { ok: false, error: "not_found" });
+    }
+  });
+});
+
+test("queueScope: excludeCoveredEmails and makeSkipSender keep ..VIP cards from an ok-clean sender", async () => {
+  const { excludeCoveredEmails, makeSkipSender } = await import(
+    url.pathToFileURL(path.join(projectDir, "app", "lib", "queueScope.js")).href
+  );
+  const clean = { action: "ok-clean", msgId: "c1", fromEmail: "s@x.com", fromName: null };
+  const vipCard = { id: "v1", fromEmail: "s@x.com", fromName: "S", tier: "..VIP" };
+  const plainCard = { id: "p1", fromEmail: "s@x.com", fromName: "S", tier: null };
+  const other = { id: "o1", fromEmail: "z@x.com", fromName: "Z", tier: null };
+  const emails = [vipCard, plainCard, other];
+  assert.deepEqual(
+    excludeCoveredEmails(emails, [clean], { hideListed: false }).map((e) => e.id),
+    ["v1", "o1"],
+  );
+  // fetchEmails asks before the tier is known, so the pre-filter must not drop the sender.
+  const skip = makeSkipSender([clean], { hideListed: false, baseSkip: null });
+  assert.equal(skip("s@x.com", "S"), false);
+  // A sender-wide job is skipped outright, and baseSkip still applies.
+  const junk = { action: "junk", msgId: "j1", fromEmail: "j@x.com", fromName: null };
+  const skip2 = makeSkipSender([clean, junk], {
+    hideListed: false,
+    baseSkip: (e) => e === "listed@x.com",
+  });
+  assert.equal(skip2("j@x.com", "J"), true);
+  assert.equal(skip2("listed@x.com", "L"), true);
+  assert.equal(skip2("s@x.com", "S"), false);
+  // A job stored without a msgId must not match every sender (null === null).
+  const noId = { action: "archive", msgId: null, fromEmail: "n@x.com", fromName: null };
+  assert.equal(makeSkipSender([noId])("z@x.com", "Z"), false);
+  // A job that finished after the snapshot was taken still excludes its message.
+  const done = {
+    action: "archive",
+    msgId: "p1",
+    fromEmail: "s@x.com",
+    fromName: "S",
+    status: "done",
+    finishedAt: Date.now() + 1000,
+  };
+  assert.deepEqual(
+    excludeCoveredEmails(emails, [done], { hideListed: false }).map((e) => e.id),
+    ["v1", "o1"],
+  );
+});
+
+test("triage.js starts the queue worker with the real executors", () => {
+  const src = fs.readFileSync(path.join(projectDir, "app", "triage.js"), "utf8");
+  assert.match(
+    src,
+    /startQueueWorker\(\{\s*getGmail: getGmailClient,\s*execute: executeTriageAction,\s*undo: applyTriageUndo,\s*isAuthError,?\s*\}\)/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(projectDir, "compose.yaml"), "utf8"),
+    /\.\/config\/queue:\/app\/queue[\s\S]*\.\/config-robin\/queue:\/app\/queue/,
+  );
 });

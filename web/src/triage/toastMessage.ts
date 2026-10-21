@@ -12,41 +12,27 @@ const ACTION_VERB: Record<TriageAction, string> = {
   delete: "Deleted",
   "delete-all": "Deleted all",
   "archive-all": "Archived all",
-  review: "Queued for review",
+  review: "Review",
 };
 
-function messages(n: number): string {
-  return `${n} ${n === 1 ? "message" : "messages"}`;
-}
+// What Undo will (or will not) do for each action.
+const UNDO_TAIL: Record<TriageAction, string> = {
+  ok: ". Undo removes from list.",
+  vip: ". Undo removes from list.",
+  "ok-clean": ". Undo removes from list.",
+  "vip-clean": ". Undo removes from list.",
+  junk: ". Undo removes from blocklist.",
+  unsub: "; sender blocklisted (not reversible here)",
+  archive: ". Undo available.",
+  delete: ". Undo available.",
+  "delete-all": ", not reversible here",
+  "archive-all": ", not reversible here",
+  review: "",
+};
 
-// Every action reports how many of the sender's messages it touched (`labeled`
-// from the server) and what it did to them.
+// The action is queued, not done: the server works through it in the
+// background, so the copy reports the enqueue and what Undo means.
 export function toastMessage(info: ToastInfo): string {
   const { action } = info.undo;
-  const verb = ACTION_VERB[action];
-  const n = info.labeled ?? 0;
-  switch (action) {
-    case "ok":
-    case "vip":
-      return `${verb} — ${messages(n)} labeled ${action === "vip" ? "..VIP" : "..OK"}. Undo removes from list.`;
-    case "ok-clean":
-    case "vip-clean":
-      return `${verb} — ${messages(n)} archived to .DelPend and marked read. Undo removes from list.`;
-    case "junk":
-      return `${verb} — ${messages(n)} moved to .DelPend and marked read. Undo removes from blocklist.`;
-    case "unsub":
-      return `${verb} — ${messages(n)} moved to .DelPend and marked read; sender blocklisted (not reversible here)`;
-    case "delete-all":
-    case "archive-all":
-      return `${verb} — ${messages(n)}, not reversible here`;
-    case "archive":
-      // A thread archive reports no count (see the server route).
-      return info.labeled === undefined
-        ? `${verb} — thread. Undo available.`
-        : `${verb} — ${messages(n)}. Undo available.`;
-    case "delete":
-      return `${verb} — ${messages(n)} moved to Trash. Undo available.`;
-    case "review":
-      return `${verb} — ${messages(n)} labeled For_Review`;
-  }
+  return `${ACTION_VERB[action]} — queued${UNDO_TAIL[action]}`;
 }

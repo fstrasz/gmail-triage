@@ -22,6 +22,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 // Same response headers as production (CSP etc.) so a policy violation shows up here.
 import { securityHeaders } from "../app/lib/securityHeaders.js";
+// The real coverage rule, so the mock deck hides exactly what production hides.
+import { jobCoversMessage } from "../app/lib/queueScope.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WEB_DIST = path.join(ROOT, "web", "dist");
@@ -849,6 +851,8 @@ function seedSettings() {
     readTriageLocalModelEnabled: false,
     readTriageReportEnabled: false,
     bulkGuardThreshold: BULK_GUARD_THRESHOLD,
+    // Off by default so the counter path (no pre-flight counts) is what you see.
+    bulkGuardEnabled: false,
   };
 }
 
@@ -1114,6 +1118,7 @@ function resetState() {
   state.log = seedLog();
   state.labeled = seedLabeled(state.messages);
   state.backups = seedBackups(state.blocklist);
+  state.queue = []; // action-queue jobs (see "Action queue" below)
 }
 resetState();
 
@@ -1202,9 +1207,13 @@ function shapeTriageEmail(m) {
   };
 }
 function inboxMessages({ hideListed }) {
+  const active = state.queue.filter(
+    (j) => j.status === "pending" || j.status === "running",
+  );
   return state.messages
     .filter((m) => m.state === "inbox")
     .filter((m) => !isBlocked(m.fromEmail, m.fromName))
+    .filter((m) => !active.some((j) => jobCoversMessage(j, m, { hideListed })))
     .filter(
       (m) => !hideListed || (!m.tier && !isListed(m.fromEmail, m.fromName)),
     )
@@ -1401,7 +1410,11 @@ const UNDO = {
   "archive-all": "none",
 };
 
-app.post("/api/triage/action", (req, res) => {
+// Applies one action's effects to the in-memory mailbox, synchronously, and answers
+// with the pre-queue response shape (incl. the undo descriptor). The queue below
+// calls it with a fake `res` when a job completes; with the guard on it is also run
+// as a rolled-back dry run to reproduce the count pre-flight guards.
+function applyAction(req, res) {
   const { action, id, threadId, fromEmail, fromName, subject, confirmed } =
     req.body || {};
   if (!ACTIONS.has(action))
@@ -1655,13 +1668,10 @@ app.post("/api/triage/action", (req, res) => {
     analysis,
     undo: { ...undoBase, addedToList: false },
   });
-});
+}
 
-app.post("/api/triage/undo", (req, res) => {
-  const d = req.body || {};
+function applyUndo(d) {
   const spec = UNDO[d.action];
-  if (!spec)
-    return res.status(400).json({ ok: false, error: "Invalid action" });
   if (spec === "untrash" || spec === "addInbox") {
     const m = state.messages.find((x) => x.id === d.id);
     if (m) m.state = "inbox";
@@ -1677,7 +1687,200 @@ app.post("/api/triage/undo", (req, res) => {
     ];
     if (which) listRemove(which, d.fromEmail, d.fromName || null);
   }
-  res.json({ ok: true });
+}
+
+// ─── Action queue (mirrors app/lib/actionQueue.js + /api/queue*) ─────────────
+// POST /api/triage/action only enqueues; a ticker drains each job over ~JOB_MS so
+// the counter is visible, then applies the action's effects to the mock inbox.
+// In-memory only (the real queue persists to config/queue/actions.json).
+const TICK_MS = 250;
+const JOB_MS = 3000;
+const CONCURRENCY = 2;
+const SINGLE_MESSAGE_ACTIONS = new Set(["archive", "delete", "review"]);
+const isActive = (j) => j.status === "pending" || j.status === "running";
+const guardEnabled = () => state.settings.bulkGuardEnabled !== false;
+const qerr = (res, status, error) => res.status(status).json({ ok: false, error });
+
+// Total emails a sender-wide job works through: the matching fake emails.
+function jobTotal(job) {
+  if (SINGLE_MESSAGE_ACTIONS.has(job.action)) return 1;
+  return Math.max(
+    1,
+    state.messages.filter(
+      (m) => m.fromEmail === job.fromEmail && nameMatches(m, job.fromName),
+    ).length,
+  );
+}
+
+// Run applyAction against a throwaway res; returns the JSON it answered with.
+function runAction(body) {
+  const out = {};
+  const fakeRes = {
+    status() {
+      return this;
+    },
+    json(o) {
+      out.body = o;
+    },
+  };
+  applyAction({ body }, fakeRes);
+  return out.body;
+}
+
+function completeJob(job) {
+  const r = runAction({
+    action: job.action,
+    id: job.msgId,
+    threadId: job.threadId,
+    fromEmail: job.fromEmail,
+    fromName: job.fromName,
+    subject: job.subject,
+    confirmed: true,
+  });
+  job.undo = r?.undo ?? null;
+  job.processed = job.total;
+  job.finishedAt = Date.now();
+  job.status = "done";
+  if (job.undoRequested) {
+    if (job.undo) applyUndo(job.undo);
+    job.status = "cancelled";
+  }
+}
+
+function tick() {
+  const now = Date.now();
+  const running = state.queue.filter((j) => j.status === "running");
+  const pending = state.queue
+    .filter((j) => j.status === "pending")
+    .sort((a, b) => a.seq - b.seq);
+  while (running.length < CONCURRENCY && pending.length) {
+    const job = pending.shift();
+    job.status = "running";
+    job.startedAt = now;
+    job.total = jobTotal(job);
+    running.push(job);
+  }
+  for (const job of running) {
+    const frac = Math.min(1, (now - job.startedAt) / JOB_MS);
+    if (frac >= 1) completeJob(job);
+    else job.processed = Math.floor(job.total * frac);
+  }
+  // keep the 200 most recent finished jobs, like the real queue
+  const finished = state.queue
+    .filter((j) => j.status === "done" || j.status === "cancelled")
+    .sort((a, b) => b.finishedAt - a.finishedAt);
+  const drop = new Set(finished.slice(200));
+  if (drop.size) state.queue = state.queue.filter((j) => !drop.has(j));
+}
+setInterval(tick, TICK_MS).unref?.();
+
+app.post("/api/triage/action", (req, res) => {
+  const b = req.body || {};
+  if (!ACTIONS.has(b.action))
+    return res.status(400).json({ ok: false, error: "Invalid action" });
+  const name = b.fromName || null;
+  if (!guardEnabled()) {
+    // No pre-flight counts. Delete All / Archive All still need a confirmation.
+    if (
+      (b.action === "delete-all" || b.action === "archive-all") &&
+      b.confirmed !== true
+    )
+      return res.json({
+        ok: false,
+        guard: {
+          count: null,
+          message: `This will ${b.action === "delete-all" ? "delete" : "archive"} all mail from ${b.fromEmail}. Confirm?`,
+          scope: guardScope(b.action, name),
+          action: b.action,
+          fromName: name,
+        },
+      });
+  } else {
+    // Guard on: reproduce the count pre-flights by dry-running the action and
+    // rolling the mailbox back. Only a guard answer is passed through.
+    const snap = clone(state);
+    const r = runAction(b);
+    Object.assign(state, snap);
+    if (r?.guard) return res.json(r);
+  }
+  const job = {
+    id: randomUUID(),
+    seq: state.queue.reduce((m, j) => Math.max(m, j.seq), 0) + 1,
+    action: b.action,
+    msgId: b.id ?? null,
+    threadId: b.threadId ?? null,
+    fromEmail: b.fromEmail ?? null,
+    fromName: name,
+    subject: b.subject ?? null,
+    status: "pending",
+    total: SINGLE_MESSAGE_ACTIONS.has(b.action) ? 1 : null,
+    processed: 0,
+    undoRequested: false,
+    undo: null,
+    error: null,
+    createdAt: Date.now(),
+    startedAt: null,
+    finishedAt: null,
+  };
+  state.queue.push(job);
+  res.json({ ok: true, queued: true, jobId: job.id });
+});
+
+app.get("/api/queue", (_req, res) => {
+  const active = state.queue.filter(isActive);
+  res.json({
+    ok: true,
+    actions: active.length,
+    emailsLeft: active
+      .filter((j) => j.total !== null)
+      .reduce((n, j) => n + (j.total - j.processed), 0),
+    counting: active.filter((j) => j.total === null).length,
+    activeIds: active.map((j) => j.id),
+    failed: state.queue.filter((j) => j.status === "failed"),
+    paused: null,
+    bulkGuardEnabled: guardEnabled(),
+  });
+});
+
+for (const verb of ["retry", "dismiss"]) {
+  app.post(`/api/queue/:id/${verb}`, (req, res) => {
+    const job = state.queue.find(
+      (j) => j.id === req.params.id && j.status === "failed",
+    );
+    if (!job) return qerr(res, 404, "not_found");
+    if (verb === "retry") {
+      Object.assign(job, {
+        status: "pending",
+        processed: 0,
+        error: null,
+        finishedAt: null,
+      });
+    } else state.queue = state.queue.filter((j) => j !== job);
+    res.json({ ok: true });
+  });
+}
+
+app.post("/api/triage/undo", (req, res) => {
+  const job = state.queue.find((j) => j.id === (req.body || {}).jobId);
+  if (!job) return qerr(res, 404, "not_found");
+  if (
+    UNDO[job.action] === "none" ||
+    job.status === "failed" ||
+    job.status === "cancelled"
+  )
+    return qerr(res, 400, "not_undoable");
+  if (job.status === "pending" && job.startedAt === null) {
+    job.status = "cancelled";
+    job.finishedAt = Date.now();
+    return res.json({ ok: true, state: "cancelled" });
+  }
+  if (isActive(job)) {
+    job.undoRequested = true;
+    return res.json({ ok: true, state: "undo-requested" });
+  }
+  if (job.undo) applyUndo(job.undo);
+  job.status = "cancelled";
+  res.json({ ok: true, state: "undone" });
 });
 
 // ─── Preview (old route, used by Review detail iframe) ──────────────────────
@@ -2018,6 +2221,7 @@ app.get("/api/settings", (_req, res) => {
     backups: backupsMeta(),
     stats: state.stats,
     bulkGuardThreshold: threshold(),
+    bulkGuardEnabled: guardEnabled(),
   });
 });
 const s = () => state.settings;
@@ -2074,6 +2278,15 @@ app.post("/api/settings/bulk-guard-threshold", (req, res) => {
     s().bulkGuardThreshold = Math.floor(n);
   else delete s().bulkGuardThreshold;
   res.json({ ok: true, threshold: threshold() });
+});
+app.post("/api/settings/bulk-guard-enabled", (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== "boolean")
+    return res
+      .status(400)
+      .json({ ok: false, error: "enabled must be a boolean" });
+  s().bulkGuardEnabled = enabled;
+  res.json({ ok: true, enabled });
 });
 app.post("/api/settings/locations/add", (req, res) => {
   const loc = req.body?.location?.trim();

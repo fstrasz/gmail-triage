@@ -94,6 +94,17 @@ export function setBulkGuardThreshold(n) {
   else delete s.bulkGuardThreshold;
   saveSettings(s);
 }
+// Per-mailbox switch for the bulk-guard confirmation. Absent or non-boolean = on,
+// so a mailbox that never set it keeps the guard.
+export function getBulkGuardEnabled() {
+  const v = loadSettings().bulkGuardEnabled;
+  return typeof v === "boolean" ? v : true;
+}
+export function setBulkGuardEnabled(enabled) {
+  const s = loadSettings();
+  s.bulkGuardEnabled = enabled;
+  saveSettings(s);
+}
 // Name-fragmentation trigger: live-tunable threshold, same per-check-read pattern as
 // getBulkGuardThreshold. A positive number in settings.json wins; otherwise the
 // caller's fallback (senderList.js's NAME_FRAGMENTATION_THRESHOLD) is used.

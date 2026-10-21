@@ -196,6 +196,7 @@ export async function labelSender(
   fromEmail,
   fromName = null,
   removeLabels = [],
+  onProgress = null,
 ) {
   const labelId = await ensureLabel(gmail, labelName);
   const ids = [];
@@ -226,6 +227,7 @@ export async function labelSender(
     pageToken = res.data.nextPageToken || null;
   } while (pageToken);
 
+  onProgress?.({ total: ids.length });
   if (!ids.length) return 0;
   for (let i = 0; i < ids.length; i += 1000) {
     await gmail.users.messages.batchModify({
@@ -236,6 +238,7 @@ export async function labelSender(
         removeLabelIds: removeLabels,
       },
     });
+    onProgress?.({ processed: Math.min(i + 1000, ids.length) });
   }
   return ids.length;
 }
@@ -246,6 +249,7 @@ export async function blockSender(
   fromEmail,
   fromName = null,
   excludeId = null,
+  onProgress = null,
 ) {
   const labelId = await ensureLabel(gmail, ".DelPend");
   const ids = [];
@@ -272,19 +276,25 @@ export async function blockSender(
     pageToken = res.data.nextPageToken || null;
   } while (pageToken);
 
+  onProgress?.({ total: ids.length });
   if (!ids.length) return 0;
+  let processed = 0;
   for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
     try {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: {
-          ids: ids.slice(i, i + 1000),
+          ids: chunk,
           addLabelIds: [labelId],
           removeLabelIds: ["INBOX", "UNREAD"],
         },
       });
+      processed += chunk.length;
+      onProgress?.({ processed });
     } catch (e) {
       console.error("blockSender batchModify FAILED:", e.message);
+      onProgress?.({ failedChunk: true, processed });
     }
   }
   return ids.length;
@@ -296,21 +306,27 @@ export async function blockSender(
 // keepAndClean. "Delete All" must mean all; a destructive action that silently
 // skips messages sent under a different display name is the failure mode this
 // feature exists to prevent.
-export async function deleteAllFromSender(gmail, fromEmail) {
+export async function deleteAllFromSender(gmail, fromEmail, onProgress = null) {
   const ids = await collectMatchingIds(gmail, fromQuery(fromEmail));
+  onProgress?.({ total: ids.length });
+  let processed = 0;
   for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
     try {
       // To TRASH via batchModify — never the permanent/irreversible bulk-delete
       // API. That is the whole point of this function.
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: {
-          ids: ids.slice(i, i + 1000),
+          ids: chunk,
           addLabelIds: ["TRASH"],
         },
       });
+      processed += chunk.length;
+      onProgress?.({ processed });
     } catch (e) {
       console.error("deleteAllFromSender batchModify FAILED:", e.message);
+      onProgress?.({ failedChunk: true, processed });
     }
   }
   return ids.length;
@@ -319,19 +335,29 @@ export async function deleteAllFromSender(gmail, fromEmail) {
 // Removes INBOX only — deliberately does NOT remove UNREAD. Archiving is not
 // reading; conflating them is how mail disappears unreviewed. This differs
 // from archiveMessage (single message), which removes both.
-export async function archiveAllFromSender(gmail, fromEmail) {
+export async function archiveAllFromSender(
+  gmail,
+  fromEmail,
+  onProgress = null,
+) {
   const ids = await collectMatchingIds(gmail, fromQuery(fromEmail));
+  onProgress?.({ total: ids.length });
+  let processed = 0;
   for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
     try {
       await gmail.users.messages.batchModify({
         userId: "me",
         requestBody: {
-          ids: ids.slice(i, i + 1000),
+          ids: chunk,
           removeLabelIds: ["INBOX"],
         },
       });
+      processed += chunk.length;
+      onProgress?.({ processed });
     } catch (e) {
       console.error("archiveAllFromSender batchModify FAILED:", e.message);
+      onProgress?.({ failedChunk: true, processed });
     }
   }
   return ids.length;

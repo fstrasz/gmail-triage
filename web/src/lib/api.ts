@@ -32,15 +32,6 @@ export interface TriageEmail {
   unsubPost: string | null;
 }
 
-export interface UndoDescriptor {
-  action: TriageAction;
-  id: string;
-  fromEmail: string | null;
-  fromName: string | null;
-  addedToList: boolean;
-  listName?: "vip" | "ok" | "blocklist";
-}
-
 export interface AutoCleanEntry {
   email: string;
   reason: string;
@@ -51,19 +42,12 @@ export interface AutoCleanEntry {
 }
 
 export type ActionResult =
-  | {
-      ok: true;
-      labeled?: number;
-      undo: UndoDescriptor;
-      unsubResult?: string;
-      openTab?: boolean;
-      openTabUrl?: string | null;
-      analysis?: unknown;
-    }
+  | { ok: true; queued: true; jobId: string }
   | {
       ok: false;
       guard: {
-        count: number;
+        // null when no count was run (guard-off mailbox, Delete/Archive All)
+        count: number | null;
         message: string;
         scope?: string;
         action?: string;
@@ -156,15 +140,57 @@ export async function postAction(payload: {
   return res.json() as Promise<ActionResult>;
 }
 
-/** POST /api/triage/undo — undo a previous triage action */
-export async function postUndo(
-  descriptor: UndoDescriptor,
-): Promise<{ ok: true }> {
+export interface QueueJob {
+  id: string;
+  action: TriageAction;
+  fromEmail: string | null;
+  fromName: string | null;
+  error: string | null;
+}
+
+export interface QueueStatus {
+  ok: true;
+  actions: number;
+  emailsLeft: number;
+  counting: number;
+  activeIds: string[];
+  failed: QueueJob[];
+  paused: null | "gmail_auth";
+  bulkGuardEnabled: boolean;
+}
+
+/** GET /api/queue — action queue status for the counter and failure list */
+export async function getQueueStatus(): Promise<QueueStatus> {
+  const res = await fetch("/api/queue");
+  if (!res.ok) throw new Error(`getQueueStatus failed: ${res.status}`);
+  return res.json() as Promise<QueueStatus>;
+}
+
+/** POST /api/triage/undo — cancel or reverse a queued action by job id */
+export async function postUndo(payload: {
+  jobId: string;
+}): Promise<{ ok: true; state: "cancelled" | "undo-requested" | "undone" }> {
   const res = await fetch("/api/triage/undo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(descriptor),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`postUndo failed: ${res.status}`);
-  return res.json() as Promise<{ ok: true }>;
+  return res.json() as Promise<{
+    ok: true;
+    state: "cancelled" | "undo-requested" | "undone";
+  }>;
 }
+
+async function postJob(id: string, verb: "retry" | "dismiss"): Promise<void> {
+  const res = await fetch(`/api/queue/${encodeURIComponent(id)}/${verb}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`${verb}Job failed: ${res.status}`);
+}
+
+/** POST /api/queue/:id/retry */
+export const retryJob = (id: string) => postJob(id, "retry");
+
+/** POST /api/queue/:id/dismiss */
+export const dismissJob = (id: string) => postJob(id, "dismiss");

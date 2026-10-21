@@ -44,7 +44,9 @@ test("shell shows which mailbox this instance serves", async () => {
     </MemoryRouter>,
   );
   expect(await screen.findByText("robin@strasz.com")).toBeInTheDocument();
-  expect(document.title).toContain("robin@strasz.com");
+  await waitFor(() =>
+    expect(document.title).toContain("robin@strasz.com"),
+  );
 });
 
 test("shell renders without a mailbox label when the lookup fails", async () => {

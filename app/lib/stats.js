@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "./atomicWrite.js";
 
-const STATS_PATH = path.join(process.cwd(), "stats.json");
+const getStatsPath = () => path.join(process.cwd(), "stats.json");
 
 export function loadStats() {
   try {
-    const s = JSON.parse(fs.readFileSync(STATS_PATH));
+    const s = JSON.parse(fs.readFileSync(getStatsPath()));
     if (!s.daily) s.daily = [];
     return s;
   } catch {
@@ -23,7 +23,7 @@ export function loadStats() {
 }
 
 export function saveStats(s) {
-  atomicWriteFileSync(STATS_PATH, JSON.stringify(s, null, 2));
+  atomicWriteFileSync(getStatsPath(), JSON.stringify(s, null, 2));
 }
 
 export function resetStats() {

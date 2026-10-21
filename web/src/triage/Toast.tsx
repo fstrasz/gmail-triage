@@ -1,12 +1,11 @@
 import { useEffect } from "react";
-import type { TriageEmail, UndoDescriptor } from "../lib/api.ts";
+import type { TriageAction, TriageEmail } from "../lib/api.ts";
 import { isUndoable } from "./actionMeta.ts";
 import { toastMessage } from "./toastMessage.ts";
 
 export interface ToastInfo {
-  undo: UndoDescriptor;
-  /** Number of the sender's messages the action touched (for honest copy). */
-  labeled?: number;
+  /** The queued job the action became; Undo posts its id. */
+  undo: { jobId: string; action: TriageAction };
   /** The queue card the action was taken on, shown beside the status. */
   card?: TriageEmail;
 }
@@ -18,7 +17,7 @@ export function Toast({
   durationMs = 6000,
 }: {
   info: ToastInfo;
-  onUndo: (descriptor: UndoDescriptor) => void;
+  onUndo: (undo: ToastInfo["undo"]) => void;
   onDismiss: () => void;
   durationMs?: number;
 }) {

@@ -210,6 +210,56 @@ describe("deckReducer", () => {
     expect(state.removed).toEqual([{ card: e1, index: 0 }]);
   });
 
+  test("act with ids removes the group and keeps the cursor position", () => {
+    const e4 = makeEmail("e4");
+    const init = base({ cards: [e1, e2, e3, e4], selectedId: "e2" });
+    const state = deckReducer(init, {
+      type: "act",
+      action: "junk",
+      id: "e2",
+      ids: ["e2", "e4"],
+    });
+    expect(state.cards).toEqual([e1, e3]);
+    expect(state.removed.map((r) => r.card.id)).toEqual(["e2", "e4"]);
+    expect(state.removed.map((r) => r.index)).toEqual([1, 3]);
+    // Cursor stays at the acted card's old index: e3 now sits there.
+    expect(state.selectedId).toBe("e3");
+  });
+
+  test("restore re-inserts only the given ids", () => {
+    const e4 = makeEmail("e4");
+    const acted = deckReducer(
+      base({ cards: [e1, e2, e3, e4], selectedId: "e2" }),
+      { type: "act", action: "junk", id: "e2", ids: ["e2", "e4"] },
+    );
+    const state = deckReducer(acted, { type: "restore", ids: ["e4"] });
+    expect(state.cards).toEqual([e1, e3, e4]);
+    expect(state.removed.map((r) => r.card.id)).toEqual(["e2"]);
+    const all = deckReducer(acted, { type: "restore", ids: ["e2", "e4"] });
+    expect(all.cards).toEqual([e1, e2, e3, e4]);
+    expect(all.removed).toEqual([]);
+  });
+
+  test("load keeps keepRemoved ids suppressed when they reappear", () => {
+    const init = base({
+      cards: [e3],
+      removed: [
+        { card: e1, index: 0 },
+        { card: e2, index: 1 },
+      ],
+      selectedId: "e3",
+    });
+    const state = deckReducer(init, {
+      type: "load",
+      cards: [e1, e2, e3],
+      keepRemoved: ["e1"],
+    });
+    // e1 is still being enqueued: suppressed. e2 reappeared without being
+    // kept: treated as restored server-side, as before.
+    expect(state.cards).toEqual([e2, e3]);
+    expect(state.removed).toEqual([{ card: e1, index: 0 }]);
+  });
+
   test("reducer is immutable — original state untouched after act", () => {
     const init = base({ cards: [e1, e2], selectedId: "e1" });
     const origCards = init.cards;

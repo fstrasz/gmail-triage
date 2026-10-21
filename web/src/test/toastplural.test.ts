@@ -1,19 +1,25 @@
 import { describe, expect, test } from "vitest";
-import type { UndoDescriptor } from "../lib/api.ts";
+import type { TriageAction } from "../lib/api.ts";
 import { toastMessage } from "../triage/toastMessage.ts";
 
-function info(labeled: number) {
-  return {
-    undo: { action: "delete-all" } as unknown as UndoDescriptor,
-    labeled,
-  };
+function info(action: TriageAction) {
+  return { undo: { jobId: "job-1", action } };
 }
 
-describe("toastMessage plural", () => {
-  test("count 1 reads 'message'", () => {
-    expect(toastMessage(info(1))).toContain("1 message,");
+// The toast reports the enqueue (no message count exists yet) plus what Undo
+// will do for that action.
+describe("toastMessage queued copy", () => {
+  test("junk reads '<verb> — queued' plus its undo tail", () => {
+    expect(toastMessage(info("junk"))).toBe(
+      "Junked — queued. Undo removes from blocklist.",
+    );
   });
-  test("count 2 reads 'messages'", () => {
-    expect(toastMessage(info(2))).toContain("2 messages,");
+  test("a sender-wide action says it is not reversible", () => {
+    expect(toastMessage(info("delete-all"))).toBe(
+      "Deleted all — queued, not reversible here",
+    );
+  });
+  test("review has no undo tail", () => {
+    expect(toastMessage(info("review"))).toBe("Review — queued");
   });
 });

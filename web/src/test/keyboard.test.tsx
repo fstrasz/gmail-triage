@@ -1,10 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { ActionResult, TriageEmail, UndoDescriptor } from "../lib/api.ts";
+import type { ActionResult, TriageEmail } from "../lib/api.ts";
 
 // ---------------------------------------------------------------------------
 // Mock ../lib/queries.ts — same pattern as deckui.test.tsx.
-// We expose controllable isPending so we can test the single-in-flight guard.
 // ---------------------------------------------------------------------------
 
 interface QueueState {
@@ -13,50 +12,42 @@ interface QueueState {
   isError: boolean;
 }
 
+// A mutateAsync double that settles SYNCHRONOUSLY (TriagePage only chains
+// `.then`); `inFlight` never settles, like an enqueue awaiting its response.
+interface SyncThenable {
+  then: (onOk?: (v: unknown) => unknown) => SyncThenable;
+}
+function settled(value: unknown): SyncThenable {
+  return { then: (onOk) => settled(onOk ? onOk(value) : value) };
+}
+const inFlight: SyncThenable = { then: () => inFlight };
+
+const QUEUED: ActionResult = { ok: true, queued: true, jobId: "job-1" };
+
 const hookState: {
   queue: QueueState;
   actionResult: ActionResult;
-  actionIsPending: boolean;
 } = {
   queue: { data: undefined, isPending: false, isError: false },
-  actionResult: { ok: true, undo: stubUndo("ok-clean") },
-  actionIsPending: false,
+  actionResult: QUEUED,
 };
 
-const actionMutate = vi.fn(
-  (
-    _payload: unknown,
-    opts?: {
-      onSuccess?: (r: ActionResult) => void;
-      onError?: (e: unknown) => void;
-      onSettled?: () => void;
-    },
-  ) => {
-    opts?.onSuccess?.(hookState.actionResult);
-    opts?.onSettled?.();
-  },
+const actionMutate = vi.fn((_payload: unknown) =>
+  settled(hookState.actionResult),
 );
 
-const undoMutate = vi.fn();
-
-function stubUndo(action: UndoDescriptor["action"]): UndoDescriptor {
-  return {
-    action,
-    id: "top-id",
-    fromEmail: "a@b.com",
-    fromName: "A",
-    addedToList: true,
-    listName: "ok",
-  };
-}
+const undoMutate = vi.fn((_payload: unknown) =>
+  settled({ ok: true, state: "cancelled" }),
+);
+const queueRefetch = vi.fn();
 
 vi.mock("../lib/queries.ts", () => ({
-  useQueue: () => hookState.queue,
-  useAction: () => ({
-    mutate: actionMutate,
-    isPending: hookState.actionIsPending,
-  }),
-  useUndo: () => ({ mutate: undoMutate, isPending: false }),
+  useQueue: () => ({ ...hookState.queue, refetch: queueRefetch }),
+  useAction: () => ({ mutateAsync: actionMutate }),
+  useUndo: () => ({ mutateAsync: undoMutate }),
+  useQueueStatus: () => ({ data: undefined, dataUpdatedAt: 0, refetch: vi.fn() }),
+  useActionInFlight: () => false,
+  currentStartedFetchSeq: () => 0,
 }));
 
 // Import AFTER the mock is registered.
@@ -91,8 +82,7 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   };
-  hookState.actionResult = { ok: true, undo: stubUndo("ok-clean") };
-  hookState.actionIsPending = false;
+  hookState.actionResult = QUEUED;
 });
 
 // ---------------------------------------------------------------------------
@@ -154,43 +144,45 @@ describe("Keyboard shortcuts", () => {
     expect(payload.action).toBe("delete");
   });
 
-  test("5. u key calls useUndo.mutate with the last action descriptor", () => {
-    const desc = stubUndo("ok-clean");
-    hookState.actionResult = { ok: true, undo: desc };
+  test("5. u key calls useUndo with the last action's job id", () => {
     render(<TriagePage />);
 
-    // First commit an action via arrow key to set the last descriptor.
+    // First commit an action via arrow key to set the last job.
     fireEvent.keyDown(document, { key: "ArrowRight" });
 
-    // Now press u — should call undoMutate with that descriptor.
+    // Now press u — should call undoMutate with that job id.
     fireEvent.keyDown(document, { key: "u" });
 
     expect(undoMutate).toHaveBeenCalledTimes(1);
-    expect(undoMutate.mock.calls[0][0]).toEqual(desc);
+    expect(undoMutate.mock.calls[0][0]).toEqual({ jobId: "job-1" });
   });
 
-  test("6. single-in-flight guard: keystroke ignored while action isPending", () => {
-    hookState.actionIsPending = true;
+  test("6. a second keypress on the same card does not enqueue twice", () => {
+    // Delete (ArrowDown in hidden mode) can never be guarded, so it takes no
+    // wait-for-response lock: only the same-card lock stands in the way.
+    actionMutate.mockImplementationOnce(() => inFlight);
     render(<TriagePage />);
 
-    fireEvent.keyDown(document, { key: "ArrowRight" });
-
-    expect(actionMutate).not.toHaveBeenCalled();
-  });
-
-  test("6b. ref-lock (FIX B): a second commit in the SAME tick is ignored before isPending flips", () => {
-    // Simulate an in-flight mutation: mutate does NOT settle synchronously, so
-    // action.isPending stays false in this render tick. Only the ref-lock can
-    // block the second synchronous gesture.
-    actionMutate.mockImplementationOnce(() => {
-      /* in-flight: no onSuccess/onSettled — lock stays held */
+    // Both keypresses inside one act(): the second runs before React
+    // re-renders, so its handler still sees e1 as the active card.
+    act(() => {
+      fireEvent.keyDown(document, { key: "ArrowDown" });
+      fireEvent.keyDown(document, { key: "ArrowDown" });
     });
+
+    expect(actionMutate).toHaveBeenCalledTimes(1);
+    expect((actionMutate.mock.calls[0][0] as { id: string }).id).toBe("e1");
+  });
+
+  test("6b. a may-guard action awaiting its response blocks a second may-guard action", () => {
+    // ok-clean (ArrowRight) may be answered with a bulk guard, so it holds the
+    // wait-for-response lock until it settles; this one never does.
+    actionMutate.mockImplementationOnce(() => inFlight);
     render(<TriagePage />);
 
     fireEvent.keyDown(document, { key: "ArrowRight" });
     fireEvent.keyDown(document, { key: "ArrowRight" });
 
-    // Without the ref-lock both would fire (isPending only flips next render).
     expect(actionMutate).toHaveBeenCalledTimes(1);
   });
 
@@ -241,15 +233,13 @@ describe("Keyboard shortcuts", () => {
   });
 
   test("10. U (uppercase) also triggers undo", () => {
-    const desc = stubUndo("ok-clean");
-    hookState.actionResult = { ok: true, undo: desc };
     render(<TriagePage />);
 
     fireEvent.keyDown(document, { key: "ArrowRight" });
     fireEvent.keyDown(document, { key: "U" });
 
     expect(undoMutate).toHaveBeenCalledTimes(1);
-    expect(undoMutate.mock.calls[0][0]).toEqual(desc);
+    expect(undoMutate.mock.calls[0][0]).toEqual({ jobId: "job-1" });
   });
 
   test("11. O1: a shortcut fired after selecting a DIFFERENT queue row acts on the newly-selected card, not the stale first card", () => {

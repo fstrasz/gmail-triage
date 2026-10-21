@@ -7,16 +7,18 @@ import {
   useRef,
   useState,
 } from "react";
-import type {
-  ActionResult,
-  TriageAction,
-  TriageEmail,
-  UndoDescriptor,
-} from "../lib/api.ts";
-import { getBodyUrl } from "../lib/api.ts";
+import type { ActionResult, TriageAction, TriageEmail } from "../lib/api.ts";
+import { dismissJob, getBodyUrl, retryJob } from "../lib/api.ts";
 import { shortDate } from "../lib/format.ts";
 import { loadMode, saveMode } from "../lib/persistMode.ts";
-import { useAction, useQueue, useUndo } from "../lib/queries.ts";
+import {
+  currentStartedFetchSeq,
+  useAction,
+  useActionInFlight,
+  useQueue,
+  useQueueStatus,
+  useUndo,
+} from "../lib/queries.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
 import { Stamp } from "../shell/Stamp.tsx";
 import {
@@ -39,6 +41,8 @@ import { Deck } from "./Deck.tsx";
 import { deckReducer } from "./deckReducer.ts";
 import type { GuardInfo } from "./GuardDialog.tsx";
 import { GuardDialog } from "./GuardDialog.tsx";
+import { QueueCounter } from "./QueueCounter.tsx";
+import { coveredCardIds } from "./queueScope.ts";
 import { ACTION_KEY, ShortcutsDialog } from "./ShortcutsDialog.tsx";
 import type { Dir, Mode } from "./swipeMap.ts";
 import { arrowAction } from "./swipeMap.ts";
@@ -46,6 +50,28 @@ import type { ToastInfo } from "./Toast.tsx";
 import { toastMessage } from "./toastMessage.ts";
 
 const QUEUE_LIMIT = 25;
+// Below this many cards the deck asks the server for more.
+const LOW_WATER = 10;
+
+// Actions the server may answer with a bulk guard instead of queueing: these
+// wait for their response before another may-guard action can start (the
+// guard dialog holds one pending action). Sender-wide actions always may.
+const GUARDABLE = new Set<TriageAction>([
+  "ok",
+  "vip",
+  "ok-clean",
+  "vip-clean",
+  "junk",
+  "delete-all",
+  "archive-all",
+]);
+const SENDER_WIDE = new Set<TriageAction>(["delete-all", "archive-all"]);
+
+// Why a removed card stays hidden even if a deck refetch still lists it: its
+// enqueue is in flight, or it belongs to a queued job. `liftedSeq` is how many
+// queue fetches had STARTED when the job was seen not active; the card stays
+// hidden until data from a fetch started after that has landed.
+type Suppression = "enqueuing" | { jobId: string; liftedSeq?: number };
 
 // Workbench action column, in groups. Delete All sits directly after Delete
 // so the sender-wide pair reads as an extension of it.
@@ -94,6 +120,11 @@ export function TriagePage() {
   const queue = useQueue(queueParams);
   const action = useAction();
   const undo = useUndo(queueParams);
+  const queueStatus = useQueueStatus();
+  const status = queueStatus.data;
+  const actionInFlight = useActionInFlight();
+  // Absent = on (the server's default).
+  const bulkGuardEnabled = status?.bulkGuardEnabled ?? true;
 
   // Layout by capability AND room: a mouse, or a screen wide enough for four
   // panes (iPad landscape, desktop), gets the workbench. Touch below that gets
@@ -124,20 +155,109 @@ export function TriagePage() {
   // closure value like deck.cards[1]. (FIX G) Set only on the committed-success
   // path so a guard/auth result never falsely announces "done".
   const pendingAnnounce = useRef<TriageAction | null>(null);
-  // FIX B — single-in-flight lock covering EVERY commit path (button taps,
-  // swipe onPointerUp, More sheet, keyboard). action.isPending only flips on the
-  // next render tick, so two synchronous commits in the same tick can both pass
-  // it; this synchronous ref closes that window.
+  // Cards whose action has been dispatched and not yet answered, on EVERY
+  // commit path (button taps, swipe, reader, keyboard). Two gestures in the
+  // same tick still see the old active card; this synchronous set stops the
+  // second from enqueueing the same card twice.
+  const dispatchedIds = useRef(new Set<string>());
+  // Held while a may-guard action awaits its response, so a second may-guard
+  // action cannot start (the guard dialog has one pending slot). Actions that
+  // can never be guarded do not take or wait for it.
   const committing = useRef(false);
+  // Every card an action removed → what keeps it hidden (see `keepRemoved`).
+  const suppressed = useRef(new Map<string, Suppression>());
+  // Each commit's sequence number: only the latest one's response sets the toast.
+  const commitSeq = useRef(0);
+  // Jobs whose undo was deferred until they finish (state "undo-requested").
+  const [undoWatch, setUndoWatch] = useState<string[]>([]);
+  // Set once the first queue data has been loaded into the deck.
+  const [deckLoaded, setDeckLoaded] = useState(false);
+  // A short status shown in the toast area when no action toast is up (e.g. a
+  // failed undo).
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // Sync deck cards from the query whenever data or mode changes. The reducer's
-  // `load` reconciles against local optimistic state (it no longer clears
-  // removed[]), so this firing mid-action — including from useAction.onMutate's
-  // cache filter — won't strand the just-acted card.
   const emails = queue.data?.emails;
+  // Which fetch produced the deck data on hand. Never `dataUpdatedAt`: that
+  // also moves on every optimistic cache edit, which is not fresh server data.
+  const queueSeq = queue.data?.fetchStartedSeq ?? 0;
+  const activeIds = status?.activeIds;
+  const statusAt = queueStatus.dataUpdatedAt;
+  const refetchQueue = queue.refetch;
+
+  // Lift a job's suppression once the status does not list it as active. The
+  // deck may still hold, or have in flight, a stale copy of its cards (a fetch
+  // the server answered before the job existed), so the cards stay hidden
+  // until data from a fetch STARTED after the lift lands (the load effect
+  // below). No refetch here: a status poll sees jobs finish every 2 s while the
+  // operator works, and a queue fetch per poll is the Gmail-quota class the
+  // spec rules out. The cards come back on the next natural fetch (low water,
+  // window focus, undo). Lifting on a status that predates the job is safe:
+  // any later fetch starts after the job exists, and the server excludes an
+  // active job's mail.
   useEffect(() => {
-    if (emails) dispatch({ type: "load", cards: emails });
-  }, [emails]);
+    const active = new Set(activeIds);
+    for (const s of suppressed.current.values()) {
+      if (s === "enqueuing" || s.liftedSeq !== undefined) continue;
+      if (active.has(s.jobId)) continue;
+      s.liftedSeq = currentStartedFetchSeq();
+    }
+  }, [activeIds, statusAt]);
+
+  // Sync deck cards from the query whenever data changes. The reducer's `load`
+  // reconciles against local optimistic state; `keepRemoved` keeps a removed
+  // card hidden while its enqueue is in flight, its job is not yet lifted, or
+  // no fetch started after the lift has landed — so neither a refetch that
+  // raced an enqueue nor a stale copy of a finished job can resurrect it. Once
+  // that fresh data lands, server truth decides and the entry is dropped.
+  useEffect(() => {
+    if (!emails) return;
+    const keepRemoved: string[] = [];
+    for (const [id, s] of suppressed.current) {
+      if (
+        s !== "enqueuing" &&
+        s.liftedSeq !== undefined &&
+        queueSeq > s.liftedSeq
+      ) {
+        suppressed.current.delete(id);
+      } else {
+        keepRemoved.push(id);
+      }
+    }
+    dispatch({ type: "load", cards: emails, keepRemoved });
+    setDeckLoaded(true);
+  }, [emails, queueSeq]);
+
+  // Low-water refetch: fewer than LOW_WATER cards left, nothing fetching, no
+  // enqueue awaiting its response. `lowWaterAt` is the deck length when it
+  // last fired: it fires again only once the deck has shrunk further, so a
+  // fetch that comes back short does not loop, and a fetch that was cancelled
+  // or failed is retried on the next action instead of disarming the refill.
+  // `deckLoaded` waits for the first `load` to reach the deck: in the render
+  // that first delivers data the deck is still empty, which is not low water.
+  const lowWaterAt = useRef<number | null>(null);
+  const deckLen = deck.cards.length;
+  const queueFetching = queue.isFetching;
+  useEffect(() => {
+    if (!deckLoaded) return;
+    if (deckLen >= LOW_WATER) {
+      lowWaterAt.current = null;
+      return;
+    }
+    if (queueFetching || actionInFlight) return;
+    if (lowWaterAt.current !== null && deckLen >= lowWaterAt.current) return;
+    lowWaterAt.current = deckLen;
+    void refetchQueue();
+  }, [deckLoaded, deckLen, queueFetching, actionInFlight, refetchQueue]);
+
+  // An undo that was deferred behind a running job lands when the job
+  // finishes: refetch the deck once the status shows it has left activeIds.
+  useEffect(() => {
+    if (undoWatch.length === 0 || !activeIds) return;
+    const finished = undoWatch.filter((id) => !activeIds.includes(id));
+    if (finished.length === 0) return;
+    setUndoWatch((w) => w.filter((id) => !finished.includes(id)));
+    void refetchQueue();
+  }, [undoWatch, activeIds, refetchQueue]);
   useEffect(() => {
     dispatch({ type: "setMode", mode });
     saveMode(mode);
@@ -180,31 +300,36 @@ export function TriagePage() {
       result: ActionResult,
       committed: TriageAction,
       card: TriageEmail,
-      labeled?: number,
+      ids: string[],
+      seq: number,
     ) => {
       if (result.ok) {
         // FIX E — a successful action proves the Gmail connection is live again;
         // clear any stale Reconnect banner.
         setAuthError(false);
-        setToast({
-          undo: result.undo,
-          labeled: result.labeled ?? labeled,
-          card,
-        });
+        for (const id of ids) {
+          suppressed.current.set(id, { jobId: result.jobId });
+        }
+        // A late response for an older commit must not replace the newer
+        // toast: only the latest action carries Undo.
+        if (seq === commitSeq.current) {
+          setToast({ undo: { jobId: result.jobId, action: committed }, card });
+        }
         // FIX G — announce ONLY on the committed-success path, reading the new top
         // post-dispatch (the effect below). A guard/auth result never announces.
         pendingAnnounce.current = committed;
         return;
       }
+      // Guard or auth: put back THIS action's cards (never the LIFO `undo`,
+      // which would restore whichever action happened to be last).
+      for (const id of ids) suppressed.current.delete(id);
+      dispatch({ type: "restore", ids });
       if ("error" in result) {
         // M1 — distinct auth state, NOT empty.
         setAuthError(true);
-        // Restore the card we optimistically advanced past.
-        dispatch({ type: "undo" });
         return;
       }
-      // guard — restore the card and open the confirm dialog.
-      dispatch({ type: "undo" });
+      // guard — open the confirm dialog for this card.
       pending.current = { action: committed, card };
       setGuard(result.guard);
     },
@@ -222,25 +347,39 @@ export function TriagePage() {
   // effect now re-runs whenever the active card actually changes.
   const commit = useCallback(
     (act: TriageAction, confirmed = false) => {
-      // FIX B — single-in-flight guard at the TOP so EVERY path inherits it
-      // (button taps, swipe, More sheet, keyboard). The ref closes the same-tick
-      // double-fire window before action.isPending can flip.
-      if (committing.current || action.isPending) return;
-
       const card = confirmed ? pending.current?.card : active;
       if (!card) return;
-      committing.current = true;
+      // Locks at the TOP so EVERY path inherits them (button taps, swipe,
+      // reader, keyboard): never the same card twice, and never a second
+      // may-guard action while one awaits its response.
+      if (dispatchedIds.current.has(card.id)) return;
+      const mayGuard =
+        SENDER_WIDE.has(act) || (bulkGuardEnabled && GUARDABLE.has(act));
+      if (mayGuard && committing.current) return;
+
+      // Every card the job will take care of leaves the deck now, as one group.
+      const ids = coveredCardIds(act, card, deck.cards, { hideListed });
+      for (const id of ids) {
+        dispatchedIds.current.add(id);
+        suppressed.current.set(id, "enqueuing");
+      }
+      if (mayGuard) committing.current = true;
+      const seq = ++commitSeq.current;
       // The previous action's status stays up until the next action.
       setToast(null);
+      setNotice(null);
 
-      // Dispatch exactly ONE `act` per user gesture for the ACTIVE card (by id, so
-      // it works regardless of position). The reducer removes it, keeps the cursor
-      // at that position, and advances. On the confirmed path the guard revert put
-      // the card back, so we re-remove it here. Announce set later, on success only.
-      dispatch({ type: "act", action: act, id: card.id });
+      // One `act` per user gesture for the ACTIVE card (by id, so it works
+      // regardless of position). The reducer removes the group, keeps the
+      // cursor at that position, and advances. On the confirmed path the guard
+      // restore put the cards back, so they are removed again here. Announce
+      // set later, on success only.
+      dispatch({ type: "act", action: act, id: card.id, ids });
 
-      action.mutate(
-        {
+      // mutateAsync, not mutate: per-call mutate callbacks fire only for the
+      // LATEST call, and several enqueues may be in flight at once.
+      action
+        .mutateAsync({
           id: card.id,
           action: act,
           fromEmail: card.fromEmail,
@@ -248,22 +387,31 @@ export function TriagePage() {
           unsubUrl: card.unsubUrl,
           unsubPost: card.unsubPost,
           confirmed: confirmed || undefined,
+          coveredIds: ids,
           queueParams,
-        },
-        {
-          onSuccess: (result: ActionResult) => handleResult(result, act, card),
-          onError: () => {
-            // Unexpected failure: restore the card.
-            dispatch({ type: "undo" });
+        })
+        .then(
+          (result: ActionResult) => handleResult(result, act, card, ids, seq),
+          () => {
+            // Unexpected failure: put back this action's cards.
+            for (const id of ids) suppressed.current.delete(id);
+            dispatch({ type: "restore", ids });
           },
-          onSettled: () => {
-            // FIX B — release the lock once the mutation finishes (success or error).
-            committing.current = false;
-          },
-        },
-      );
+        )
+        .then(() => {
+          for (const id of ids) dispatchedIds.current.delete(id);
+          if (mayGuard) committing.current = false;
+        });
     },
-    [active, action, queueParams, handleResult],
+    [
+      active,
+      action,
+      queueParams,
+      handleResult,
+      bulkGuardEnabled,
+      deck.cards,
+      hideListed,
+    ],
   );
 
   // Select a queue item in place (highlight it) — no reorder. The active card
@@ -278,12 +426,33 @@ export function TriagePage() {
   // need to rebuild on every render for a callback that only actually
   // depends on `undo`.
   const onUndo = useCallback(
-    (descriptor: UndoDescriptor) => {
+    ({ jobId }: ToastInfo["undo"]) => {
       setToast(null);
-      undo.mutate(descriptor);
+      setNotice(null);
+      undo.mutateAsync({ jobId }).then(
+        (r) => {
+          // A running job applies the undo when it finishes: refetch then.
+          if (r.state === "undo-requested") setUndoWatch((w) => [...w, jobId]);
+        },
+        // e.g. 400 not_undoable: the job failed in the meantime.
+        () => setNotice("Undo failed — the action could not be undone"),
+      );
     },
     [undo],
   );
+
+  // Failed-job controls on the counter; the status refetch moves the counter
+  // whether the request worked or not.
+  const refetchStatus = queueStatus.refetch;
+  const refreshStatus = () => {
+    void refetchStatus();
+  };
+  const onRetry = (id: string) => {
+    retryJob(id).then(refreshStatus, refreshStatus);
+  };
+  const onDismiss = (id: string) => {
+    dismissJob(id).then(refreshStatus, refreshStatus);
+  };
 
   function confirmGuard() {
     const p = pending.current;
@@ -299,7 +468,7 @@ export function TriagePage() {
 
   // ---- Keyboard shortcuts ---------------------------------------------------
   // Attach at document level; cleaned up on unmount. Only fires when no modal
-  // is open and no action is in flight (single-in-flight invariant).
+  // is open. Actions do NOT wait for each other here — `commit` holds the locks.
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -309,9 +478,7 @@ export function TriagePage() {
       if (target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLElement && target.isContentEditable) return;
 
-      // Single-in-flight guard: ignore while an action mutation is pending, or
-      // while a modal (guard dialog) is blocking interaction.
-      if (action.isPending) return;
+      // Ignore while a modal (guard dialog) is blocking interaction.
       if (guard !== null) return;
       if (shortcutsOpen) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -367,14 +534,13 @@ export function TriagePage() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-    // Exhaustive: mode/guard/toast/action.isPending are read directly
-    // in handleKeyDown above; `commit`/`onUndo` are the stable callbacks it
-    // calls, and each rebuilds when ITS real dependencies change (including
-    // the active/selected card for `commit` — see its useCallback above). So
-    // this effect now correctly re-runs on a selection change, fixing O1.
+    // Exhaustive: mode/guard/toast are read directly in handleKeyDown above;
+    // `commit`/`onUndo` are the stable callbacks it calls, and each rebuilds
+    // when ITS real dependencies change (including the active/selected card
+    // for `commit` — see its useCallback above). So this effect correctly
+    // re-runs on a selection change, fixing O1.
   }, [
     mode,
-    action.isPending,
     guard,
     shortcutsOpen,
     keyboardShortcuts,
@@ -434,7 +600,7 @@ export function TriagePage() {
         </div>
       )}
       <Stamp
-        key={`${toast.undo.id}-${toast.undo.action}`}
+        key={toast.undo.jobId}
         tone={ACTION_TONE[toast.undo.action]}
         animate
       >
@@ -462,7 +628,7 @@ export function TriagePage() {
       className="flex items-center justify-center gap-2 rounded-lg bg-paper px-2.5 py-1.5 text-sm ring-1 ring-rule-strong"
     >
       <Stamp
-        key={`${toast.undo.id}-${toast.undo.action}`}
+        key={toast.undo.jobId}
         tone={ACTION_TONE[toast.undo.action]}
         animate
       >
@@ -488,6 +654,21 @@ export function TriagePage() {
       )}
     </div>
   ) : null;
+
+  // Shown in the same place when there is no action toast.
+  const noticeNode = notice ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-lg bg-paper px-2.5 py-1.5 text-sm text-junk ring-1 ring-rule-strong"
+    >
+      {notice}
+    </div>
+  ) : null;
+
+  const counter = (
+    <QueueCounter status={status} onRetry={onRetry} onDismiss={onDismiss} />
+  );
 
   const hideToggle = (
     <button
@@ -529,17 +710,22 @@ export function TriagePage() {
         {announce}
       </div>
 
-      {/* M1 — an action hit an expired Gmail token: distinct Reconnect state,
-          shown as a banner ABOVE the deck so the just-acted card (restored by
-          handleResult's `undo`) stays visible and is not lost. */}
-      {authError && <ReconnectGmail banner />}
+      {/* M1 — an action hit an expired Gmail token, or the queue paused on
+          one: distinct Reconnect state, shown as a banner ABOVE the deck so the
+          just-acted cards (restored by handleResult) stay visible. */}
+      {(authError || status?.paused === "gmail_auth") && (
+        <ReconnectGmail banner />
+      )}
 
       {inDeck ? (
         <header className="flex min-h-11 items-center justify-between gap-3">
           <h1 className="sr-only">Triage</h1>
-          <span className="tabular text-sm text-muted">
-            {queue.data?.counts.left} left
-          </span>
+          <div className="flex min-w-0 flex-col">
+            <span className="tabular text-sm text-muted">
+              {queue.data?.counts.left} left
+            </span>
+            {counter}
+          </div>
           {hideToggle}
         </header>
       ) : (
@@ -552,8 +738,9 @@ export function TriagePage() {
               </span>
             )}
           </h1>
+          {counter}
           {/* Inline feedback — centered between title and chip */}
-          <div className="flex min-w-0 flex-1 justify-center">{toastNode}</div>
+          <div className="flex min-w-0 flex-1 justify-center">{toastNode ?? noticeNode}</div>
           {hideToggle}
         </header>
       )}
@@ -595,7 +782,7 @@ export function TriagePage() {
                       key={a}
                       type="button"
                       aria-label={ACTION_LABEL[a]}
-                      disabled={action.isPending || !active}
+                      disabled={!active}
                       onClick={() => commit(a)}
                       className={`flex w-full items-center justify-between gap-2 rounded-lg border border-rule-strong bg-paper px-2.5 py-1.5 text-left text-[0.8125rem] font-bold transition-colors duration-150 hover:border-current hover:bg-current/[0.07] disabled:opacity-40 pointer-coarse:min-h-11 ${ACTION_COLOR[a]}`}
                     >
@@ -690,7 +877,7 @@ export function TriagePage() {
                 const next = deck.cards[activeIndex + step];
                 if (next) dispatch({ type: "select", id: next.id });
               }}
-              feedback={deckToast}
+              feedback={deckToast ?? noticeNode}
             />
           </div>
         </div>
