@@ -165,32 +165,50 @@ describe("TriagePage / Deck UI", () => {
     expect(screen.queryByText("All from sender", { selector: "p" })).toBeNull();
     // The four swipe actions are tappable buttons on the top card's legend.
     const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
-    for (const a of ["ok-clean", "vip", "unsub", "delete-all"]) {
+    for (const a of ["ok-clean", "vip", "unsub", "delete"]) {
       expect(
         within(legend).getByRole("button", { name: ACTION_LABELS[a] }),
       ).toBeInTheDocument();
     }
     // Not offered on the hidden-mode touch deck (operator direction).
-    for (const a of ["junk", "delete", "archive", "review"]) {
+    for (const a of ["junk", "delete-all", "archive", "review"]) {
       expect(screen.queryByRole("button", { name: ACTION_LABELS[a] })).toBeNull();
     }
     // No overflow menu on the touch deck.
     expect(screen.queryByRole("button", { name: /more actions/i })).toBeNull();
   });
 
-  test("3b. tapping the Delete All legend button commits delete-all for the top card", () => {
+  test.each([
+    ["Delete this", "delete"],
+    [/^Delete all from/, "delete-all"],
+  ] as const)("3b. the Delete legend button asks first; %s commits %s for the top card", (choice, expected) => {
     render(<TriagePage />);
     const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
     fireEvent.click(
-      within(legend).getByRole("button", { name: ACTION_LABELS["delete-all"] }),
+      within(legend).getByRole("button", { name: ACTION_LABELS.delete }),
     );
+    expect(actionMutate).not.toHaveBeenCalled();
+    const prompt = screen.getByRole("dialog");
+    fireEvent.click(within(prompt).getByRole("button", { name: choice }));
     expect(actionMutate).toHaveBeenCalledTimes(1);
     const payload = actionMutate.mock.calls[0][0] as {
       action: string;
       id: string;
     };
-    expect(payload.action).toBe("delete-all");
+    expect(payload.action).toBe(expected);
     expect(payload.id).toBe("e1");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("3b2. cancelling the Delete prompt commits nothing", () => {
+    render(<TriagePage />);
+    const legend = screen.getAllByRole("list", { name: "Swipe legend" })[0];
+    fireEvent.click(
+      within(legend).getByRole("button", { name: ACTION_LABELS.delete }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(actionMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   test("3c. Show message opens a full-screen reader with the body and every action; acting closes it", () => {
@@ -202,7 +220,7 @@ describe("TriagePage / Deck UI", () => {
       "ok-clean",
       "unsub",
       "vip",
-      "delete-all",
+      "delete",
       "ok",
       "vip-clean",
       "archive-all",
@@ -212,13 +230,13 @@ describe("TriagePage / Deck UI", () => {
       ).toBeInTheDocument();
     }
     fireEvent.click(
-      within(reader).getByRole("button", { name: ACTION_LABELS["delete-all"] }),
+      within(reader).getByRole("button", { name: ACTION_LABELS["archive-all"] }),
     );
     const payload = actionMutate.mock.calls.at(-1)![0] as {
       action: string;
       id: string;
     };
-    expect(payload).toMatchObject({ action: "delete-all", id: "e1" });
+    expect(payload).toMatchObject({ action: "archive-all", id: "e1" });
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 

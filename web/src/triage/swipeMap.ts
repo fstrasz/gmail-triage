@@ -19,15 +19,15 @@ export const ALL9: readonly TriageAction[] = [
   "review",
 ];
 
-// Touch swipe gestures. Both modes swipe to the sender-wide outcomes — Unsub
-// and Delete All — rather than Junk and Delete (operator direction,
-// 2026-10-20); the shown mode uses the same touch layout as hidden
-// (operator direction, 2026-10-22).
+// Touch swipe gestures. Both modes swipe left to Unsub rather than Junk
+// (operator direction, 2026-10-20); down is Delete, which asks whether to
+// delete this message or all from the sender (operator direction, 2026-10-22).
+// The shown mode uses the same touch layout as hidden (2026-10-22).
 const TOUCH_SWIPES: Record<Dir, TriageAction> = {
   right: "ok-clean",
   left: "unsub",
   up: "vip",
-  down: "delete-all",
+  down: "delete",
 };
 const SWIPE_MAP: Record<Mode, Record<Dir, TriageAction>> = {
   hidden: TOUCH_SWIPES,
@@ -52,8 +52,8 @@ export function arrowAction(mode: Mode, dir: Dir): TriageAction {
 // Tap buttons per mode for every action not covered by a swipe (the swipe
 // actions are also tappable via the on-card legend, so none is gesture-only).
 // `sender` actions act on all of the sender's mail and render as their own
-// labelled row. Touch is one row in both modes: Junk, Delete, Archive and
-// Review are not offered there (operator direction, 2026-10-20 / 2026-10-22),
+// labelled row. Touch is one row in both modes: Junk, Archive and Review are
+// not offered there, and Delete All is reached through Delete's prompt (operator direction, 2026-10-20 / 2026-10-22),
 // which leaves three buttons that fit beside each other.
 const TOUCH_TAPS = {
   message: ["ok", "vip-clean", "archive-all"] as TriageAction[],

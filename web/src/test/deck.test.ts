@@ -25,7 +25,7 @@ test("hidden", () => {
   expect(swipeAction("hidden", "right")).toBe("ok-clean");
   expect(swipeAction("hidden", "left")).toBe("unsub");
   expect(swipeAction("hidden", "up")).toBe("vip");
-  expect(swipeAction("hidden", "down")).toBe("delete-all");
+  expect(swipeAction("hidden", "down")).toBe("delete");
   expect(TAP_GROUPS.hidden).toEqual({
     message: ["ok", "vip-clean", "archive-all"],
     sender: [],
@@ -62,9 +62,10 @@ test("a11y parity: tap groups hold exactly the actions no swipe covers (DECK-3)"
     );
     const taps = [...TAP_GROUPS[m].message, ...TAP_GROUPS[m].sender];
     // No action is both tapped and swiped; together they are every action the
-    // mode offers on touch. Touch deliberately omits these four in both modes
-    // (operator direction, 2026-10-20 / 2026-10-22); desktop still offers them.
-    const omitted = ["junk", "delete", "archive", "review"];
+    // mode offers on touch. Touch deliberately omits Junk, Archive and Review
+    // (operator direction, 2026-10-20 / 2026-10-22); Delete All is reached via
+    // Delete's prompt. Desktop still offers them all as buttons.
+    const omitted = ["junk", "delete-all", "archive", "review"];
     expect(taps.filter((a) => swipes.includes(a))).toEqual([]);
     expect(new Set([...taps, ...swipes, ...omitted])).toEqual(new Set(ALL9));
     expect(taps.length + swipes.length + omitted.length).toBe(ALL9.length);

@@ -39,6 +39,7 @@ import {
 import { TierStamp } from "./Card.tsx";
 import { Deck } from "./Deck.tsx";
 import { deckReducer } from "./deckReducer.ts";
+import { DeleteChoiceDialog } from "./DeleteChoiceDialog.tsx";
 import type { GuardInfo } from "./GuardDialog.tsx";
 import { GuardDialog } from "./GuardDialog.tsx";
 import { QueueCounter } from "./QueueCounter.tsx";
@@ -141,6 +142,8 @@ export function TriagePage() {
     selectedId: null,
   });
   const [guard, setGuard] = useState<GuardInfo | null>(null);
+  // Touch Delete: the card awaiting "this one or all from the sender?".
+  const [deleteChoice, setDeleteChoice] = useState<TriageEmail | null>(null);
   const [toast, setToast] = useState<ToastInfo | null>(null);
   const [authError, setAuthError] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -480,6 +483,7 @@ export function TriagePage() {
 
       // Ignore while a modal (guard dialog) is blocking interaction.
       if (guard !== null) return;
+      if (deleteChoice !== null) return;
       if (shortcutsOpen) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -542,6 +546,7 @@ export function TriagePage() {
   }, [
     mode,
     guard,
+    deleteChoice,
     shortcutsOpen,
     keyboardShortcuts,
     deck.cards,
@@ -871,7 +876,11 @@ export function TriagePage() {
             <Deck
               cards={deckCards}
               mode={mode}
-              onAction={(a) => commit(a)}
+              onAction={(a) => {
+                // Touch Delete asks whether to delete this or all from the sender.
+                if (a === "delete") setDeleteChoice(active ?? null);
+                else commit(a);
+              }}
               position={{ index: activeIndex + 1, total: deck.cards.length }}
               onNavigate={(step) => {
                 const next = deck.cards[activeIndex + step];
@@ -887,6 +896,14 @@ export function TriagePage() {
         open={shortcutsOpen}
         onOpenChange={setShortcutsOpen}
         mode={mode}
+      />
+      <DeleteChoiceDialog
+        card={deleteChoice}
+        onChoose={(a) => {
+          setDeleteChoice(null);
+          commit(a);
+        }}
+        onCancel={() => setDeleteChoice(null)}
       />
       <GuardDialog
         guard={guard}
