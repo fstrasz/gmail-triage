@@ -44,15 +44,15 @@ test("arrow keys keep the per-message mapping; Delete All and Unsub have no key"
   }
 });
 
-test("shown", () => {
-  expect(swipeAction("shown", "right")).toBe("archive");
-  expect(swipeAction("shown", "left")).toBe("junk");
-  expect(swipeAction("shown", "up")).toBe("ok");
-  expect(swipeAction("shown", "down")).toBe("review");
-  expect(TAP_GROUPS.shown).toEqual({
-    message: ["vip", "unsub", "delete"],
-    sender: ["ok-clean", "vip-clean", "archive-all", "delete-all"],
-  });
+test("shown: touch layout matches hidden; arrow keys keep the shown mapping", () => {
+  for (const d of ["left", "right", "up", "down"] as const) {
+    expect(swipeAction("shown", d)).toBe(swipeAction("hidden", d));
+  }
+  expect(TAP_GROUPS.shown).toEqual(TAP_GROUPS.hidden);
+  expect(arrowAction("shown", "right")).toBe("archive");
+  expect(arrowAction("shown", "left")).toBe("junk");
+  expect(arrowAction("shown", "up")).toBe("ok");
+  expect(arrowAction("shown", "down")).toBe("review");
 });
 
 test("a11y parity: tap groups hold exactly the actions no swipe covers (DECK-3)", () => {
@@ -62,9 +62,9 @@ test("a11y parity: tap groups hold exactly the actions no swipe covers (DECK-3)"
     );
     const taps = [...TAP_GROUPS[m].message, ...TAP_GROUPS[m].sender];
     // No action is both tapped and swiped; together they are every action the
-    // mode offers on touch. Hidden mode deliberately omits these four
-    // (operator direction, 2026-10-20); desktop still offers them.
-    const omitted = m === "hidden" ? ["junk", "delete", "archive", "review"] : [];
+    // mode offers on touch. Touch deliberately omits these four in both modes
+    // (operator direction, 2026-10-20 / 2026-10-22); desktop still offers them.
+    const omitted = ["junk", "delete", "archive", "review"];
     expect(taps.filter((a) => swipes.includes(a))).toEqual([]);
     expect(new Set([...taps, ...swipes, ...omitted])).toEqual(new Set(ALL9));
     expect(taps.length + swipes.length + omitted.length).toBe(ALL9.length);

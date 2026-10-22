@@ -19,12 +19,19 @@ export const ALL9: readonly TriageAction[] = [
   "review",
 ];
 
-// Touch swipe gestures per mode. Hidden mode (unlisted senders) swipes to the
-// sender-wide outcomes — Unsub and Delete All — rather than Junk and Delete
-// (operator direction, 2026-10-20).
+// Touch swipe gestures. Both modes swipe to the sender-wide outcomes — Unsub
+// and Delete All — rather than Junk and Delete (operator direction,
+// 2026-10-20); the shown mode uses the same touch layout as hidden
+// (operator direction, 2026-10-22).
+const TOUCH_SWIPES: Record<Dir, TriageAction> = {
+  right: "ok-clean",
+  left: "unsub",
+  up: "vip",
+  down: "delete-all",
+};
 const SWIPE_MAP: Record<Mode, Record<Dir, TriageAction>> = {
-  hidden: { right: "ok-clean", left: "unsub", up: "vip", down: "delete-all" },
-  shown: { right: "archive", left: "junk", up: "ok", down: "review" },
+  hidden: TOUCH_SWIPES,
+  shown: TOUCH_SWIPES,
 };
 
 export function swipeAction(mode: Mode, dir: Dir): TriageAction {
@@ -35,7 +42,7 @@ export function swipeAction(mode: Mode, dir: Dir): TriageAction {
 // Unsub deliberately have no key, so a stray keypress can't trigger them.
 const ARROW_MAP: Record<Mode, Record<Dir, TriageAction>> = {
   hidden: { right: "ok-clean", left: "junk", up: "vip", down: "delete" },
-  shown: SWIPE_MAP.shown,
+  shown: { right: "archive", left: "junk", up: "ok", down: "review" },
 };
 
 export function arrowAction(mode: Mode, dir: Dir): TriageAction {
@@ -45,19 +52,17 @@ export function arrowAction(mode: Mode, dir: Dir): TriageAction {
 // Tap buttons per mode for every action not covered by a swipe (the swipe
 // actions are also tappable via the on-card legend, so none is gesture-only).
 // `sender` actions act on all of the sender's mail and render as their own
-// labelled row. Hidden mode is one row: Junk, Delete, Archive and Review are
-// not offered there on touch (operator direction, 2026-10-20), which leaves
-// three buttons that fit beside each other.
+// labelled row. Touch is one row in both modes: Junk, Delete, Archive and
+// Review are not offered there (operator direction, 2026-10-20 / 2026-10-22),
+// which leaves three buttons that fit beside each other.
+const TOUCH_TAPS = {
+  message: ["ok", "vip-clean", "archive-all"] as TriageAction[],
+  sender: [] as TriageAction[],
+};
 export const TAP_GROUPS: Record<
   Mode,
   { message: TriageAction[]; sender: TriageAction[] }
 > = {
-  hidden: {
-    message: ["ok", "vip-clean", "archive-all"],
-    sender: [],
-  },
-  shown: {
-    message: ["vip", "unsub", "delete"],
-    sender: ["ok-clean", "vip-clean", "archive-all", "delete-all"],
-  },
+  hidden: TOUCH_TAPS,
+  shown: TOUCH_TAPS,
 };
